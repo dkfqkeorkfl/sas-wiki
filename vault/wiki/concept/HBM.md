@@ -7,7 +7,7 @@ tags: ["메모리", "AI"]
 
 ## 정의
 
-HBM(High Bandwidth Memory)은 DRAM 다이를 수직으로 적층해 대역폭을 끌어올린 메모리다.
+HBM(High Bandwidth Memory)은 DRAM 다이를 수직으로 적층해 대역폭을 크게 끌어올린 메모리다.
 
 ## 로드맵
 
