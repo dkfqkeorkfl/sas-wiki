@@ -1,7 +1,7 @@
 ---
 title: 온디바이스 AI
 type: concept
-status: active
+status: disable
 tags: ["AI"]
 ---
 
