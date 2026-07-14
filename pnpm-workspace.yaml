@@ -1,0 +1,4 @@
+# Keep sas-wiki as its own pnpm workspace root. Without this file, `pnpm -C`
+# walks up to the parent workspace and never installs sas-wiki devDependencies.
+packages:
+  - '.'

@@ -1,0 +1,6 @@
+node_modules
+logs
+pnpm-lock.yaml
+
+# Vault entries are append-only data whose commit hashes are document ids.
+vault
