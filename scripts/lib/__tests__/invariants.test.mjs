@@ -31,6 +31,8 @@ import {
 // 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
 // coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
 const { checkInvariants } = await import(new URL('../invariants.mjs', import.meta.url).href)
+// D26: checkCommitConventions 도 같은 모듈에서 가져온다(ESM 캐시 — 같은 인스턴스). 위 줄은 손대지 않는다.
+const { checkCommitConventions } = await import(new URL('../invariants.mjs', import.meta.url).href)
 
 /** 정상 세계에 한 가지 변형만 가한다(DAMP — 무엇이 틀렸는지 본문에 보인다). */
 function worldWith(mutate) {
@@ -221,5 +223,54 @@ describe('불변식 8 — summary.docs[].id 가 유일 (cwiki 1파일 규칙의 
 
     expect(summary.docs.map((doc) => doc.id)).toEqual([DOC_A.id, DOC_B.id, DOC_D.id])
     expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
+  })
+})
+
+// ── D26 · checkCommitConventions — 접두어 없는 커밋도 vault A+D 동시 발생을 잡는다 ──────────────
+//
+// 현행: 접두어(cwiki|uwiki|feed) 없는 subject 는 `if (!match) continue` 로 통째로 검사 스킵된다.
+// D26: 접두어 없는 커밋도 검사해, 한 커밋 안에서 vault 문서 A(추가)+D(삭제)가 동시 발생하면 fail.
+//   근거 — getCommitDocStatuses 는 `--find-renames` 를 쓰므로 정당한 이동은 R 로 흡수된다. 그 뒤에도
+//   남는 A+D = git 이 rename 으로 못 붙인 이동 = 문서 id(=생성 커밋 해시)가 소실되는 시그니처다.
+//   접두어가 있으면 per-kind 규칙(cwiki 1-add / uwiki·feed no-add)을 그대로 둔다.
+//
+// stub 계약(git.test.mjs 의 getCommitDocStatuses stub 패턴 재사용): checkCommitConventions 는 커밋마다
+//   getCommitDocStatuses(runGit, hash, wikiPrefix) 를 부르고, 그 함수는
+//   `git -c core.quotepath=false show --find-renames --name-status --format= <sha>` 를 실행한다.
+//   → sha 별 name-status stdout(`A\tpath` · `D\tpath` · `R100\told\tnew`)만 돌려주면 된다.
+const WIKI_PREFIX = 'vault/wiki/'
+
+/** sha → `git show --name-status` stdout. D26 은 show 조회만 본다(그 외는 ''). */
+function stubGitStatuses(byHash) {
+  return (args) => (args.includes('show') ? (byHash[args.at(-1)] ?? '') : '')
+}
+
+describe('checkCommitConventions — D26 접두어 없는 커밋의 vault A+D 동시 발생', () => {
+  it('[R-T4a 양성] 접두어 없는 커밋이 vault 문서 A 1개 + D 1개면 throw 한다', () => {
+    // git 이 rename 으로 못 붙인 이동 = 문서 id 소실. 현행은 `!match continue` 로 통과 → RED.
+    const commits = [{ hash: 'c0ffee000001', subject: '문서 대개편' }]
+    const runGit = stubGitStatuses({
+      c0ffee000001: ['A\tvault/wiki/tech/온디바이스AI.md', 'D\tvault/wiki/company/삼성전자.md'].join('\n'), // prettier-ignore
+    })
+
+    expect(() => checkCommitConventions(commits, runGit, WIKI_PREFIX)).toThrow()
+  })
+
+  it('[R-T4a 음성] 접두어 없는 커밋이 기존 문서만 수정(M)하면 throw 하지 않는다', () => {
+    // 과잉검출 가드: 일상 수정 커밋(A=0·D=0)이 빌드를 죽이면 계약이 틀린 것이다. GREEN 전후 모두 통과.
+    const commits = [{ hash: 'c0ffee000002', subject: '오타 수정' }]
+    const runGit = stubGitStatuses({ c0ffee000002: 'M\tvault/wiki/company/삼성전자.md' })
+
+    expect(() => checkCommitConventions(commits, runGit, WIKI_PREFIX)).not.toThrow()
+  })
+
+  it('[R-T4a 음성] 접두어 없는 커밋의 정당한 이동(R)은 throw 하지 않는다', () => {
+    // --find-renames 가 R 로 흡수한 이동은 A/D 가 남지 않는다(id 유지). GREEN 전후 모두 통과.
+    const commits = [{ hash: 'c0ffee000003', subject: '폴더 재배치' }]
+    const runGit = stubGitStatuses({
+      c0ffee000003: 'R100\tvault/wiki/company/삼성전자.md\tvault/wiki/tech/삼성전자.md',
+    })
+
+    expect(() => checkCommitConventions(commits, runGit, WIKI_PREFIX)).not.toThrow()
   })
 })

@@ -165,6 +165,60 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
   })
 })
 
+describe('buildContent — D26 접두어 없는 커밋의 vault A+D 동시 발생', () => {
+  // 현행: 접두어(cwiki|uwiki|feed) 없는 커밋은 컨벤션 검사에서 통째로 스킵된다.
+  // D26: 접두어 없는 커밋도 검사해, 한 커밋 안 vault 문서 A+D 동시 발생(= git 이 rename 으로 못 붙인
+  //   이동 = 문서 id 소실 시그니처)이면 build fail. 정당한 이동(R)·단순 수정(M)은 통과(과잉검출 방지).
+  it('[R-T4b 양성] 접두어 없는 커밋이 문서 하나를 삭제+다른 문서를 추가하면 build fail 한다', () => {
+    const { out, vault } = makeVault()
+    // 두 문서를 **각각** cwiki 커밋으로 시드한다(한 cwiki 가 2개를 추가하면 그 자체가 위반이다).
+    writeDoc(vault, 'company/삼성전자', '삼성전자')
+    commit(vault, 'cwiki: 삼성전자 문서 생성')
+    writeDoc(vault, 'company/SK하이닉스', 'SK하이닉스')
+    commit(vault, 'cwiki: SK하이닉스 문서 생성')
+
+    // 접두어 없는 subject 로 한 문서 삭제 + 전혀 다른 새 문서 추가를 한 커밋에(rename 으로 안 붙게 무관한 장문).
+    git(vault, ['rm', '-q', 'vault/wiki/company/삼성전자.md'])
+    writeDoc(
+      vault,
+      'tech/온디바이스AI',
+      '온디바이스 AI',
+      '앞 문서와 한 문장도 겹치지 않는 완전히 다른 장문이다. 엣지 추론, 전력 효율, NPU 세대, 모바일 배포, 온디바이스 학습 전략을 새로 정리한다.',
+    )
+    commit(vault, '문서 대개편')
+
+    expect(() => buildContent({ out, vault })).toThrow(/컨벤션 위반/)
+    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/company\/삼성전자\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/tech\/온디바이스AI\.md/)
+  })
+
+  it('[R-T4b 음성] 접두어 없는 커밋이 기존 문서만 수정하면 build fail 하지 않는다', () => {
+    // 과잉검출 가드: 일상 수정 커밋(A=0·D=0)은 D26 이 잡으면 안 된다. GREEN 전후 모두 통과.
+    const { out, vault } = makeVault()
+    writeDoc(vault, 'company/삼성전자', '삼성전자')
+    commit(vault, 'cwiki: 삼성전자 문서 생성')
+    appendDoc(vault, 'company/삼성전자', '실적 발표 내용을 반영했다.')
+    commit(vault, 'fix: 오타 수정')
+
+    expect(() => buildContent({ out, vault })).not.toThrow()
+  })
+
+  it('[R-T4b 음성] 접두어 없는 커밋의 정당한 이동(git 이 R 로 인식)은 build fail 하지 않는다', () => {
+    // --find-renames 가 R 로 흡수한 이동은 A/D 가 남지 않는다 → 문서 id 유지. GREEN 전후 모두 통과.
+    const { out, vault } = makeVault()
+    writeDoc(vault, 'company/삼성전자', '삼성전자')
+    commit(vault, 'cwiki: 삼성전자 문서 생성')
+    mkdirSync(path.join(vault, 'vault', 'wiki', 'tech'), { recursive: true })
+    renameSync(
+      path.join(vault, 'vault', 'wiki', 'company', '삼성전자.md'),
+      path.join(vault, 'vault', 'wiki', 'tech', '삼성전자.md'),
+    )
+    commit(vault, '폴더 재배치') // 접두어 없음 — 그래도 정당한 이동이므로 통과해야 한다
+
+    expect(() => buildContent({ out, vault })).not.toThrow()
+  })
+})
+
 describe('buildContent — feed 참조의 explained prune', () => {
   it('삭제된 옛 문서 경로에 새 문서가 살아 있어도 옛 feed 는 unresolved 가 아니라 prune 된다', () => {
     const { out, vault } = makeVault()
