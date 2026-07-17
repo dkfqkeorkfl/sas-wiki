@@ -15,11 +15,18 @@ export function checkCommitConventions(commits, runGit, wikiPrefix) {
   const violations = []
   for (const commit of commits) {
     const match = (commit.subject || '').match(CONVENTION_RE)
-    if (!match) continue
-    const kind = match[1]
     const statuses = getCommitDocStatuses(runGit, commit.hash, wikiPrefix)
     const added = statuses.filter((entry) => entry.status === 'A')
     const deleted = statuses.filter((entry) => entry.status === 'D')
+
+    if (!match) {
+      if (added.length > 0 && deleted.length > 0) {
+        violations.push({ added, commit, deleted, kind: null })
+      }
+      continue
+    }
+
+    const kind = match[1]
 
     if (kind === 'cwiki') {
       if (added.length !== 1 || deleted.length > 0) {
@@ -231,6 +238,10 @@ function formatConventionViolation({ added, commit, deleted, kind }) {
   if (kind === 'cwiki') {
     lines.push(
       `      cwiki 는 신규 vault 문서 1개만 추가해야 한다(현재 신규 ${added.length}개, 삭제 ${deleted.length}개).`,
+    )
+  } else if (!kind) {
+    lines.push(
+      `      접두어 없는 커밋은 vault 문서 추가와 삭제를 같은 커밋에 담을 수 없다(현재 신규 ${added.length}개, 삭제 ${deleted.length}개).`,
     )
   } else {
     lines.push(`      ${kind} 는 신규 vault 문서를 추가할 수 없다(현재 신규 ${added.length}개).`)
