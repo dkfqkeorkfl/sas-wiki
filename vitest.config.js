@@ -13,6 +13,8 @@ export default defineConfig({
     // Without this, a developer's ~/.gitconfig silently supplies the identity, so a test that
     // forgets to inject it passes locally and fails only on CI, which has no git identity.
     env: { GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+    hookTimeout: 60000,
+    testTimeout: 30000,
     // No include/environment keys: Vitest defaults already match *.test.mjs in node.
   },
 })

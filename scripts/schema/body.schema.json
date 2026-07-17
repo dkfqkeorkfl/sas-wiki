@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sas-wiki/schema/body.schema.json",
+  "title": "wiki_body",
+  "description": "문서 본문(지연 로드). 봉투에 generatedAt 이 없다 — 현재 스냅샷이라 sourceCommit 이 세대를 말한다. docs 는 Record<path, WikiDocBody> 다(키가 문서 경로라 열거할 수 없다).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sourceCommit", "docs"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "docs": {
+      "type": "object",
+      "description": "키 = active 문서의 breadcrumb.join('/'). disable·삭제 문서는 없다(불변식 2).",
+      "additionalProperties": { "$ref": "#/definitions/wikiDocBody" }
+    }
+  },
+  "definitions": {
+    "wikiDocBody": {
+      "type": "object",
+      "description": "정확히 4키. md·backlinks·links·footnotes 는 소비 0건이라 사라졌다.",
+      "additionalProperties": false,
+      "required": ["html", "headings", "meta", "sources"],
+      "properties": {
+        "html": { "type": "string" },
+        "headings": { "type": "array", "items": { "$ref": "#/definitions/heading" } },
+        "meta": { "type": "object", "description": "프론트매터 자유 필드(인포박스)." },
+        "sources": { "type": "array", "items": { "$ref": "#/definitions/source" } }
+      }
+    },
+    "heading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor", "level", "text"],
+      "properties": {
+        "anchor": { "type": "string" },
+        "level": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "text"],
+      "properties": {
+        "label": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    }
+  }
+}

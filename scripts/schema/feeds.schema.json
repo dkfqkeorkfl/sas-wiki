@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sas-wiki/schema/feeds.schema.json",
+  "title": "wiki_feeds",
+  "description": "뉴스 카드 — 전량을 담는다(자르는 것은 getFeed({limit}) 다. 파일을 자르면 필터가 그 안에서만 맞는다). strict: sentiment·link·source·bodyHtml·tags·refs·path·breadcrumb 은 계약에서 사라졌다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "sourceCommit", "items"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } }
+  },
+  "definitions": {
+    "feedItem": {
+      "type": "object",
+      "description": "정확히 7키.",
+      "additionalProperties": false,
+      "required": ["id", "ts", "title", "body", "keywords", "docs", "importance"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+        "ts": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "body": { "type": "string" },
+        "keywords": { "type": "array", "items": { "type": "string" } },
+        "docs": { "type": "array", "items": { "$ref": "#/definitions/docRef" } },
+        "importance": { "type": "string", "enum": ["normal", "highlight", "breaking"] }
+      }
+    },
+    "docRef": {
+      "type": "object",
+      "description": "이 커밋이 고친 문서 — path 가 아니라 **불변 id** 로 가리킨다(문서 이동 내성). anchor 는 URL 슬러그, anchorText 는 그 heading 의 표시용 원문(카드 점프 칩 라벨). 원문은 headings 에만 있고 headings 는 지연 로드되는 body 에 있으므로 **피드에 비정규화한다** — 아니면 피드 화면이 본문을 당겨오게 되어 '부팅 페이로드에 본문 없음' 이 무너진다.",
+      "additionalProperties": false,
+      "required": ["id", "anchor", "anchorText"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+        "anchor": { "type": ["string", "null"] },
+        "anchorText": { "type": ["string", "null"] }
+      }
+    }
+  }
+}
