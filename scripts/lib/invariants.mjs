@@ -15,6 +15,9 @@ export function checkCommitConventions(commits, runGit, wikiPrefix) {
   const violations = []
   for (const commit of commits) {
     const match = (commit.subject || '').match(CONVENTION_RE)
+    // D26: 접두어 없는 커밋도 A+D(문서 id 소실 시그니처)를 검사해야 하므로 statuses 를 모든
+    // 커밋에 대해 구한다(이전엔 접두어 커밋만). 마진 비용은 non-vault(툴링) 커밋 수에 한정된다 —
+    // vault 커밋(cwiki/uwiki/feed)은 원래도 여기서 git show 됐다. sha 가 달라 커밋마다 1회 spawn.
     const statuses = getCommitDocStatuses(runGit, commit.hash, wikiPrefix)
     const added = statuses.filter((entry) => entry.status === 'A')
     const deleted = statuses.filter((entry) => entry.status === 'D')

@@ -12,7 +12,8 @@
 //   ④ 신 커밋 컨벤션(cwiki/uwiki/feed)·rename 역인덱스·prune·anchor 강등 미구현.
 //
 // 금지(tdd §14.1 R3): `it.skipIf` / `describe.runIf` / early-return.
-//   서브모듈이 없으면 readVaultFacts 가 복구 명령과 함께 **실패**한다(P1 규율 계승).
+//   이 테스트는 서브모듈에 의존하지 않고 임시 repo 를 스스로 시딩하므로(prepareSeedRepo)
+//   항상 결정적으로 실행된다 — 건너뛸 환경 조건 자체가 없다.
 //
 // **SHA 하드코딩 금지**(tdd §9.1 각주): vault 는 재제작 시 전 커밋 해시가 바뀐다.
 //   기대값은 git 에서 유도하거나(생성 커밋 = `--follow --diff-filter=A` 의 최신 A)
@@ -34,7 +35,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { buildContent } from '../build.mjs'
 import { loadSchema, validateItem } from '../lib/validate.mjs'
 import { seedVault } from '../seed-example-vault.mjs'
-import { git, readVaultFacts } from './helpers/vault-facts.mjs'
+import { git } from './helpers/vault-facts.mjs'
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
 // 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
@@ -67,7 +68,7 @@ const BASE_IDENTITY = {
   GIT_COMMITTER_NAME: 'SAS Wiki Bot',
 }
 
-const ctx = { facts: null, first: null, out1: '', out2: '', result: null, rootSha: '', vault: '' }
+const ctx = { first: null, out1: '', out2: '', result: null, vault: '' }
 
 function creationSha(relDoc) {
   const out = git(ctx.vault, [
@@ -119,14 +120,12 @@ function prepareSeedRepo() {
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   )
-  ctx.rootSha = git(repo, ['rev-list', '--max-parents=0', 'HEAD'])
   seedVault({ branch: 'test', repo })
   return repo
 }
 
 beforeAll(() => {
   ctx.vault = prepareSeedRepo()
-  ctx.facts = readVaultFacts(ctx.vault, { rootSha: ctx.rootSha })
 
   ctx.out1 = mkdtempSync(path.join(tmpdir(), 'wiki-vault-1-'))
   ctx.out2 = mkdtempSync(path.join(tmpdir(), 'wiki-vault-2-'))
