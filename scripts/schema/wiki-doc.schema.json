@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sas-wiki/schema/wiki-doc.schema.json",
+  "title": "wiki-doc",
+  "description": "vault/wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층(path/breadcrumb)은 폴더 위치에서 빌드가 산출한다. id는 생성 커밋 해시 12자로 빌드가 유도하는 불변 내부 키다.",
+  "type": "object",
+  "required": ["id", "title", "type", "status"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$",
+      "description": "생성 커밋 해시 12자. 빌드가 git history에서 유도하며 frontmatter write-back은 하지 않는다."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "aliases": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "type": {
+      "type": "string",
+      "enum": ["concept", "company", "moc"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "disable"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+    "meta": {
+      "type": "object",
+      "default": {}
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "company" } },
+        "required": ["type"]
+      },
+      "then": {
+        "required": ["meta"],
+        "properties": {
+          "meta": {
+            "type": "object",
+            "required": ["ticker", "sector", "exchange"],
+            "properties": {
+              "ticker": { "type": ["string", "null"] },
+              "sector": { "type": ["string", "null"] },
+              "exchange": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": true
+}
