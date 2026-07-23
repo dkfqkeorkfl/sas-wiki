@@ -1,4 +1,5 @@
 ---
+id: "01088d27-d8c8-71d7-80df-fe55c5a99b8e"
 title: SK하이닉스
 type: company
 status: active

@@ -1,4 +1,5 @@
 ---
+id: "01088d28-c328-7a97-985c-448ec957306b"
 title: TSMC
 type: company
 status: active
