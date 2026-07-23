@@ -3,6 +3,7 @@ id: "01088d29-ad88-724b-8cb7-63718f61ba90"
 title: HBM
 type: concept
 status: active
+draft: true
 tags: ["메모리", "AI"]
 ---
 

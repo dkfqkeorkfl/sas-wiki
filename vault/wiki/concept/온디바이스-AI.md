@@ -3,6 +3,7 @@ id: "01088d2a-97e8-7dcd-808d-3b7f9180fa79"
 title: 온디바이스 AI
 type: concept
 status: disable
+draft: true
 tags: ["AI"]
 ---
 
