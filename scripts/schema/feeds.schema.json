@@ -10,7 +10,10 @@
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "generatedAt": { "type": "string", "minLength": 1 },
     "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } }
+    "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } },
+    "nextCursor": {
+      "anyOf": [{ "$ref": "#/definitions/feedCursor" }, { "type": "null" }]
+    }
   },
   "definitions": {
     "feedItem": {
@@ -40,6 +43,15 @@
         },
         "anchor": { "type": ["string", "null"] },
         "anchorText": { "type": ["string", "null"] }
+      }
+    },
+    "feedCursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ts", "feedId"],
+      "properties": {
+        "ts": { "type": "string", "minLength": 1 },
+        "feedId": { "type": "string", "pattern": "^[0-9a-f]{12}$" }
       }
     }
   }

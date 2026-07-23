@@ -24,7 +24,7 @@
 // **`continue` 로 버리지 마라**(현행 `feed.mjs:108-109`). 해석 실패는 집계 → stdout 이다(tdd §8).
 import { describe, expect, it } from 'vitest'
 
-import { buildFeedItems, extractTrailers, parseCommitForFeed } from '../feed.mjs'
+import { buildFeedItems, byRecencyThenId, extractTrailers, parseCommitForFeed } from '../feed.mjs'
 
 const SAMSUNG_ID = 'aaaaaaaaaaaa'
 const HYNIX_ID = 'bbbbbbbbbbbb'
@@ -400,5 +400,23 @@ describe('buildFeedItems — 조용한 유실 금지 (tdd §8)', () => {
 
     // vault 를 건드리지 않는 관리용 커밋(chore·ci·docs)은 **warning 이 아니다**(노이즈 금지).
     expect(stats.offConventionCommits).toEqual([{ sha: 'c1', subject: 'refactor: 문서 손질' }])
+  })
+})
+
+describe('byRecencyThenId — epoch 비교(비-UTC offset 안전 · F2 🔴RED)', () => {
+  it('offset 섞인 ts 를 사전순이 아니라 순간(epoch)으로 내림차순 정렬한다', () => {
+    // KST 09:00+09:00 = UTC 00:00(이른 순간)인데 **사전순으론 크다**('09' > '02'). 사전순 비교면 이게
+    //   먼저 와서 뒤집힌다. epoch 비교면 실제로 늦은 UTC 02:00 이 먼저다.
+    const kstEarly = { id: 'a', ts: '2026-03-01T09:00:00+09:00' } // 00:00Z
+    const utcLate = { id: 'b', ts: '2026-03-01T02:00:00Z' } //         02:00Z
+
+    expect([kstEarly, utcLate].toSorted(byRecencyThenId).map((item) => item.id)).toEqual(['b', 'a'])
+  })
+
+  it('동일 순간(offset 만 다름)은 id 오름차순 tie-break 로 결정적이다', () => {
+    const a = { id: 'zzz', ts: '2026-03-01T09:00:00+09:00' } // 00:00Z
+    const b = { id: 'aaa', ts: '2026-03-01T00:00:00Z' } //       00:00Z (동일 순간)
+
+    expect([a, b].toSorted(byRecencyThenId).map((item) => item.id)).toEqual(['aaa', 'zzz'])
   })
 })

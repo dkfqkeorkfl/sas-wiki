@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 
 import { parseFrontmatterYaml } from './parse.mjs'
 
@@ -292,6 +292,60 @@ export function makeGitRunner(cwd) {
       maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
+}
+
+/**
+ * 여러 git object ref 를 `git cat-file --batch` 한 번으로 읽는다.
+ *
+ * @param {string} cwd git repository root
+ * @param {string[]} refs object refs such as `${sha}:vault/wiki/a.md`
+ * @returns {Map<string, string|null>} ref -> blob text, missing/non-blob -> null
+ */
+export function catFileBatch(cwd, refs) {
+  const out = new Map()
+  if (refs.length === 0) return out
+
+  const child = spawnSync('git', ['cat-file', '--batch'], {
+    cwd,
+    input: `${refs.join('\n')}\n`,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  if (child.status !== 0) {
+    throw new Error(
+      `git cat-file --batch 실패: ${child.stderr ? child.stderr.toString('utf8') : ''}`.trim(),
+    )
+  }
+
+  const buffer = child.stdout
+  let offset = 0
+  for (const ref of refs) {
+    const lineEnd = buffer.indexOf(0x0a, offset)
+    if (lineEnd === -1) {
+      out.set(ref, null)
+      break
+    }
+
+    const header = buffer.subarray(offset, lineEnd).toString('utf8')
+    offset = lineEnd + 1
+    if (header.endsWith(' missing')) {
+      out.set(ref, null)
+      continue
+    }
+
+    const match = header.match(/ (blob) (\d+)$/u)
+    if (!match) {
+      out.set(ref, null)
+      continue
+    }
+
+    const size = Number.parseInt(match[2], 10)
+    out.set(ref, buffer.subarray(offset, offset + size).toString('utf8'))
+    offset += size
+    if (buffer[offset] === 0x0a) offset += 1
+  }
+
+  return out
 }
 
 /**

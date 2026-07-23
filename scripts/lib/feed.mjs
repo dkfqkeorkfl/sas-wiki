@@ -10,6 +10,19 @@ const IMPORTANCE = new Set(['breaking', 'highlight', 'normal'])
 const NO_ANCHOR = Object.freeze({ anchor: null, anchorText: null })
 
 /**
+ * 결정성: author-date **epoch** 내림차순(최신 먼저), 동률이면 id 오름차순.
+ *
+ * **사전순 비교 아님** — `%aI` 는 author 의 타임존 offset 을 그대로 렌더하므로(`+09:00` 등) 문자열
+ * 사전순 ≠ 시간순이다(예: `2026-01-01T09:00:00+09:00` 는 사전순으로 `2026-01-01T02:00:00Z` 보다 크지만
+ * 실제로는 2시간 **과거**다). `Date.parse` 로 epoch 를 비교해 offset 을 정규화한다. 파싱 불가(NaN)면
+ * 결정적 id tie-break 로 폴백한다(순서 붕괴 방지). 현 vault 는 전부 `Z` 라 기존 산출과 동치.
+ */
+export const byRecencyThenId = (a, b) => {
+  const diff = Date.parse(b.ts) - Date.parse(a.ts)
+  return diff !== 0 && !Number.isNaN(diff) ? diff : a.id.localeCompare(b.id)
+}
+
+/**
  * 커밋들 → FeedItem[] + **조용한 유실을 관측 가능하게 만드는** stats.
  *
  * `feed:` 커밋의 diff 가 건드린 vault 문서를 전부 `docs[{ id, anchor, anchorText }]` 로 만든다. diff 경로는
@@ -130,9 +143,7 @@ export function buildFeedItems(commits, context) {
 
   // 결정성: ts 내림차순, 동률이면 id 오름차순.
   return {
-    items: items.toSorted((a, b) =>
-      a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : a.id.localeCompare(b.id),
-    ),
+    items: items.toSorted(byRecencyThenId),
     stats,
   }
 }

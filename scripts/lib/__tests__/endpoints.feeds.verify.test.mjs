@@ -55,7 +55,7 @@ describe('endpoints.feeds.verify — 억제 ⟂ 슬라이스 위임 (V1 🔴RED)
       writeIgnore(vault, [suppressed])
       const opts = { count: 3 }
 
-      const page = feeds(vault, opts)
+      const page = feeds(vault, 'dev', opts)
 
       expect(page.items).toEqual(walkFeeds(vault, opts)) // 봉투만 — 재구현 아님
       expect(page.items).toHaveLength(3) // 억제-후-slice: 창이 꽉 찬다(slice-후-억제면 2)
@@ -77,7 +77,7 @@ describe('endpoints.feeds.verify — 정렬 위임 (V2 🔴RED)', () => {
       seedFeed(vault, { date: T3, subject: '중간' })
       const opts = { count: 10 }
 
-      const page = feeds(vault, opts)
+      const page = feeds(vault, 'dev', opts)
 
       expect(page.items).toEqual(walkFeeds(vault, opts))
       expect(titlesOf(page.items)).toEqual(['최신', '중간', '최고참'])
@@ -101,7 +101,7 @@ describe('endpoints.feeds.verify — offset 무드리프트 (V3 🔴RED)', () =>
       writeIgnore(vault, [suppressed])
       const opts = { count: 3 }
 
-      const page = feeds(vault, opts)
+      const page = feeds(vault, 'dev', opts)
 
       expect(page.items).toEqual(walkFeeds(vault, opts))
       expect(page.items).toHaveLength(3) // 드리프트로 length 2 가 되면 안 된다

@@ -51,7 +51,7 @@ describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환
     try {
       seedFour(vault)
 
-      const page = feeds(vault, { count: 3 })
+      const page = feeds(vault, 'dev', { count: 3 })
 
       expect(titlesOf(page)).toEqual(['n4', 'n3', 'n2'])
       expect(page.schemaVersion).toBe(1)
@@ -68,8 +68,8 @@ describe('endpoints.feeds — nextCursor 연속 seam (E-F2 🔴RED 신규 필드
     try {
       seedFour(vault)
 
-      const page1 = feeds(vault, { count: 2 }) // [n4, n3]
-      const page2 = feeds(vault, { after: page1.nextCursor, count: 2 }) // [n2, n1]
+      const page1 = feeds(vault, 'dev', { count: 2 }) // [n4, n3]
+      const page2 = feeds(vault, 'dev', { after: page1.nextCursor, count: 2 }) // [n2, n1]
 
       expect(titlesOf(page1)).toEqual(['n4', 'n3'])
       expect(page1.nextCursor).toBeDefined()
@@ -96,7 +96,7 @@ describe('endpoints.feeds — walkFeeds 위임(억제·정렬 재구현 안 함)
         'utf8',
       )
 
-      const page = feeds(vault, { count: 10 })
+      const page = feeds(vault, 'dev', { count: 10 })
 
       expect(titlesOf(page)).toEqual(['n3-남음', 'n1']) // 억제(n2) + ts 내림차순 위임 결과
     } finally {

@@ -85,7 +85,10 @@ describe('walkFeeds — 모듈·subject 필터 (GW1·GW2 🔴RED)', () => {
       // 비-feed 커밋들 — vault 를 건드려도 피드가 아니다.
       writeDoc(vault, 'company/삼성', { body: '## 정의\n\n일반 갱신.\n', id: ID_A })
       commit(vault, 'uwiki: 삼성 본문 보강')
-      commit(vault, 'chore: 잡무') // vault 무변경 커밋
+      // vault/wiki 밖 파일만 바꾸는 관리용 커밋 — 실제 변경이 있어야 git 이 커밋을 만든다(빈 커밋 거부
+      // 회피). vault/wiki 는 그대로라 "feed: 만 피드가 된다" 단언 의미는 불변이다.
+      writeFileSync(path.join(vault, 'notes.txt'), '잡무 메모\n', 'utf8')
+      commit(vault, 'chore: 잡무') // vault/wiki 무변경 커밋
       seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: '진짜 소식' })
 
       const items = walkFeeds(vault, { count: 10 })
@@ -331,6 +334,102 @@ describe('walkFeeds — 경계·스케일 (GW13·GW14)', () => {
 
       expect(items).toHaveLength(12) // 누락·중복 0
       expect(ts).toEqual([...ts].toSorted().reverse()) // ts 내림차순
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('walkFeeds — pre-D1 blob(id 부재) 폴백 resolve (GW15 🔴RED)', () => {
+  it('GW15: id 부여 이전에 만들어진 피드도 buildPathIndex 폴백으로 현재 id 로 resolve 된다(소실 0)', () => {
+    // 실 vault 회귀 재현: feed 커밋들이 **문서 id 부여(P1 마이그레이션)보다 먼저** 만들어져 그 시점
+    //   blob frontmatter 에 id 가 없다(pre-D1). readBlobId(고속경로)는 그 blob 에서 null →
+    //   buildPathIndex(경로→현재 id · rename 추적) 폴백이 없으면 이 피드가 통째로 prune 돼 실 vault 에서
+    //   feeds 가 빈다(build.mjs 는 buildPathIndex 로 resolve 해 5건이 나오는데 walkFeeds 만 0건이던 결함).
+    //   폴백이 build.mjs 와 동치로 살려야 한다.
+    const vault = initVault()
+    try {
+      // id 없이 생성(pre-id 생성 blob) — tmp-git-vault writeDoc 은 id 생략 시 pre-id 문서를 만든다.
+      writeDoc(vault, 'company/삼성', {})
+      commit(vault, 'cwiki: 삼성 생성 (D1 이전)')
+      // 여전히 id 없는 채로 피드 — 그 시점 blob frontmatter 에 id 부재.
+      writeDoc(vault, 'company/삼성', { body: '## 정의\n\npre-D1 소식 본문.\n' })
+      const feedHash = feedCommit(vault, { date: T3, subject: 'pre-D1 소식' })
+      // 나중에 id 부여(D1 마이그레이션) — HEAD 에만 id 가 생긴다.
+      writeDoc(vault, 'company/삼성', { body: '## 정의\n\npre-D1 소식 본문.\n', id: ID_A })
+      commit(vault, 'uwiki: 삼성 id 부여 (D1 마이그레이션)')
+
+      const items = walkFeeds(vault, { count: 10 })
+      const feed = items.find((item) => item.title === 'pre-D1 소식')
+
+      expect(feed).toBeDefined() // 폴백으로 살아남는다(prune 되지 않는다)
+      expect(feed.id).toBe(feedHash.slice(0, 12))
+      expect(feed.docs.map((doc) => doc.id)).toEqual([ID_A]) // 당시 blob 엔 id 없었지만 현재 id 로 resolve
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('walkFeeds — 뒤섞인 author-date 조기종료 방지 (GW16 🔴RED · F1)', () => {
+  it('GW16: 뒤 청크의 더 최신 author-date 피드를 count 작아도 놓치지 않는다(walk순서 ≠ author-date)', () => {
+    const vault = initVault()
+    try {
+      seedDoc(vault, 'company/삼성', ID_A)
+      // A: author-date 최신(T6)이지만 **가장 먼저 커밋** → 역-커밋 워크순서에서 맨 뒤 청크로 밀린다.
+      seedFeed(vault, 'company/삼성', ID_A, { date: T6, subject: '뒤늦게 걸리는 최신' })
+      // b1..b5: 더 과거 author-date 를 나중에 커밋 → over-walk(count*3) 첫 청크를 채운다.
+      seedFeed(vault, 'company/삼성', ID_A, { date: T1, subject: 'b1' })
+      seedFeed(vault, 'company/삼성', ID_A, { date: T2, subject: 'b2' })
+      seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: 'b3' })
+      seedFeed(vault, 'company/삼성', ID_A, { date: T4, subject: 'b4' })
+      seedFeed(vault, 'company/삼성', ID_A, { date: T5, subject: 'b5' })
+
+      // count=1 → 첫 청크는 최신-커밋 3건(b5·b4·b3)뿐 → 조기 종료하면 T6(맨 뒤 청크)을 놓쳐 b5 를 낸다.
+      //   전량 워크 + JS 재정렬이면 T6 이 1위다(조기종료의 정렬-비안전성이 여기서 드러난다).
+      expect(titlesOf(walkFeeds(vault, { count: 1 }))).toEqual(['뒤늦게 걸리는 최신'])
+      expect(titlesOf(walkFeeds(vault, { count: 2 }))).toEqual(['뒤늦게 걸리는 최신', 'b5'])
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('walkFeeds — prod draft 참조 피드 제외 (GW17 🔴RED · F4)', () => {
+  it('GW17: env="prod" 는 draft(dev/) 문서만 가리키는 피드를 제외하고, dev·미지정은 포함한다', () => {
+    const vault = initVault()
+    try {
+      seedDoc(vault, 'company/삼성', ID_A) // 공개 문서
+      seedFeed(vault, 'company/삼성', ID_A, { date: T2, subject: '공개 소식' })
+      seedDoc(vault, 'dev/실험문서', ID_B) // draft — dev/ 폴더(isDraft)
+      seedFeed(vault, 'dev/실험문서', ID_B, { date: T3, subject: 'draft 소식' })
+
+      // dev: 전량(draft 포함)
+      expect(titlesOf(walkFeeds(vault, { count: 10, env: 'dev' }))).toEqual(['draft 소식', '공개 소식']) // prettier-ignore
+      // prod: draft 문서만 가리키는 피드 제외 → 공개 소식만(summary/wiki 와 같은 은닉 방향)
+      expect(titlesOf(walkFeeds(vault, { count: 10, env: 'prod' }))).toEqual(['공개 소식'])
+      // env 미지정: 전량(fail-safe 는 prod 만 숨긴다 — 기존 호출 계약 보존)
+      expect(titlesOf(walkFeeds(vault, { count: 10 }))).toContain('draft 소식')
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('walkFeeds — 비-UTC offset 시간 비교 (GW18 🔴RED · F2·F3)', () => {
+  it('GW18: author-date offset(+09:00)이 섞여도 epoch 기준 정렬·from 경계다(사전순 아님)', () => {
+    const vault = initVault()
+    try {
+      seedDoc(vault, 'company/삼성', ID_A)
+      // KST 09:00+09:00 = UTC 00:00(이른 순간)인데 **사전순으론 크다**('09' > '02').
+      seedFeed(vault, 'company/삼성', ID_A, { date: '2026-03-01T09:00:00+09:00', subject: 'KST-이른' }) // prettier-ignore
+      // UTC 02:00(2시간 뒤 순간)인데 사전순으론 작다('02').
+      seedFeed(vault, 'company/삼성', ID_A, { date: '2026-03-01T02:00:00Z', subject: 'UTC-늦은' })
+
+      // 정렬(F2): epoch 내림차순 → 늦은(02:00Z)이 먼저. 사전순 비교면 KST 문자열이 커서 뒤집힌다.
+      expect(titlesOf(walkFeeds(vault, { count: 10 }))).toEqual(['UTC-늦은', 'KST-이른'])
+      // from 경계(F3): 01:00Z 이후만 → UTC-늦은(02:00Z)만. 사전순이면 KST 문자열이 크게 잡혀 샌다.
+      expect(titlesOf(walkFeeds(vault, { count: 10, from: '2026-03-01T01:00:00Z' }))).toEqual(['UTC-늦은']) // prettier-ignore
     } finally {
       cleanup(vault)
     }

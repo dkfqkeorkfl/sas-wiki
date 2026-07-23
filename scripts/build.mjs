@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkAnchorExists, derive } from './lib/derive.mjs'
+import { isDraft } from './lib/draft.mjs'
 import { buildFeedItems, parseCommitForFeed } from './lib/feed.mjs'
 import {
   buildPathIndex,
@@ -48,6 +49,57 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
   const vaultDir = path.resolve(vault)
   const outDir = path.resolve(out)
   const schemaDir = schema ? path.resolve(schema) : path.join(SCRIPT_DIR, 'schema')
+
+  // 레이어 분리(빌드=검증 / read-path=파싱): parseVault 는 순수 파싱만 하고, 검증 throw-게이트는
+  // 여기(validator 경로)에서만 돈다. on-demand 엔드포인트(buildWirePayload)는 검증된 vault 를 가정하므로
+  // 이 게이트들을 건너뛴다. 순서는 기존 assembleWirePayload 내부 배치(conventions→schema→deadlinks→
+  // feedResolution)를 그대로 보존한다 — 컨벤션 위반이 unresolved-feed 보다 먼저 진단돼야 한다.
+  const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
+  checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
+  validateParsedDocs(gate.visibleDocs, gate.runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
+  checkDeadlinks(gate.visibleDocs, gate.derived, allowDeadlinks, vaultDir)
+  checkFeedResolution(stats)
+
+  const feedItems = applyIgnoreFeeds(wire.items, wire.ignore)
+  const summary = buildSummary({
+    docs: wire.docs,
+    generatedAt: wire.generatedAt,
+    sourceCommit: wire.sourceCommit,
+    tags: wire.tags,
+    tree: wire.tree,
+  })
+  const feeds = buildFeeds({
+    generatedAt: wire.generatedAt,
+    items: feedItems,
+    sourceCommit: wire.sourceCommit,
+  })
+  const body = buildBody({ docs: wire.bodies, sourceCommit: wire.sourceCommit })
+
+  validatePayloads({ body, feeds, summary }, schemaDir)
+  checkInvariants(summary, feeds, body)
+
+  fs.mkdirSync(outDir, { recursive: true })
+  for (const [key, file] of Object.entries(PAYLOAD_FILES)) {
+    fs.writeFileSync(path.join(outDir, file), JSON.stringify({ body, feeds, summary }[key]), 'utf8')
+  }
+
+  return { body, feeds, stats, summary }
+}
+
+export function buildWirePayload(vault, env = 'prod') {
+  const vaultDir = path.resolve(vault)
+  const schemaDir = path.join(SCRIPT_DIR, 'schema')
+  return parseVault(vaultDir, env, schemaDir).wire
+}
+
+/**
+ * 순수 파싱: git → pre-wire payload + 검증 게이트 원자재(`gate`). **검증 throw-게이트는 여기서 돌지
+ * 않는다** — buildContent(validator) 가 반환된 `gate`/`stats` 로 게이트를 얹는다. read-path
+ * (buildWirePayload·엔드포인트)는 검증된 vault 를 가정하고 이 함수만 호출한다.
+ *
+ * @returns {{ gate: { commits: object[], derived: object, runGit: Function, visibleDocs: object[] }, stats: object, wire: object }}
+ */
+function parseVault(vaultDir, env, schemaDir) {
   const wikiDir = path.join(vaultDir, 'vault', 'wiki')
 
   // 한 빌드 안에서 같은 git 질의는 같은 답을 낸다(리포는 그동안 변하지 않는다). 문서별
@@ -57,7 +109,6 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
   assertHistoryIntegrity(runGit, vaultDir)
   const commits = collectGitLog(runGit)
   const sourceCommit = commits.length > 0 ? commits[0].hash : null
-  checkCommitConventions(commits, runGit, WIKI_PREFIX)
 
   const parsedDocs = collectMarkdownFilesRecursive(wikiDir)
     .map((filePath) => {
@@ -76,12 +127,8 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
   const visibleDocs = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
   const excludedDocs = env === 'dev' ? [] : parsedDocs.filter((doc) => isDraft(doc))
 
-  validateParsedDocs(visibleDocs, runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
-
   const derived = derive(visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
-  checkDeadlinks(visibleDocs, derived, allowDeadlinks, vaultDir)
 
-  // 피드 파생에 필요한 세 좌표: (커밋, 당시경로) → id 역인덱스 · 삭제 집합 · HEAD 문서 메타.
   const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
     filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
     id: doc.id,
@@ -92,10 +139,6 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
     wikiPrefix: WIKI_PREFIX,
   })
   const everDeletedPaths = collectEverDeletedDocPaths(runGit, { wikiPrefix: WIKI_PREFIX })
-  // prod 에서 draft 로 배제된 문서의 **전 히스토리 좌표**(`${sha}:${당시경로}`, rename 포함). 이들을
-  // 가리키는 과거 feed: 커밋은 삭제된 문서와 같은 부류로 prune 된다 — draft 필터가 부재를 설명하므로
-  // '해석 불가(조용한 유실 의심)'가 아니다. 이 좌표를 안 넘기면 checkFeedResolution 이 정상적 배제를
-  // 유실로 오판해 빈 prod 빌드를 중단시킨다(이동한 draft 는 head 경로가 아니라 당시 경로로 참조된다).
   const excludedFeedRefs = new Set(
     buildPathIndex(
       excludedDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
@@ -109,7 +152,6 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
       bodyLineOffset: doc.bodyLineOffset || 0,
       status: doc.frontmatter.status,
     })
-    // disable 문서는 headings 가 없다 → 그 문서를 가리키는 피드의 anchor 는 null 로 강등된다.
     if (doc.frontmatter.status !== 'disable') headingsById.set(doc.id, doc.headingsWithLines)
   }
 
@@ -123,61 +165,32 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
     runGit,
     wikiPrefix: WIKI_PREFIX,
   })
-  checkFeedResolution(stats)
 
-  // ── D4 ignore-feeds tombstone (단일 choke-point · Complete Mediation) ────────────
-  // 잘못 발행된 feed 를 히스토리 재작성 없이 억제한다(RFC 6721). 억제 목록은 vault 리포 루트의
-  // ignore-feeds.json 이며 **부재=[](fail-open: "억제 없음"이지 "전량 억제" 아님)**, 존재하되
-  // 스키마 위반=throw(fail-loud: 신뢰 못 할 목록은 조용히 무시하지 않고 끊는다). applyIgnoreFeeds 를
-  // buildFeedItems 직후·buildFeeds 이전 **이 한 지점**에서 1회 적용한다 — 피드 출력 경로가 여기
-  // 하나뿐이라 우회가 없다(P5 서버도 이 함수를 재사용). 억제는 item 제거만 — 문서·body·summary·
-  // generatedAt 는 raw items 기준으로 불변이다(억제≠삭제).
-  const ignoreEntries = loadIgnoreFeeds(vaultDir, schemaDir)
-  // allFeedIds = 억제 전 전체 feed 커밋 id(12hex). pruned feed(문서 참조 0 이라 items 에 안 뜬
-  // 실존 feed 커밋)도 "실존"이므로 items id 만 쓰면 정상 피드를 stale 로 오판한다 → 커밋에서 유도.
+  const ignore = loadIgnoreFeeds(vaultDir, schemaDir)
   const allFeedIds = new Set(
     commits
       .filter((commit) => parseCommitForFeed(commit) !== null)
       .map((commit) => commit.hash.slice(0, 12)),
   )
-  for (const stale of reportIgnoreHygiene(ignoreEntries, allFeedIds)) {
+  for (const stale of reportIgnoreHygiene(ignore, allFeedIds)) {
     stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
   }
-  const feedItems = applyIgnoreFeeds(items, ignoreEntries)
 
-  const generatedAt = deriveGeneratedAt(derived.docs, items)
-  const summary = buildSummary({
-    docs: derived.docs,
-    generatedAt,
-    sourceCommit,
-    tags: derived.tags,
-    tree: derived.tree,
-  })
-  const feeds = buildFeeds({ generatedAt, items: feedItems, sourceCommit })
-  const body = buildBody({ docs: derived.bodies, sourceCommit })
-
-  validatePayloads({ body, feeds, summary }, schemaDir)
-  checkInvariants(summary, feeds, body)
-
-  fs.mkdirSync(outDir, { recursive: true })
-  for (const [key, file] of Object.entries(PAYLOAD_FILES)) {
-    fs.writeFileSync(path.join(outDir, file), JSON.stringify({ body, feeds, summary }[key]), 'utf8')
+  return {
+    // 게이트 원자재 — buildContent 가 여기서 검증 throw-게이트를 얹는다(파싱 자신은 검증하지 않는다).
+    gate: { commits, derived, runGit, visibleDocs },
+    stats,
+    wire: {
+      bodies: derived.bodies,
+      docs: derived.docs,
+      generatedAt: deriveGeneratedAt(derived.docs, items),
+      ignore,
+      items,
+      sourceCommit,
+      tags: derived.tags,
+      tree: derived.tree,
+    },
   }
-
-  return { body, feeds, stats, summary }
-}
-
-/**
- * draft 판정 — dev 전용 문서인가. **OR 결합**: frontmatter 플래그(fail-open) OR `dev/` 폴더 경로
- * (fail-closed 백스톱). 신호가 늘수록 더 숨긴다(monotonic fail-safe) — 플래그를 깜빡해도 폴더가,
- * 폴더를 안 써도 플래그가 잡는다. AND 로 뒤집으면 이중 신호가 오히려 노출로 새므로 반전 금지.
- *
- * @param {{ frontmatter: { draft?: unknown }, relPath: string }} parsed
- */
-function isDraft(parsed) {
-  const flag = parsed.frontmatter.draft === true
-  const inDevFolder = parsed.relPath === 'dev' || parsed.relPath.startsWith('dev/')
-  return flag || inDevFolder
 }
 
 export function deriveGeneratedAt(docs, items) {
