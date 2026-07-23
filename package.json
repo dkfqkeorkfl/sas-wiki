@@ -19,5 +19,15 @@
     "prettier": "^3.8.3",
     "uuid": "^14.0.1",
     "vitest": "^4.1.8"
+  },
+  "dependencies": {
+    "hast-util-to-string": "^3.0.1",
+    "mdast-util-find-and-replace": "^3.0.2",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-stringify": "^10.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0"
   }
 }

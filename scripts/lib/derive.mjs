@@ -6,7 +6,7 @@ import {
   extractHeadingsWithLines,
   slugifyHeading,
 } from './parse.mjs'
-import { escapeHtml, renderMarkdownToHtml } from './render.mjs'
+import { renderMarkdownToHtml } from './render.mjs'
 
 /** excerpt 최대 길이(평문 기준). 초과하면 말줄임표 없이 자른다. */
 const EXCERPT_MAX = 160
@@ -205,22 +205,20 @@ function makeTargetResolver(pathToDoc) {
   }
 }
 
+/**
+ * 위키링크 대상 해석기 — `(target, anchor) => { path, exists }`.
+ *
+ * 렌더 플러그인(wikilink-plugin.mjs)이 이 결과로 `<a>` 계약(class·href·data-*·label)을 조립한다.
+ * 대상 생략(`[[#anchor]]`)은 자기 문서로, 미해결·동명충돌은 `exists:false` 로 돌려준다(데드 class).
+ * (정상 빌드는 checkDeadlinks/checkAmbiguous 가 선차단하므로 미해결 경로는 실출력에 도달하지 않는다.)
+ */
 function makeWikilinkResolver(pathToDoc, resolveTargetPath, selfPath) {
-  return (tokenRaw) => {
-    const match = tokenRaw.match(/\[\[([^\]|#]+)?(#([^\]|]+))?(\|([^\]]+))?\]\]/)
-    if (!match) return escapeHtml(tokenRaw)
-    const targetRaw = (match[1] || '').trim()
-    const anchorRaw = (match[3] || '').trim() || undefined
-    const display = (match[5] || '').trim()
-    const resolved = targetRaw ? resolveTargetPath(targetRaw) : { ambiguous: false, path: selfPath }
-    const targetPath = resolved.path || selfPath
-    const label = display || targetRaw || (anchorRaw ? `#${anchorRaw}` : targetPath)
-    const exists = pathToDoc.has(targetPath)
-    const href = `#/wiki/${encodeURIComponent(targetPath)}${anchorRaw ? `@${encodeURIComponent(anchorRaw)}` : ''}`
-    const cls = exists ? 'wiki-link' : 'wiki-link wiki-link-dead'
-    return `<a class="${cls}" href="${href}" data-path="${escapeHtml(targetPath)}"${
-      anchorRaw ? ` data-anchor="${escapeHtml(anchorRaw)}"` : ''
-    }>${escapeHtml(label)}</a>`
+  return (target, _anchor) => {
+    const targetRaw = (target || '').trim()
+    if (targetRaw === '') return { exists: pathToDoc.has(selfPath), path: selfPath }
+    const resolved = resolveTargetPath(targetRaw)
+    if (!resolved.path) return { exists: false, path: targetRaw }
+    return { exists: pathToDoc.has(resolved.path), path: resolved.path }
   }
 }
 
