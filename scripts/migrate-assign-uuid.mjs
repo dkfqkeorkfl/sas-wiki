@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // 1회성 마이그레이션 — 각 vault 문서 frontmatter 에 생성-커밋 시각으로 시드한 UUIDv7 doc id 를
-// 주입한다(D1). 의존성 0: node:crypto 만 쓴다(uuid 패키지 금지 — sas-wiki 런타임 의존성 0 보존).
+// 주입한다(D1). 생성은 `uuid` 패키지의 v7({ msecs }) 에 위임한다(잘 관리되는 표준 구현).
 //
 // 시드 근거: RFC 9562 §6.1 은 실제 시각 근접을 요구하지 않고 과거 timestamp 를 허용한다 → 생성 커밋
-// 시각(git author date)으로 시드해도 valid UUIDv7 이다. 같은-ms(같은 커밋 다수 문서) 타이는 74-bit
-// 랜덤 tail 로 유일성을 얻는다(단조성 SHOULD 이나 문서 id 는 총순서 불요 → seq 미사용).
-import { randomBytes } from 'node:crypto'
+// 시각(git author date)으로 시드해도 valid UUIDv7 이다. 같은-ms(같은 커밋 다수 문서) 타이는 랜덤
+// tail 로 유일성을 얻는다(단조성 SHOULD 이나 문서 id 는 총순서 불요 → seq 미사용).
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+import { v7 as uuidv7 } from 'uuid'
 
 import { getFileCommitDates, makeGitRunner } from './lib/git.mjs'
 import {
@@ -21,24 +22,14 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const WIKI_PREFIX = 'vault/wiki/'
 
 /**
- * 생성 시각 ms 로 시드한 UUIDv7 문자열(RFC 9562 §5.7: 48-bit ms ‖ ver=7 ‖ var=10 ‖ 74-bit random).
- * 순수 함수 — 같은 ms 여도 랜덤 tail 로 유일하다.
+ * 생성 시각 ms 로 시드한 UUIDv7 문자열 — `uuid` v7 의 `msecs` 옵션에 위임한다(48-bit ms ‖ ver=7 ‖
+ * var=10 ‖ 랜덤 tail). 같은 ms 여도 랜덤 tail 로 유일하다(문서 id 는 총순서 불요 → seq 미사용).
  *
  * @param {number} ms Date.parse(생성 커밋 ISO)
  * @returns {string}
  */
 export function uuidv7FromMs(ms) {
-  const b = randomBytes(16)
-  b[0] = (ms / 2 ** 40) & 0xff
-  b[1] = (ms / 2 ** 32) & 0xff
-  b[2] = (ms / 2 ** 24) & 0xff
-  b[3] = (ms / 2 ** 16) & 0xff
-  b[4] = (ms / 2 ** 8) & 0xff
-  b[5] = ms & 0xff // 48-bit ms (big-endian)
-  b[6] = (b[6] & 0x0f) | 0x70 // version 7
-  b[8] = (b[8] & 0x3f) | 0x80 // variant 10
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+  return uuidv7({ msecs: ms })
 }
 
 /**

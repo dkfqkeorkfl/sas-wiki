@@ -3,7 +3,7 @@
 // P1 · R7 — 마이그레이션 스크립트 순수 함수 (HANDROLL UUIDv7 · 의존성 0) — tdd §3 Task 4
 //
 // RED 사유: `scripts/migrate-assign-uuid.mjs` 가 **아직 없다** → 아래 named import 가 모듈 미해석으로
-//   파일 전체를 실패시킨다(유효 RED). uuid 패키지 금지 — `node:crypto` 만.
+//   파일 전체를 실패시킨다(유효 RED). 생성은 uuid 패키지 v7({ msecs })에 위임(계약=시드·형식·유일).
 //
 // 계약(GREEN 이 세울 seam · REFACTOR 로 순수 함수 분리):
 //   · uuidv7FromMs(ms)            → 생성 시각 ms 로 시드한 UUIDv7 문자열(RFC 9562 §5.7: 48-bit ms ‖
