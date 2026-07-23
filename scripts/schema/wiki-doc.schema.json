@@ -36,6 +36,11 @@
     "meta": {
       "type": "object",
       "default": {}
+    },
+    "draft": {
+      "type": "boolean",
+      "default": false,
+      "description": "dev 전용 표식 — prod 빌드에서 제외된다(fail-open: 미지정=공개). 승격은 이 플래그 제거만(id·경로 불변)."
     }
   },
   "allOf": [

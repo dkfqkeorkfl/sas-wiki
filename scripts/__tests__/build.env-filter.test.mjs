@@ -17,12 +17,13 @@
 //
 // **정본 문서 수 하드코딩 금지**(MEMORY: tests-decoupled-from-canonical-data) — 전부 합성 tmp-vault 로
 //   로직만 검증한다. 각 문서는 유효 UUIDv7 id·cwiki 1파일 커밋으로 시딩(컨벤션 가드 통과).
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { buildContent, deriveGeneratedAt, parseArgs } from '../build.mjs'
-import { cleanup, commit, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
+import { buildFeedItems } from '../lib/feed.mjs'
+import { cleanup, commit, git, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
 
 // ── 합성 시딩 원자 (helpers/tmp-git-vault.writeDoc 는 draft·비유효 id 를 못 넣으므로 로컬 확장) ──
 let idSeq = 0
@@ -37,7 +38,18 @@ function nextValidId() {
  *  - status  : 'active' | 'disable'.
  * 반환: 이 문서의 frontmatter id(문서 집합 단언에 사용).
  */
-function writeWikiDoc(root, rel, { body = '## 정의\n\n본문 문단이다.\n', draft, id, status = 'active', title, type = 'concept' } = {}) { // prettier-ignore
+function writeWikiDoc(
+  root,
+  rel,
+  {
+    body = '## 정의\n\n본문 문단이다.\n',
+    draft,
+    id,
+    status = 'active',
+    title,
+    type = 'concept',
+  } = {},
+) {
   const docId = id ?? nextValidId()
   const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
@@ -62,6 +74,17 @@ function seedVault(docs) {
 /** summary.docs 의 id 집합(active 10키 · disable 4키 스텁 모두 id 를 갖는다). */
 function docIds(result) {
   return result.summary.docs.map((doc) => doc.id)
+}
+
+/** 문서 끝에 문단을 덧붙인다(마지막 `##` 섹션에 속하므로 feed anchor 가 산출된다). */
+function appendDoc(root, rel, paragraph) {
+  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
+}
+
+/** 어떤 feed item 이 주어진 doc id 를 참조하는가. */
+function feedRefsId(result, id) {
+  return result.feeds.items.some((item) => item.docs.some((doc) => doc.id === id))
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -111,6 +134,7 @@ describe('draft 필터 — prod 제외 / dev 포함 (OR 이중신호)', () => {
       { draft: true, key: 'secretFlag', rel: 'concept/secret' }, // 플래그만
       { key: 'devFolder', rel: 'dev/hidden' }, // dev/ 폴더만(플래그 없음)
       { draft: true, key: 'both', rel: 'dev/both' }, // 플래그 + dev/ 폴더 동시
+      { key: 'devPrefix', rel: 'develop/notdraft' }, // dev 접두어이나 dev/ 세그먼트 아님 → 공개
     ]
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
@@ -139,12 +163,17 @@ describe('draft 필터 — prod 제외 / dev 포함 (OR 이중신호)', () => {
     expect(docIds(ctx.prodResult)).not.toContain(ctx.ids.both)
   })
 
-  it('dev: draft 문서 전부 포함(keep·secretFlag·devFolder·both)', () => {
+  it('prod: `develop/` 문서(devPrefix)는 dev/ 세그먼트가 아니므로 공개다 (접두어 오탐 방지)', () => {
+    expect(docIds(ctx.prodResult)).toContain(ctx.ids.devPrefix)
+  })
+
+  it('dev: draft 문서 전부 포함(keep·secretFlag·devFolder·both·devPrefix)', () => {
     const ids = docIds(ctx.devResult)
     expect(ids).toContain(ctx.ids.keep)
     expect(ids).toContain(ctx.ids.secretFlag)
     expect(ids).toContain(ctx.ids.devFolder)
     expect(ids).toContain(ctx.ids.both)
+    expect(ids).toContain(ctx.ids.devPrefix)
   })
 })
 
@@ -298,5 +327,170 @@ describe('disable + draft 동시 — prod 완전 배제(제외 우선순위)', (
     const stub = ctx.devResult.summary.docs.find((doc) => doc.id === ctx.ids.disableDraft)
     expect(stub).toBeDefined()
     expect(stub.status).toBe('disable')
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// F. draft 문서를 가리킨 feed: 커밋 — prod 는 prune(unresolved 아님) / dev 는 노출
+//    build.mjs 의 excludedFeedRefs 통합: draft 배제 문서의 과거 feed 는 삭제와 동급으로 prune 돼
+//    checkFeedResolution 을 통과해야 한다(빈/부분 prod 빌드가 중단되지 않음).
+// ────────────────────────────────────────────────────────────────────────────
+describe('draft feed 필터 — prod prune / dev 노출 (excludedFeedRefs 통합)', () => {
+  const ctx = { devResult: null, ids: {}, prodResult: null, vault: '' }
+
+  beforeAll(() => {
+    const vault = initVault()
+    ctx.ids.keep = writeWikiDoc(vault, 'concept/keep') // 공개 앵커(prod docs 가 0 이 아니게)
+    commit(vault, 'cwiki: keep 생성')
+    ctx.ids.secret = writeWikiDoc(vault, 'concept/secret', { draft: true })
+    commit(vault, 'cwiki: secret 생성')
+    // feed: 커밋이 draft(secret)를 건드린다 → prod 에서 이 feed 는 prune 대상이다.
+    appendDoc(vault, 'concept/secret', '비공개 소식이 추가됐다.')
+    commit(vault, 'feed: secret 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
+    ctx.vault = vault
+    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
+    ctx.devResult = buildContent({ env: 'dev', out: makeOut(), vault })
+  })
+
+  afterAll(() => {
+    cleanup(ctx.vault)
+  })
+
+  it('prod: draft(secret)를 가리킨 feed 는 prune 되고 unresolved=0 (build 중단 없음)', () => {
+    expect(ctx.prodResult.stats.unresolvedPaths).toEqual([])
+    expect(ctx.prodResult.stats.prunedFeeds).toBeGreaterThan(0)
+    expect(feedRefsId(ctx.prodResult, ctx.ids.secret)).toBe(false)
+  })
+
+  it('dev: 같은 feed 가 secret 을 정상 참조한다', () => {
+    expect(feedRefsId(ctx.devResult, ctx.ids.secret)).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// G. 이동한 draft 의 **과거경로** feed — excludedFeedRefs 의 rename 좌표로 prune
+//    순수 git mv(R)라 concept/movable 은 삭제(D)가 아니다 → everDeletedPaths 에 없다.
+//    excludedFeedRefs 가 buildPathIndex(--follow) 로 rename 좌표를 담기에 이 과거경로 feed 를
+//    정상 배제로 분류할 수 있다(좌표 누락이면 unresolved → build 중단 = RED 회귀 감지).
+// ────────────────────────────────────────────────────────────────────────────
+describe('이동한 draft feed — 과거경로도 prune (rename 좌표)', () => {
+  const ctx = { prodResult: null, vault: '' }
+
+  beforeAll(() => {
+    const vault = initVault()
+    writeWikiDoc(vault, 'concept/keep')
+    commit(vault, 'cwiki: keep 생성')
+    writeWikiDoc(vault, 'concept/movable', { draft: true })
+    commit(vault, 'cwiki: movable 생성')
+    appendDoc(vault, 'concept/movable', '이동 전 소식.') // feed at 과거경로 concept/movable
+    commit(vault, 'feed: movable 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
+    // 순수 rename(내용 수정 없음) 단독 커밋 → git 이 R 로 감지(D 아님). 이동+재작성 혼합은
+    // 커밋 컨벤션 가드가 막으므로(build 은 R 만 허용) 여기서도 pure mv 만 한다.
+    mkdirSync(path.join(vault, 'vault', 'wiki', 'tech'), { recursive: true })
+    git(vault, ['mv', 'vault/wiki/concept/movable.md', 'vault/wiki/tech/movable.md'])
+    commit(vault, 'uwiki: movable 을 tech/ 로 이동')
+    ctx.vault = vault
+    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
+  })
+
+  afterAll(() => {
+    cleanup(ctx.vault)
+  })
+
+  it('prod: 과거경로(concept/movable) feed 가 unresolved 없이 prune 된다', () => {
+    expect(ctx.prodResult.stats.unresolvedPaths).toEqual([])
+    expect(ctx.prodResult.stats.prunedFeeds).toBeGreaterThan(0)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// H. draft+public 혼합 feed — prod 는 피드를 **유지**하되 draft docRef 만 per-ref prune
+// ────────────────────────────────────────────────────────────────────────────
+describe('draft+public 혼합 feed — per-ref prune', () => {
+  const ctx = { devResult: null, ids: {}, prodResult: null, vault: '' }
+
+  beforeAll(() => {
+    const vault = initVault()
+    ctx.ids.pub = writeWikiDoc(vault, 'concept/pub')
+    commit(vault, 'cwiki: pub 생성')
+    ctx.ids.secret = writeWikiDoc(vault, 'concept/secret', { draft: true })
+    commit(vault, 'cwiki: secret 생성')
+    // 한 feed 커밋이 pub·secret 둘 다 건드린다(다중 문서 피드).
+    appendDoc(vault, 'concept/pub', '공개 소식.')
+    appendDoc(vault, 'concept/secret', '비공개 소식.')
+    commit(vault, 'feed: pub·secret 공동 소식\n\n본문.\n\nKeywords: 소식\nImportance: highlight')
+    ctx.vault = vault
+    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
+    ctx.devResult = buildContent({ env: 'dev', out: makeOut(), vault })
+  })
+
+  afterAll(() => {
+    cleanup(ctx.vault)
+  })
+
+  function feedDocIds(result) {
+    const item = result.feeds.items.find((it) => it.docs.some((doc) => doc.id === ctx.ids.pub))
+    return item ? item.docs.map((doc) => doc.id) : []
+  }
+
+  it('prod: 피드는 남되 pub 만 참조하고 secret(draft)는 per-ref prune 된다', () => {
+    const ids = feedDocIds(ctx.prodResult)
+    expect(ids).toContain(ctx.ids.pub)
+    expect(ids).not.toContain(ctx.ids.secret)
+    expect(ctx.prodResult.stats.unresolvedPaths).toEqual([])
+  })
+
+  it('dev: 같은 피드가 pub·secret 둘 다 참조한다', () => {
+    const ids = feedDocIds(ctx.devResult)
+    expect(ids).toContain(ctx.ids.pub)
+    expect(ids).toContain(ctx.ids.secret)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// I. 게이트 보존 대조 (buildFeedItems 단위) — excludedFeedRefs 가 checkFeedResolution 을 낮추지 않는다.
+//    실 git 으로는 '정상 unresolved'를 만들 수 없다(rename=R→해석 / 삭제=D→prune / 이동+재작성=D+A→
+//    커밋 컨벤션 가드가 차단). 그래서 buildFeedItems 를 직접 호출해 미해결 참조를 주입한다:
+//      · excludedFeedRefs 밖 → unresolvedPaths 로 집계(게이트 발화 = build 중단 신호) — 안 낮춤 실증.
+//      · excludedFeedRefs 안 → prune(삭제 동급, unresolved 아님).
+// ────────────────────────────────────────────────────────────────────────────
+describe('excludedFeedRefs — 게이트 보존 대조 (buildFeedItems 단위)', () => {
+  const GHOST_FILE = 'vault/wiki/concept/ghost.md'
+  const commits = [
+    { authorDate: '2026-01-06T00:00:00Z', body: '본문.\n\nKeywords: k\nImportance: normal', hash: 'c1', subject: 'feed: 헤드라인' }, // prettier-ignore
+  ]
+
+  /** getCommitDiffHunks 가 파싱하는 `git show --unified=0` 포맷(한 파일·한 hunk). */
+  function feedDiff(filePath) {
+    return [`diff --git a/${filePath} b/${filePath}`, `--- a/${filePath}`, `+++ b/${filePath}`, '@@ -1,0 +1,2 @@'].join('\n') // prettier-ignore
+  }
+
+  /** pathIndex 가 비어 아무것도 해석 못 하는(=!docId) 최소 컨텍스트. */
+  function ctxWith(excludedFeedRefs) {
+    return {
+      deletedPaths: new Set(),
+      docsById: new Map(),
+      everDeletedPaths: new Set(),
+      excludedFeedRefs,
+      headingsById: new Map(),
+      pathIndex: new Map(),
+      runGit: (args) => (args.at(-1) === 'c1' ? feedDiff(GHOST_FILE) : ''),
+    }
+  }
+
+  it('excludedFeedRefs 밖의 미해결 참조는 unresolvedPaths 로 집계된다 (게이트 안 낮춤)', () => {
+    const { stats } = buildFeedItems(commits, ctxWith(new Set()))
+
+    expect(stats.unresolvedPaths).toEqual([{ path: GHOST_FILE, sha: 'c1' }])
+    expect(stats.prunedDocRefs).toBe(0)
+  })
+
+  it('같은 미해결 참조라도 excludedFeedRefs 에 있으면 prune 된다 (삭제 동급, unresolved 아님)', () => {
+    const { items, stats } = buildFeedItems(commits, ctxWith(new Set([`c1:${GHOST_FILE}`])))
+
+    expect(stats.unresolvedPaths).toEqual([])
+    expect(stats.prunedDocRefs).toBe(1)
+    expect(stats.prunedFeeds).toBe(1)
+    expect(items).toEqual([])
   })
 })

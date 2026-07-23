@@ -78,6 +78,25 @@ sha prefix" above), so document ids (UUIDv7) and feed ids (12-hex) never collide
 Use ids for references that cross time: feeds, tags, and tree document entries. Use current paths for
 current snapshots and URLs: `breadcrumb.join('/')` and `wiki_body.json.docs` keys.
 
+## Build environments (`--env dev|prod`)
+
+The build takes `--env dev|prod`. `prod` excludes draft documents; `dev` includes everything. A document
+is draft if either signal is set (OR — the more signals, the more hidden):
+
+- **`draft: true`** in frontmatter (fail-open: an unset/absent `draft` means published — never inverted).
+- The document path lies under a **`dev/`** folder segment (`relPath === 'dev'` or `relPath.startsWith('dev/')`);
+  a `develop/` prefix is not a match. This is the fail-closed backstop for a forgotten flag.
+
+`--env` defaults to **`prod`** when unspecified or on an unknown value: an unspecified env falls back to
+prod (draft hidden) with an observable stderr warning — never a silent fallback — and an unknown value
+fails the build. This is fail-closed: an unresolved build target ships the more restrictive output.
+
+Excluded (draft) documents are removed **before** validation, derivation, and dead-link checks, so they
+never leak into any payload. Feeds that reference an excluded document are pruned like a deletion (the
+draft filter explains the absence, so it is not counted as an unresolved feed reference); a feed touching
+both an excluded and a visible document keeps only the visible ref. Promotion dev→prod is a flag removal
+only — id and path stay unchanged.
+
 ## Payload invariants
 
 The build writes three payloads: `wiki_summary.json`, `wiki_feeds.json`, and `wiki_body.json`. It must

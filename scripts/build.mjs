@@ -40,10 +40,10 @@ const PAYLOAD_FILES = {
  * vault 리포 → 3 페이로드. **입력(`vault`)과 출력(`out`)이 분리돼 있다** — 예전엔 `--root` 하나가
  * 둘을 겸해 서브모듈 워킹트리에 산출물을 싸질렀다.
  *
- * @param {{ allowDeadlinks?: boolean, out: string, schema?: string, vault: string }} options
+ * @param {{ allowDeadlinks?: boolean, env?: 'dev'|'prod', out: string, schema?: string, vault: string }} options
  * @returns {{ body: object, feeds: object, stats: object, summary: object }}
  */
-export function buildContent({ allowDeadlinks = false, out, schema, vault }) {
+export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema, vault }) {
   const vaultDir = path.resolve(vault)
   const outDir = path.resolve(out)
   const schemaDir = schema ? path.resolve(schema) : path.join(SCRIPT_DIR, 'schema')
@@ -69,10 +69,16 @@ export function buildContent({ allowDeadlinks = false, out, schema, vault }) {
     })
     .filter(Boolean)
 
-  validateParsedDocs(parsedDocs, runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
+  // dev/prod 분리(D2): prod 는 draft 문서를 제외한다. 이 필터는 반드시 **검증·파생·피드 이전**이다
+  // — 제외 문서는 스키마 검증·역인덱스·피드에서 통째로 배제돼야 부분 누출이 없다(fail-closed 방향).
+  // dev 는 전량 포함(Layer A: draft 미지정=공개는 여기가 아니라 isDraft 가 지킨다).
+  const visibleDocs = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
+  const excludedDocs = env === 'dev' ? [] : parsedDocs.filter((doc) => isDraft(doc))
 
-  const derived = derive(parsedDocs, runGit, { wikiPrefix: WIKI_PREFIX })
-  checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir)
+  validateParsedDocs(visibleDocs, runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
+
+  const derived = derive(visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
+  checkDeadlinks(visibleDocs, derived, allowDeadlinks, vaultDir)
 
   // 피드 파생에 필요한 세 좌표: (커밋, 당시경로) → id 역인덱스 · 삭제 집합 · HEAD 문서 메타.
   const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
@@ -85,6 +91,16 @@ export function buildContent({ allowDeadlinks = false, out, schema, vault }) {
     wikiPrefix: WIKI_PREFIX,
   })
   const everDeletedPaths = collectEverDeletedDocPaths(runGit, { wikiPrefix: WIKI_PREFIX })
+  // prod 에서 draft 로 배제된 문서의 **전 히스토리 좌표**(`${sha}:${당시경로}`, rename 포함). 이들을
+  // 가리키는 과거 feed: 커밋은 삭제된 문서와 같은 부류로 prune 된다 — draft 필터가 부재를 설명하므로
+  // '해석 불가(조용한 유실 의심)'가 아니다. 이 좌표를 안 넘기면 checkFeedResolution 이 정상적 배제를
+  // 유실로 오판해 빈 prod 빌드를 중단시킨다(이동한 draft 는 head 경로가 아니라 당시 경로로 참조된다).
+  const excludedFeedRefs = new Set(
+    buildPathIndex(
+      excludedDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
+      runGit,
+    ).keys(),
+  )
   const docsById = new Map()
   const headingsById = new Map()
   for (const doc of derived.pathToDoc.values()) {
@@ -100,6 +116,7 @@ export function buildContent({ allowDeadlinks = false, out, schema, vault }) {
     deletedPaths,
     docsById,
     everDeletedPaths,
+    excludedFeedRefs,
     headingsById,
     pathIndex,
     runGit,
@@ -127,6 +144,19 @@ export function buildContent({ allowDeadlinks = false, out, schema, vault }) {
   }
 
   return { body, feeds, stats, summary }
+}
+
+/**
+ * draft 판정 — dev 전용 문서인가. **OR 결합**: frontmatter 플래그(fail-open) OR `dev/` 폴더 경로
+ * (fail-closed 백스톱). 신호가 늘수록 더 숨긴다(monotonic fail-safe) — 플래그를 깜빡해도 폴더가,
+ * 폴더를 안 써도 플래그가 잡는다. AND 로 뒤집으면 이중 신호가 오히려 노출로 새므로 반전 금지.
+ *
+ * @param {{ frontmatter: { draft?: unknown }, relPath: string }} parsed
+ */
+function isDraft(parsed) {
+  const flag = parsed.frontmatter.draft === true
+  const inDevFolder = parsed.relPath === 'dev' || parsed.relPath.startsWith('dev/')
+  return flag || inDevFolder
 }
 
 export function deriveGeneratedAt(docs, items) {
@@ -161,6 +191,7 @@ export async function main(argv = process.argv.slice(2)) {
 export function parseArgs(argv) {
   const options = {
     allowDeadlinks: false,
+    env: null,
     out: null,
     schema: path.join(SCRIPT_DIR, 'schema'),
     vault: null,
@@ -178,6 +209,16 @@ export function parseArgs(argv) {
         '--root 는 폐기되었습니다. 입력과 출력을 분리하세요: --vault <vault 리포> --out <출력 디렉토리>',
       )
     }
+    if (arg === '--env') {
+      const value = argv[i + 1]
+      if (!value) throw new Error('--env 에는 dev 또는 prod 값이 필요합니다')
+      if (value !== 'dev' && value !== 'prod') {
+        throw new Error(`알 수 없는 --env 값: "${value}" — dev|prod 만 허용합니다`)
+      }
+      options.env = value
+      i += 1
+      continue
+    }
     const target = { '--out': 'out', '--schema': 'schema', '--vault': 'vault' }[arg]
     if (!target) throw new Error(`알 수 없는 인자: ${arg}`)
     const value = argv[i + 1]
@@ -189,6 +230,16 @@ export function parseArgs(argv) {
   // 조용한 cwd 폴백 금지 — 엉뚱한 리포를 vault 로 읽으면 산출물이 통째로 틀린다.
   if (!options.vault) throw new Error(`vault 를 지정하세요: --vault <vault 리포>\n${usage()}`)
   if (!options.out) throw new Error(`출력 위치를 지정하세요: --out <디렉토리>\n${usage()}`)
+
+  // Layer B fail-closed: --env 미지정 → prod(draft 숨김) + 관측 가능한 warning(silent 폴백 금지).
+  //   SSG "build=prod 기본" + OWASP Fail-Secure 와 같은 방향이다. 조용히 넘기면 dev 산출물을 prod 로
+  //   착각해 배포하는 사고를 못 잡으므로, 방향은 prod 로 좁히되 관측은 남긴다.
+  if (options.env === null) {
+    options.env = 'prod'
+    console.error(
+      '[wiki] --env 미지정 → prod (fail-closed). dev 예제까지 포함하려면 --env dev 를 명시하세요.',
+    )
+  }
   return options
 }
 
@@ -288,7 +339,7 @@ function reportStats({ body, feeds, stats, summary }) {
 }
 
 function usage() {
-  return 'Usage: node scripts/build.mjs --vault <vault repo> --out <dir> [--schema <dir>] [--allow-deadlinks]'
+  return 'Usage: node scripts/build.mjs --vault <vault repo> --out <dir> [--env dev|prod] [--schema <dir>] [--allow-deadlinks]'
 }
 
 function validateParsedDocs(parsedDocs, runGit, vaultDir, wikiSchema) {

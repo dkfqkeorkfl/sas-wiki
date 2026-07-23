@@ -23,6 +23,7 @@ const NO_ANCHOR = Object.freeze({ anchor: null, anchorText: null })
  *   deletedPaths: Set<string>,
  *   docsById: Map<string, { bodyLineOffset: number, status: string }>,
  *   everDeletedPaths?: Set<string>,
+ *   excludedFeedRefs?: Set<string>,
  *   headingsById: Map<string, { anchor: string, line: number, text: string }[]>,
  *   pathIndex: Map<string, string>,
  *   runGit: (args: string[]) => string,
@@ -34,6 +35,7 @@ export function buildFeedItems(commits, context) {
     deletedPaths,
     docsById,
     everDeletedPaths = deletedPaths,
+    excludedFeedRefs = new Set(),
     headingsById,
     pathIndex,
     runGit,
@@ -87,6 +89,12 @@ export function buildFeedItems(commits, context) {
       if (!docId) {
         // 삭제된 문서는 도달할 곳이 없다(스텁조차 없다) → prune. disable 은 걷어내지 않는다.
         if (everDeletedPaths.has(filePath)) {
+          stats.prunedDocRefs += 1
+          prunedHere += 1
+        } else if (excludedFeedRefs.has(`${commit.hash}:${filePath}`)) {
+          // prod 에서 draft 로 배제된 문서를 가리킨 피드 — 삭제와 동일하게 prune 한다(정상 배제).
+          //   부재를 draft 필터가 설명하므로 '해석 불가(조용한 유실)'가 아니다. 배제 좌표는
+          //   rename 을 포함한 그 문서의 전 히스토리다(build.mjs 의 excludedFeedRefs).
           stats.prunedDocRefs += 1
           prunedHere += 1
         } else {
