@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkAnchorExists, derive } from './lib/derive.mjs'
-import { buildFeedItems } from './lib/feed.mjs'
+import { buildFeedItems, parseCommitForFeed } from './lib/feed.mjs'
 import {
   buildPathIndex,
   checkGitAvailable,
@@ -22,6 +22,7 @@ import {
   extractWikilinks,
   parseMarkdownFile,
 } from './lib/parse.mjs'
+import { applyIgnoreFeeds, reportIgnoreHygiene } from './lib/ignore.mjs'
 import { buildBody, buildFeeds, buildSummary } from './lib/payloads.mjs'
 import { loadSchema, validateItem } from './lib/validate.mjs'
 
@@ -124,6 +125,26 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
   })
   checkFeedResolution(stats)
 
+  // ── D4 ignore-feeds tombstone (단일 choke-point · Complete Mediation) ────────────
+  // 잘못 발행된 feed 를 히스토리 재작성 없이 억제한다(RFC 6721). 억제 목록은 vault 리포 루트의
+  // ignore-feeds.json 이며 **부재=[](fail-open: "억제 없음"이지 "전량 억제" 아님)**, 존재하되
+  // 스키마 위반=throw(fail-loud: 신뢰 못 할 목록은 조용히 무시하지 않고 끊는다). applyIgnoreFeeds 를
+  // buildFeedItems 직후·buildFeeds 이전 **이 한 지점**에서 1회 적용한다 — 피드 출력 경로가 여기
+  // 하나뿐이라 우회가 없다(P5 서버도 이 함수를 재사용). 억제는 item 제거만 — 문서·body·summary·
+  // generatedAt 는 raw items 기준으로 불변이다(억제≠삭제).
+  const ignoreEntries = loadIgnoreFeeds(vaultDir, schemaDir)
+  // allFeedIds = 억제 전 전체 feed 커밋 id(12hex). pruned feed(문서 참조 0 이라 items 에 안 뜬
+  // 실존 feed 커밋)도 "실존"이므로 items id 만 쓰면 정상 피드를 stale 로 오판한다 → 커밋에서 유도.
+  const allFeedIds = new Set(
+    commits
+      .filter((commit) => parseCommitForFeed(commit) !== null)
+      .map((commit) => commit.hash.slice(0, 12)),
+  )
+  for (const stale of reportIgnoreHygiene(ignoreEntries, allFeedIds)) {
+    stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
+  }
+  const feedItems = applyIgnoreFeeds(items, ignoreEntries)
+
   const generatedAt = deriveGeneratedAt(derived.docs, items)
   const summary = buildSummary({
     docs: derived.docs,
@@ -132,7 +153,7 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', out, schema
     tags: derived.tags,
     tree: derived.tree,
   })
-  const feeds = buildFeeds({ generatedAt, items, sourceCommit })
+  const feeds = buildFeeds({ generatedAt, items: feedItems, sourceCommit })
   const body = buildBody({ docs: derived.bodies, sourceCommit })
 
   validatePayloads({ body, feeds, summary }, schemaDir)
@@ -370,6 +391,32 @@ function validateParsedDocs(parsedDocs, runGit, vaultDir, wikiSchema) {
     )
     .join('\n')
   throw new Error(`스키마 위반 ${allErrors.length}건 발견:\n${detail}`)
+}
+
+/**
+ * vault 리포 루트의 `ignore-feeds.json`(억제 tombstone 목록)을 로드·검증한다.
+ *
+ * **부재 = `[]`(fail-open)** — 목록 부재는 "억제 없음"이지 "전량 억제" 가 아니다. **존재하되 스키마
+ * 위반 = throw(fail-loud)** — 신뢰 못 할 억제 목록은 조용히 무시하지 않는다(malformed JSON 도 throw).
+ * stale(대응 feed 없는 유효 엔트리)은 여기서 끊지 않고 hygiene 경고로만 관측한다 — 이 세 방향
+ * (부재=[]·위반=throw·stale=warn)을 뒤섞지 않는 것이 정직성 핵심이다.
+ */
+function loadIgnoreFeeds(vaultDir, schemaDir) {
+  const ignorePath = path.join(vaultDir, 'ignore-feeds.json')
+  if (!fs.existsSync(ignorePath)) return []
+  const entries = JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
+  const errors = validateItem(
+    entries,
+    loadSchema(path.join(schemaDir, 'ignore-feeds.schema.json')),
+    'ignore-feeds.json',
+  )
+  if (errors.length > 0) {
+    throw new Error(
+      `ignore-feeds.json 스키마 위반 ${errors.length}건 — 신뢰할 수 없는 억제 목록으로 빌드를 중단한다:\n` +
+        errors.map((message) => `  - ${message}`).join('\n'),
+    )
+  }
+  return entries
 }
 
 /** 산출물 strict 검증 — 제거된 필드가 하나라도 남아 있으면 여기서 죽는다. */

@@ -135,13 +135,14 @@ describe('build 배선 — hygiene 경고(stale)', () => {
     const out = makeOut()
     outs.push(out)
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    let printed = ''
     try {
       await main(['--vault', ctx.vault, '--out', out, '--env', 'dev'])
+      printed = spy.mock.calls.flat().join('\n') // mockRestore 가 calls 를 비우므로 restore 전에 캡처
     } finally {
       spy.mockRestore()
     }
 
-    const printed = spy.mock.calls.flat().join('\n')
     expect(printed).toMatch(/000000000000|stale|ignore|억제/iu)
   })
 })
