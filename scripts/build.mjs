@@ -12,8 +12,8 @@ import {
   collectDeletedDocPaths,
   collectEverDeletedDocPaths,
   collectGitLog,
-  getFileCommitDates,
   makeGitRunner,
+  readIdAtCreation,
 } from './lib/git.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
 import {
@@ -294,14 +294,20 @@ function usage() {
 function validateParsedDocs(parsedDocs, runGit, vaultDir, wikiSchema) {
   const allErrors = []
   for (const parsed of parsedDocs) {
-    const dates = getFileCommitDates(runGit, `${WIKI_PREFIX}${parsed.relPath}.md`)
-    const candidate = {
-      ...parsed.frontmatter,
-      id: dates.hash ? dates.hash.slice(0, 12) : undefined,
-    }
-    const errors = validateItem(candidate, wikiSchema, path.relative(vaultDir, parsed.filePath))
+    // 무결성 3게이트: 형식·유일은 스키마 pattern + derive 가, presence 는 스키마 required(id) 가 잡는다.
+    // 여기서 frontmatter id 를 그대로 검증한다 — git-hash 를 주입해 덮지 않는다(그러면 missing id 가
+    // 조용히 구제되고 저작 UUIDv7 이 산출물로 흐르지 못한다).
+    const errors = validateItem(parsed.frontmatter, wikiSchema, path.relative(vaultDir, parsed.filePath)) // prettier-ignore
     if ('created' in parsed.frontmatter || 'updated' in parsed.frontmatter) {
       errors.push('created/updated는 frontmatter에서 제거되었습니다(git 히스토리 유도).')
+    }
+    // 불변 게이트: 생성 커밋 blob 의 id 와 HEAD frontmatter id 를 대조한다. 생성 시점 id 부재(pre-id
+    // era)는 null → PASS(false-fail 금지). 있는데 다르면 사후 변조 → fail.
+    const idAtCreation = readIdAtCreation(runGit, `${WIKI_PREFIX}${parsed.relPath}.md`)
+    if (idAtCreation !== null && idAtCreation !== parsed.frontmatter.id) {
+      errors.push(
+        `id 사후 변조: 생성 시점 id(${idAtCreation}) ≠ 현재 frontmatter id(${parsed.frontmatter.id})`,
+      )
     }
     if (errors.length > 0) allErrors.push({ errors, file: parsed.filePath })
   }

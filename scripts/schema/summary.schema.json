@@ -51,7 +51,10 @@
         "updated"
       ],
       "properties": {
-        "id": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
         "breadcrumb": { "type": "array", "items": { "type": "string" } },
         "title": { "type": "string", "minLength": 1 },
         "status": { "type": "string", "enum": ["active"] },
@@ -69,7 +72,10 @@
       "additionalProperties": false,
       "required": ["id", "breadcrumb", "title", "status"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[0-9a-f]{12}$" },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
         "breadcrumb": { "type": "array", "items": { "type": "string" } },
         "title": { "type": "string", "minLength": 1 },
         "status": { "type": "string", "enum": ["disable"] }

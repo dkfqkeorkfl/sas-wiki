@@ -74,6 +74,12 @@ function nextDate() {
   return `${tick} +0000`
 }
 
+// frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일). id 출처가 frontmatter 로 반전됐다.
+let idSeq = 0
+function nextDocId() {
+  return `0192f0d0-0000-7000-8000-${(idSeq += 1).toString(16).padStart(12, '0')}`
+}
+
 function outDir() {
   return mkdtempSync(path.join(ctx.tmp, 'out-'))
 }
@@ -92,6 +98,7 @@ function writeDoc(root, rel, title) {
     full,
     [
       '---',
+      `id: "${nextDocId()}"`,
       `title: ${title}`,
       'type: concept',
       'status: active',

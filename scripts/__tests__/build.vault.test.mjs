@@ -70,6 +70,7 @@ const BASE_IDENTITY = {
 
 const ctx = { first: null, out1: '', out2: '', result: null, vault: '' }
 
+/** 문서의 생성(A) 커밋 sha — created 날짜 파생 검증에 쓴다(id 출처는 더 이상 아니다). */
 function creationSha(relDoc) {
   const out = git(ctx.vault, [
     'log',
@@ -87,9 +88,10 @@ function docFile(relDoc) {
   return `vault/wiki/${relDoc}.md`
 }
 
-/** 문서 id = **가장 최근 `A`(생성) 커밋** 해시 12자 (data-contract §10 — 삭제 후 재생성은 새 문서). */
+/** 문서 id = frontmatter 에 저작된 불변 UUIDv7 (D1). 이동해도 파일과 함께 옮겨간다 → working tree 에서 읽는다. */
 function docId(relDoc) {
-  return creationSha(relDoc).slice(0, 12)
+  const raw = readFileSync(path.join(ctx.vault, docFile(relDoc)), 'utf8')
+  return raw.match(/^id:\s*"([^"]+)"/mu)[1]
 }
 
 /** summary 에서 breadcrumb 로 문서를 찾는다(계약에 문자열 path 필드는 없다 — join 으로 유도). */
@@ -203,13 +205,14 @@ describe('실 vault ① 문서 집합', () => {
     expect('임시' in tags).toBe(false) // 삭제된 폐기예정-메모의 태그
   })
 
-  it('문서 id 는 생성 커밋 해시 12자이며 rename 후에도 불변이다', () => {
+  it('문서 id 는 frontmatter UUIDv7 이며 rename 후에도 불변이다', () => {
     const hbm = docOf(HBM)
     const created = git(ctx.vault, ['log', '-1', '--format=%aI', creationSha(HBM)])
 
-    // 커밋 12 에서 concept/HBM → tech/HBM 으로 이동했지만 id 는 생성 커밋(커밋 4)의 해시다.
+    // 커밋 12 에서 concept/HBM → tech/HBM 으로 이동했지만 id 는 frontmatter 저작 UUIDv7 이라 불변이다.
+    // created 는 여전히 생성 커밋(커밋 4)의 author date 에서 파생된다.
     expect(hbm.id).toBe(docId(HBM))
-    expect(hbm.id).toHaveLength(12)
+    expect(hbm.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
     expect(hbm.created).toBe(created)
   })
 

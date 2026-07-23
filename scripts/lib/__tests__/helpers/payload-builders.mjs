@@ -7,19 +7,19 @@
 // 세계관(aWorld): active 2 · disable 1 · 피드 2(하나는 disable 문서를 가리킨다).
 //   이 조합은 **불변식 8종을 전부 통과**한다 — 정상적인 disable 운영이 빌드를 죽이면 계약이 틀린 것이다.
 
-/** disable 문서 D — concept/온디바이스-AI (4키 스텁) */
-export const DOC_D = { id: 'dddddddddddd', path: 'concept/온디바이스-AI' }
+/** disable 문서 D — concept/온디바이스-AI (4키 스텁). id = frontmatter 저작 UUIDv7. */
+export const DOC_D = { id: '0192d000-0000-7000-8000-0000000000dd', path: 'concept/온디바이스-AI' }
 
-/** active 문서 A — company/삼성전자 */
-export const DOC_A = { id: 'aaaaaaaaaaaa', path: 'company/삼성전자' }
+/** active 문서 A — company/삼성전자. id = frontmatter 저작 UUIDv7. */
+export const DOC_A = { id: '0192a000-0000-7000-8000-0000000000aa', path: 'company/삼성전자' }
 
-/** active 문서 B — tech/HBM */
-export const DOC_B = { id: 'bbbbbbbbbbbb', path: 'tech/HBM' }
+/** active 문서 B — tech/HBM. id = frontmatter 저작 UUIDv7. */
+export const DOC_B = { id: '0192b000-0000-7000-8000-0000000000bb', path: 'tech/HBM' }
 
 export const GENERATED_AT = '2023-11-14T22:13:20.000Z'
 
-/** 어디에도 없는 문서 id — 불변식 1·3·4 의 위반 주입용 */
-export const GHOST_ID = 'ffffffffffff'
+/** 어디에도 없는 문서 id(유효 UUIDv7) — 불변식 1·3·4 의 위반 주입용 */
+export const GHOST_ID = '0192f000-0000-7000-8000-0000000000ff'
 
 /** 3 페이로드 공통 sourceCommit(40 hex) — 불변식 7 의 기준값. */
 export const SOURCE_COMMIT = '9e0a3a0c8072f436503c5065ca4b4b863cd434fb'

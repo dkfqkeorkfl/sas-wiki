@@ -78,13 +78,22 @@ function readPayload(dir, file) {
   return JSON.parse(readFileSync(path.join(dir, file), 'utf8'))
 }
 
+// frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일). id 출처가 frontmatter 로 반전됐다.
+// 시딩 시 파일에 써 커밋하므로 재빌드(out1·out2)는 같은 id 를 읽어 byte-identical 이 유지된다.
+let idSeq = 0
+function nextDocId() {
+  return `0192f0d0-0000-7000-8000-${(idSeq += 1).toString(16).padStart(12, '0')}`
+}
+
 function writeDoc(root, rel, title) {
   const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
+  const id = nextDocId()
   writeFileSync(
     full,
     [
       '---',
+      `id: "${id}"`,
       `title: ${title}`,
       'type: concept',
       'status: active',
@@ -101,6 +110,7 @@ function writeDoc(root, rel, title) {
       '',
     ].join('\n'),
   )
+  return id
 }
 
 beforeAll(() => {
@@ -110,13 +120,13 @@ beforeAll(() => {
   ctx.out2 = mkdtempSync(path.join(tmpdir(), 'wiki-smoke-out2-'))
   git(vault, ['init', '-q'])
 
-  // 1 · 문서 생성(cwiki — 신규 파일 정확히 1개. id = 이 커밋 해시 12자)
-  writeDoc(vault, 'concept/foo', '삼성전자')
-  ctx.ids.foo = commit(vault, 'cwiki: 삼성전자 문서 생성').slice(0, 12)
+  // 1 · 문서 생성(cwiki — 신규 파일 정확히 1개. id = frontmatter 저작 UUIDv7)
+  ctx.ids.foo = writeDoc(vault, 'concept/foo', '삼성전자')
+  commit(vault, 'cwiki: 삼성전자 문서 생성')
 
-  // 2 · 삭제 후 재생성될 문서 — **옛 생성 해시**(부활하면 안 된다)
-  writeDoc(vault, 'concept/reborn', '부활문서')
-  ctx.ids.rebornOld = commit(vault, 'cwiki: 부활문서 문서 생성').slice(0, 12)
+  // 2 · 삭제 후 재생성될 문서 — **옛 id**(부활하면 안 된다)
+  ctx.ids.rebornOld = writeDoc(vault, 'concept/reborn', '부활문서')
+  commit(vault, 'cwiki: 부활문서 문서 생성')
 
   // 3 · 삭제될 문서
   writeDoc(vault, 'misc/del-me', '폐기문서')
@@ -139,15 +149,15 @@ beforeAll(() => {
   commit(vault, 'uwiki: 폐기문서 삭제')
 
   // 8 · cwiki — **같은 경로에 재생성 → 새 문서(새 id)**  (data-contract §10)
-  writeDoc(vault, 'concept/reborn', '부활문서')
-  ctx.ids.rebornNew = commit(vault, 'cwiki: 부활문서 재생성').slice(0, 12)
+  ctx.ids.rebornNew = writeDoc(vault, 'concept/reborn', '부활문서')
+  commit(vault, 'cwiki: 부활문서 재생성')
 
   // 9~13 · **경로 재사용 함정** — 살아 있는 문서의 과거 피드가 사라지면 안 된다.
   //   문서 A 를 x 에 만들고 → A 를 가리키는 feed → A 를 y 로 이동 → **다른 문서 B 가 빈 x 를 재사용**
   //   → B 삭제. 이때 x 는 "삭제된 경로" 지만, 그 feed 의 diff 가 가리키는 x 는 **그 시점의 A** 이고
   //   A 는 y 로 멀쩡히 살아 있다. 경로만 보고 prune 하면 A 의 뉴스가 통째로 증발한다.
-  writeDoc(vault, 'company/reuse-x', '이사간문서')
-  ctx.ids.mover = commit(vault, 'cwiki: 이사간문서 문서 생성').slice(0, 12)
+  ctx.ids.mover = writeDoc(vault, 'company/reuse-x', '이사간문서')
+  commit(vault, 'cwiki: 이사간문서 문서 생성')
 
   appendDoc(vault, 'company/reuse-x', '신제품 라인업을 공개했다.')
   commit(vault, 'feed: 이사간문서 신제품 공개\n\n본문.\n\nKeywords: 신제품\nImportance: normal')

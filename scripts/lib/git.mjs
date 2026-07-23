@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
+import { parseFrontmatterYaml } from './parse.mjs'
+
 // `--name-status` 의 상태줄. rename/copy 는 `R100\told\tnew`(탭 2개), A/M/D 는 `M\tpath`(탭 1개).
 // 커밋 헤더줄(`<hash>\t<date>`)은 소문자 hex 로 시작하므로 이 패턴에 걸리지 않는다.
 const STATUS_LINE_RE = /^([A-Z])(\d*)\t(.+)$/
@@ -254,6 +256,32 @@ export function getFileHistory(runGit, relFilePath) {
     header = { sha, ts }
   }
   return history
+}
+
+/**
+ * 문서의 **생성 커밋 blob** frontmatter 에서 id 를 읽는다 — 불변 게이트 원자재.
+ *
+ * HEAD 가 아니라 생성 시점 blob 을 본다(사후 삽입·변조 무시). 생성 blob 에 id 가 없으면
+ * (pre-id era — 마이그레이션 전 생성분) `null` 을 돌려준다. 그래야 불변 게이트가 pre-id 문서를
+ * "차이"로 오판해 마이그레이션 전 전 문서를 false-fail 시키는 일이 없다.
+ *
+ * @returns {null | string} 생성 blob frontmatter 의 id, 없으면 null
+ */
+export function readIdAtCreation(runGit, relFilePath) {
+  const history = getFileHistory(runGit, relFilePath)
+  if (history.length === 0) return null
+  const creation = history.find((entry) => isCreation(entry)) ?? history.at(-1)
+  let blob
+  try {
+    blob = runGit([...QUOTEPATH_OFF, 'show', `${creation.sha}:${creation.pathAtCommit}`])
+  } catch {
+    // 생성 blob 을 못 읽으면(경계 케이스) 게이트를 막지 않는다 — presence 는 스키마 required(id) 가 잡는다.
+    return null
+  }
+  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
+  if (!match) return null
+  const id = parseFrontmatterYaml(match[1], relFilePath).id
+  return id === undefined ? null : id
 }
 
 export function makeGitRunner(cwd) {

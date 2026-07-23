@@ -28,9 +28,14 @@ const STRICT = {
 }
 
 describe('validateItem — 신형 wiki-doc 스키마', () => {
-  it('신형(id 12hex · status active) 문서는 위반이 없다', () => {
+  it('신형(id UUIDv7 · status active) 문서는 위반이 없다', () => {
     const errors = validateItem(
-      { id: 'deadbeef1234', status: 'active', title: '삼성전자', type: 'concept' },
+      {
+        id: '0192a000-0000-7000-8000-0000000000aa',
+        status: 'active',
+        title: '삼성전자',
+        type: 'concept',
+      },
       wikiDocSchema,
       'doc',
     )
@@ -135,7 +140,7 @@ describe('validateItem — additionalProperties 회귀 가드', () => {
     // Task 1 이 이걸 깨면 **입력 frontmatter 검증이 전부 죽는다**.
     const errors = validateItem(
       {
-        id: 'deadbeef1234',
+        id: '0192a000-0000-7000-8000-0000000000aa',
         meta: { exchange: 'KRX', sector: '반도체', ticker: '005930' },
         status: 'active',
         title: '삼성전자',
@@ -167,7 +172,7 @@ describe('validateItem — 판별 유니온의 포괄 실패(discriminator)', ()
   it('알 수 없는 status 는 통과하지 않는다', () => {
     const errors = withRoot({
       breadcrumb: ['company', '삼성전자'],
-      id: 'abcdef123456',
+      id: '0192d000-0000-7000-8000-0000000000dd',
       status: 'weird-value',
       title: '삼성전자',
       totallyUnexpectedField: { leaked: true },
@@ -180,7 +185,7 @@ describe('validateItem — 판별 유니온의 포괄 실패(discriminator)', ()
   it('정상 분기(disable 스텁)는 그대로 통과한다', () => {
     const errors = withRoot({
       breadcrumb: ['concept', '온디바이스-AI'],
-      id: 'abcdef123456',
+      id: '0192d000-0000-7000-8000-0000000000dd',
       status: 'disable',
       title: '온디바이스 AI',
     })

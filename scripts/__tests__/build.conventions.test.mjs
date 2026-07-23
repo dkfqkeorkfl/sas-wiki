@@ -58,13 +58,21 @@ function nextDate() {
   return `${tick} +0000`
 }
 
+// frontmatter 저작 UUIDv7 doc id — 결정적 counter. id 출처가 frontmatter 로 반전됐다(값만 새 계약).
+let idSeq = 0
+function nextDocId() {
+  return `0192f0d0-0000-7000-8000-${(idSeq += 1).toString(16).padStart(12, '0')}`
+}
+
 function writeDoc(root, rel, title, body = `${title} 문서의 정의 문단이다.`) {
   const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
+  const id = nextDocId()
   writeFileSync(
     full,
     [
       '---',
+      `id: "${id}"`,
       `title: ${title}`,
       'type: concept',
       'status: active',
@@ -81,6 +89,7 @@ function writeDoc(root, rel, title, body = `${title} 문서의 정의 문단이�
       '',
     ].join('\n'),
   )
+  return id
 }
 
 afterEach(() => {
@@ -143,8 +152,8 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
 
   it('깨끗한 git mv 는 같은 id 를 유지하고 과거 feed 를 살린다', () => {
     const { out, vault } = makeVault()
-    writeDoc(vault, 'company/이동문서', '이동문서')
-    const originalId = commit(vault, 'cwiki: 이동문서 문서 생성').slice(0, 12)
+    const originalId = writeDoc(vault, 'company/이동문서', '이동문서')
+    commit(vault, 'cwiki: 이동문서 문서 생성')
     appendDoc(vault, 'company/이동문서', '신제품 라인업을 공개했다.')
     commit(vault, 'feed: 이동문서 신제품 공개\n\n본문.\n\nKeywords: 신제품')
     mkdirSync(path.join(vault, 'vault', 'wiki', 'tech'), { recursive: true })

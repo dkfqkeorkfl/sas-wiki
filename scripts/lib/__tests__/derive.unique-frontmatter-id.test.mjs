@@ -41,7 +41,13 @@ function aParsedDoc(relPath, id) {
     bodyLineOffset: 6,
     breadcrumb: relPath.split('/'),
     filePath: `/tmp/vault/wiki/${relPath}.md`,
-    frontmatter: { id, status: 'active', tags: [], title: relPath.split('/').at(-1), type: 'concept' },
+    frontmatter: {
+      id,
+      status: 'active',
+      tags: [],
+      title: relPath.split('/').at(-1),
+      type: 'concept',
+    },
     relPath,
   }
 }
@@ -59,7 +65,10 @@ describe('R6 derive 유일 게이트 — frontmatter id 로도 성립', () => {
   })
 
   it('frontmatter id 가 서로 다르면 throw 하지 않는다(green-stay)', () => {
-    const distinct = [aParsedDoc('concept/twin-A', UUIDV7_A), aParsedDoc('concept/twin-B', UUIDV7_B)]
+    const distinct = [
+      aParsedDoc('concept/twin-A', UUIDV7_A),
+      aParsedDoc('concept/twin-B', UUIDV7_B),
+    ]
     const runner = makeRunner({
       'concept/twin-A': aLog(HASH_A, 'vault/wiki/concept/twin-A.md'),
       'concept/twin-B': aLog(HASH_B, 'vault/wiki/concept/twin-B.md'),

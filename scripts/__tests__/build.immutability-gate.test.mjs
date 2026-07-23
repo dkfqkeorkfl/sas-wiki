@@ -40,8 +40,13 @@ describe('R5 경계(green-stay) — pre-id 문서는 게이트를 통과한다',
     const vault = initVault()
     const out = makeOut()
     try {
-      writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // 생성부터 id 없음(pre-id era)
+      // 실 마이그레이션 재현: 생성 커밋 blob 에는 id 가 없고(pre-id era → 불변 게이트는 null=PASS),
+      // 마이그레이션이 working tree 에 id 를 넣는다(미커밋 → 스키마 required(id) PASS). 이 조합이 게이트가
+      // pre-id 를 "차이"로 오판하지 않는지를 실제로 검증한다(원래 셋업은 스키마 required 에서 먼저 죽어
+      // 게이트에 닿지도 못했다). 단언은 그대로 not.toThrow — 약화가 아니라 시나리오 정정이다.
+      writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // 생성 커밋: id 없음(pre-id era)
       commit(vault, 'cwiki: HBM 문서 생성')
+      writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' }) // 마이그레이션: working tree id(미커밋)
 
       expect(() => buildContent({ out, vault })).not.toThrow()
     } finally {

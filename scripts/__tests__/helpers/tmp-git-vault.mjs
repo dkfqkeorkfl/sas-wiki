@@ -73,7 +73,12 @@ export function writeDoc(
 ) {
   const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
-  const fm = ['---', `title: ${title ?? rel.split('/').at(-1)}`, `type: ${type}`, `status: ${status}`]
+  const fm = [
+    '---',
+    `title: ${title ?? rel.split('/').at(-1)}`,
+    `type: ${type}`,
+    `status: ${status}`,
+  ]
   if (id !== undefined) fm.push(`id: "${id}"`)
   fm.push('---', '', body)
   writeFileSync(full, fm.join('\n'))

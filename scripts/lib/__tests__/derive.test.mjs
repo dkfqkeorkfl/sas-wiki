@@ -19,10 +19,18 @@ import { describe, expect, it } from 'vitest'
 
 import { derive } from '../derive.mjs'
 
+// git 생성 해시 — created/updated 파생용(이제 id 출처가 아니다).
 const SAMSUNG_SHA = 'aaaaaaaaaaaa000000000000000000000000aaaa'
 const HBM_SHA = 'bbbbbbbbbbbb111111111111111111111111bbbb'
 const SUB_SHA = 'cccccccccccc222222222222222222222222cccc'
 const DIS_SHA = 'dddddddddddd333333333333333333333333dddd'
+
+// frontmatter 에 저작된 UUIDv7 doc id — 이제 derive 가 이 값을 그대로 싣는다(git 해시 아님).
+const SAMSUNG_ID = '0192a000-0000-7000-8000-0000000000aa'
+const HBM_ID = '0192b000-0000-7000-8000-0000000000bb'
+const SUB_ID = '0192c000-0000-7000-8000-0000000000cc'
+const DIS_ID = '0192d000-0000-7000-8000-0000000000dd'
+const DEFAULT_ID = '0192e000-0000-7000-8000-0000000000ee'
 
 /** `git log --follow --name-status --format=%H%x09%aI` 의 실제 출력(최신순). */
 function aLog(sha, { created = '2026-01-01T00:00:00Z', file, updated = '2026-01-09T00:00:00Z' }) {
@@ -36,7 +44,7 @@ function aParsedDoc(patch) {
     bodyLineOffset: 6,
     breadcrumb: relPath.split('/'), // 신 계약: 문서 슬러그 포함
     filePath: `/tmp/vault/wiki/${relPath}.md`,
-    frontmatter: { status: 'active', tags: [], title: relPath.split('/').at(-1), type: 'concept' },
+    frontmatter: { id: DEFAULT_ID, status: 'active', tags: [], title: relPath.split('/').at(-1), type: 'concept' }, // prettier-ignore
     relPath,
     ...patch,
   }
@@ -58,6 +66,7 @@ const WORLD = [
     body: '## 개요\n\n삼성전자는 **메모리**와 [[HBM#시장 구조|고대역폭]] 반도체를 다룬다[^1].\n\n## 사업 부문\n\nDS 와 DX 로 나뉜다.\n\n[^1]: 사업보고서\n',
     frontmatter: {
       aliases: ['Samsung'],
+      id: SAMSUNG_ID,
       meta: { ticker: '005930' },
       status: 'active',
       tags: ['반도체'],
@@ -68,17 +77,23 @@ const WORLD = [
   }),
   aParsedDoc({
     body: '## 정의\n\nHBM 은 적층 메모리다.\n',
-    frontmatter: { status: 'active', tags: ['메모리'], title: 'HBM', type: 'concept' },
+    frontmatter: { id: HBM_ID, status: 'active', tags: ['메모리'], title: 'HBM', type: 'concept' },
     relPath: 'tech/HBM',
   }),
   aParsedDoc({
     body: '## 개요\n\n자회사 문서.\n',
-    frontmatter: { status: 'active', tags: ['반도체'], title: '세메스', type: 'company' },
+    frontmatter: { id: SUB_ID, status: 'active', tags: ['반도체'], title: '세메스', type: 'company' }, // prettier-ignore
     relPath: 'company/자회사/세메스',
   }),
   aParsedDoc({
     body: '## 메모\n\n폐기 예정.\n',
-    frontmatter: { status: 'disable', tags: ['임시'], title: '폐문서', type: 'concept' },
+    frontmatter: {
+      id: DIS_ID,
+      status: 'disable',
+      tags: ['임시'],
+      title: '폐문서',
+      type: 'concept',
+    },
     relPath: 'legacy/폐문서',
   }),
 ]
@@ -132,11 +147,11 @@ describe('derive — summary docs 필드 집합', () => {
     ])
   })
 
-  it('id 는 생성 커밋 해시 12자이고 created/updated 가 채워진다', () => {
+  it('id 는 frontmatter UUIDv7 이고 created/updated 는 git 에서 파생된다', () => {
     const { docs } = derive(WORLD, WORLD_RUNNER)
     const samsung = docOf(docs, 'company/삼성전자')
 
-    expect(samsung.id).toBe(SAMSUNG_SHA.slice(0, 12))
+    expect(samsung.id).toBe(SAMSUNG_ID)
     expect(samsung.created).toBe('2026-01-01T00:00:00Z')
     expect(samsung.updated).toBe('2026-01-09T00:00:00Z')
   })
@@ -165,9 +180,9 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
     const company = tree.find((node) => node.path === 'company')
 
     expect(Object.keys(company).toSorted()).toEqual(['children', 'docs', 'path'])
-    expect(company.docs).toEqual([SAMSUNG_SHA.slice(0, 12)]) // 문자열 id 배열
+    expect(company.docs).toEqual([SAMSUNG_ID]) // 문자열 id 배열
     expect(company.children[0].path).toBe('company/자회사') // 누적 경로
-    expect(company.children[0].docs).toEqual([SUB_SHA.slice(0, 12)])
+    expect(company.children[0].docs).toEqual([SUB_ID])
   })
 
   it('disable 만 있는 폴더는 노드 자체가 생기지 않는다', () => {
@@ -182,10 +197,8 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
   it('active 문서만 역색인하고 feed 배열은 없다', () => {
     const { tags } = derive(WORLD, WORLD_RUNNER)
 
-    expect(tags['반도체'].toSorted()).toEqual(
-      [SAMSUNG_SHA.slice(0, 12), SUB_SHA.slice(0, 12)].toSorted(),
-    )
-    expect(tags['메모리']).toEqual([HBM_SHA.slice(0, 12)])
+    expect(tags['반도체'].toSorted()).toEqual([SAMSUNG_ID, SUB_ID].toSorted())
+    expect(tags['메모리']).toEqual([HBM_ID])
     expect('임시' in tags).toBe(false) // disable 문서의 태그는 키가 생기지 않는다
   })
 
@@ -195,6 +208,7 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
       [
         aParsedDoc({
           frontmatter: {
+            id: HBM_ID,
             status: 'active',
             tags: ['__proto__', 'constructor'],
             title: '프로토타입 안전 문서',
@@ -209,8 +223,8 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
     // eslint-disable-next-line unicorn/prefer-structured-clone -- JSON 직렬화 경계에서 배송되는 키를 검증한다.
     const payloadTags = JSON.parse(JSON.stringify(tags))
 
-    expect(payloadTags.__proto__).toEqual([HBM_SHA.slice(0, 12)])
-    expect(payloadTags.constructor).toEqual([HBM_SHA.slice(0, 12)])
+    expect(payloadTags.__proto__).toEqual([HBM_ID])
+    expect(payloadTags.constructor).toEqual([HBM_ID])
   })
 })
 

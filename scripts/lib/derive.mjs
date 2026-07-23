@@ -33,10 +33,12 @@ export function derive(parsedDocs, runGit, { wikiPrefix = 'vault/wiki/' } = {}) 
     const relFilePath = `${wikiPrefix}${parsed.relPath}.md`
     const dates = getFileCommitDates(runGit, relFilePath)
     if (!dates.hash) throw new Error(`생성 커밋을 찾을 수 없습니다: ${relFilePath}`)
+    // id 는 frontmatter 에 저작된 UUIDv7 이다(불변). created/updated 는 여전히 git history 에서
+    // 파생한다 — 정체성(id)과 이력 메타의 출처가 갈린다. dates.hash 는 생성 커밋 존재 확인용으로만 쓴다.
     return {
       ...parsed,
       created: dates.created,
-      id: dates.hash.slice(0, 12),
+      id: parsed.frontmatter.id,
       updated: dates.updated,
     }
   })

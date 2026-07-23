@@ -56,8 +56,11 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
     const vault = initVault()
     const out = makeOut()
     try {
-      writeDoc(vault, 'concept/온디바이스-AI', { title: '온디바이스 AI' }) // 생성부터 id 없음
+      // 실 마이그레이션 재현: 생성 커밋 blob 에는 id 부재(불변 게이트 null=PASS), working tree 에는
+      // 마이그레이션이 넣은 id(미커밋 → 스키마 required PASS). 게이트가 pre-id 를 오판하지 않음을 검증한다.
+      writeDoc(vault, 'concept/온디바이스-AI', { title: '온디바이스 AI' }) // 생성 커밋: id 없음
       commit(vault, 'cwiki: 온디바이스 AI 문서 생성')
+      writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' }) // 마이그레이션: working tree id(미커밋)
 
       expect(() => buildContent({ out, vault })).not.toThrow()
     } finally {

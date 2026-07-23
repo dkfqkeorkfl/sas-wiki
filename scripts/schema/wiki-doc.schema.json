@@ -2,14 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/wiki-doc.schema.json",
   "title": "wiki-doc",
-  "description": "vault/wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층(path/breadcrumb)은 폴더 위치에서 빌드가 산출한다. id는 생성 커밋 해시 12자로 빌드가 유도하는 불변 내부 키다.",
+  "description": "vault/wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층(path/breadcrumb)은 폴더 위치에서 빌드가 산출한다. id는 frontmatter에 저작된 불변 UUIDv7 내부 키다.",
   "type": "object",
   "required": ["id", "title", "type", "status"],
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^[0-9a-f]{12}$",
-      "description": "생성 커밋 해시 12자. 빌드가 git history에서 유도하며 frontmatter write-back은 하지 않는다."
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "description": "frontmatter에 저작된 UUIDv7 doc id(시간정렬 · 불변). 이동·재작성해도 바뀌지 않는다. created/updated는 git history에서 유도한다."
     },
     "title": {
       "type": "string",

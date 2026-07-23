@@ -7,14 +7,15 @@ This document is the self-contained data contract for the vault build pipeline i
 The build input is this repository's git history plus markdown files under `vault/wiki/**/*.md`.
 Both are required:
 
-| Input                | Purpose                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------- |
-| `vault/wiki/**/*.md` | Current document contents and frontmatter                                              |
-| Full git history     | Document ids, creation/update dates, feed items, rename tracking, and deletion pruning |
+| Input                | Purpose                                                                                         |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `vault/wiki/**/*.md` | Current document contents and frontmatter, including the authored UUIDv7 document `id`          |
+| Full git history     | Creation/update dates, feed items, rename tracking, deletion pruning, and id-immutability check |
 
 Shallow and partial clones are invalid build inputs. A shallow clone can hide creation commits and
-change document ids; a partial clone can hide blobs needed for validation. The build must fail before
-writing payloads when either condition is detected.
+silently change creation/update dates and feed items; a partial clone can hide blobs needed for
+validation (including the creation-commit frontmatter the immutability gate reads). The build must fail
+before writing payloads when either condition is detected.
 
 ## Branch policy
 
@@ -32,9 +33,10 @@ Vault commits use three wiki-specific types:
 | `uwiki` | Update existing documents without publishing news | Existing files only                       | No              |
 | `feed`  | Update existing documents and publish news        | Existing files only                       | Yes             |
 
-`cwiki` must create exactly one document because a document id is the 12-character prefix of its
-creation commit hash. If one commit creates two documents, both documents get the same id and refs can
-point at the wrong document. The build must fail on duplicate document ids.
+`cwiki` must create exactly one document to keep each creation atomic and legible in the audit trail —
+one creation commit per document born, which the feed derivation and rename tracking assume. The
+document id is authored as an immutable UUIDv7 in frontmatter (see below), and the build still fails on
+duplicate document ids and on any id changed after its creation commit.
 
 Feed commit messages map to feed payload fields:
 
@@ -63,9 +65,15 @@ tracking to the current document id so old feeds survive document moves.
 
 ## Document id
 
-Document id is the first 12 characters of the creation commit hash. It remains stable across renames
-and normal edits. If a deleted path is later recreated, that is a new document with a new creation
-commit and a new id.
+Document id is a UUIDv7 authored in the document's frontmatter (`id: "…"`). Because the id lives in the
+content, it remains stable across renames, moves, and full rewrites — not just normal edits. The build
+enforces three gates: format (must match UUIDv7), uniqueness (invariant 8), and immutability (the id in
+the creation-commit blob must equal the current frontmatter id; documents authored before this scheme
+carry no id at creation and pass the immutability gate). If a deleted path is later recreated, that is a
+new document with a newly authored id.
+
+Feed ids stay distinct in width: a feed id is the 12-character prefix of its commit hash (the "Commit
+sha prefix" above), so document ids (UUIDv7) and feed ids (12-hex) never collide.
 
 Use ids for references that cross time: feeds, tags, and tree document entries. Use current paths for
 current snapshots and URLs: `breadcrumb.join('/')` and `wiki_body.json.docs` keys.

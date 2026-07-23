@@ -2,7 +2,7 @@
 // 예제 vault 를 **결정적으로** 시딩한다 (plan Task 1 / tdd §4.1).
 //
 // 이 스크립트가 만드는 히스토리는 되돌릴 수 없다 —
-//   문서 id = 생성 커밋 해시 12자(`lib/git.mjs` --follow 의 가장 오래된 커밋), 피드 1건 = 커밋 1건.
+//   문서 id = frontmatter 저작 UUIDv7(불변), 피드 1건 = 커밋 1건(피드 id = 커밋 해시 12자).
 //   force-push·squash·rebase 가 금지되므로 잘못 쌓으면 브랜치를 버리고 처음부터 다시 만들어야 한다.
 // 그래서 결정성(고정 6필드 + --no-gpg-sign)과 안전 가드(비-git·dirty·main·재시딩 거부)는
 // 품질 문제가 아니라 **안전장치**다.
@@ -27,8 +27,9 @@ const BASE_BRANCH = 'main'
  * 왜 이렇게까지 하는가: `main` 은 서비스가 소비하는 실데이터 브랜치이고 `seed` 는 그 스테이징이다
  * (→ `main` 으로 머지된다). 어느 쪽이든 예제 `feed:` 커밋이 들어가면 빌드가 그것을 **가짜 뉴스로
  * 실서비스에 띄운다** — 빌드는 히스토리의 `feed:` 커밋을 전부 뉴스로 만들 뿐, 예제인지 구분할
- * 수단이 없다. 되돌리려면 히스토리 재작성이 필요하고 그건 문서 id(=생성 커밋 해시)와 실피드를
- * 파괴한다. 예제는 `test` 계열에만 쌓고, 그 브랜치는 어디로도 머지하지 않는다(일방통행).
+ * 수단이 없다. 되돌리려면 히스토리 재작성이 필요하고 그건 피드 정체성(=커밋 해시)과 실피드를
+ * 파괴한다(문서 id 는 frontmatter 라 무관하나, 감사추적 피드가 깨진다). 예제는 `test` 계열에만 쌓고,
+ * 그 브랜치는 어디로도 머지하지 않는다(일방통행).
  */
 const SEED_BRANCH_RE = /^test(?:-[\w.-]+)?$/
 
@@ -55,11 +56,13 @@ const DOC_TSMC = 'company/TSMC'
 // GOTCHA(파서가 진짜 YAML 이 아니다 — `parse.mjs:4-65`):
 //   · 최상위 키는 들여쓰기 0, 중첩 맵은 1단계까지 · `meta:` 하위는 **정확히 2칸**.
 //   · 숫자로만 이뤄진 값(`005930`)은 따옴표 없이 쓰면 **number 로 파싱**된다 → 스키마의 string 위반.
-//   · `created`/`updated` 를 쓰면 build 가 throw 한다(git 이 채운다). `id` 도 쓰지 않는다.
+//   · `created`/`updated` 를 쓰면 build 가 throw 한다(git 이 채운다). `id` 는 frontmatter 에 저작한
+//     불변 UUIDv7 이다(D1) — 결정성을 위해 고정 리터럴을 쓴다(랜덤 금지 → SHA 흔들림 방지).
 //   · `type: company` 는 `meta.{ticker,sector,exchange}` **3키 전부** 필요(값 null 은 허용, 키 부재 불허).
 // 본문은 `##` 헤딩 2~3개를 갖는다 — 피드 anchor 가 "바뀐 섹션의 heading" 이라 헤딩이 없으면 anchor 를 못 만든다.
 const DOCUMENTS = {
   [DOC_HBM]: `---
+id: "0192e100-0000-7000-8000-000000000004"
 title: HBM
 type: concept
 status: active
@@ -79,6 +82,7 @@ HBM3E 를 거쳐 HBM4 로 세대가 이어진다.
 [[삼성전자]] 와 [[SK하이닉스]] 가 주요 공급자이며 [[TSMC]] 가 패키징을 담당한다.
 `,
   [DOC_HYNIX]: `---
+id: "0192e100-0000-7000-8000-000000000002"
 title: SK하이닉스
 type: company
 status: active
@@ -99,6 +103,7 @@ SK하이닉스는 DRAM·NAND 를 주력으로 하는 메모리 반도체 기업�
 [[HBM]] 초기 시장을 선점했다.
 `,
   [DOC_MOC]: `---
+id: "0192e100-0000-7000-8000-000000000007"
 title: 반도체
 type: moc
 status: active
@@ -117,6 +122,7 @@ tags: ["반도체"]
 - [[온디바이스-AI]]
 `,
   [DOC_ONDEVICE]: `---
+id: "0192e100-0000-7000-8000-000000000005"
 title: 온디바이스 AI
 type: concept
 status: active
@@ -132,6 +138,7 @@ tags: ["AI"]
 스마트폰·PC 에 NPU 가 탑재되며 저지연·프라이버시 이점을 얻는다.
 `,
   [DOC_SAMSUNG]: `---
+id: "0192e100-0000-7000-8000-000000000001"
 title: 삼성전자
 type: company
 status: active
@@ -156,6 +163,7 @@ DS(반도체)와 DX(디바이스 경험)로 나뉜다.
 [[HBM]] 세대 전환을 준비하고 있다.
 `,
   [DOC_SCRAP]: `---
+id: "0192e100-0000-7000-8000-000000000006"
 title: 폐기예정 메모
 type: concept
 status: active
@@ -171,6 +179,7 @@ tags: ["임시"]
 정식 문서로 승격되지 않으면 제거한다.
 `,
   [DOC_TSMC]: `---
+id: "0192e100-0000-7000-8000-000000000003"
 title: TSMC
 type: company
 status: active
@@ -196,10 +205,11 @@ TSMC 는 세계 최대 파운드리 기업이다.
 // GOTCHA(trailer — `feed.mjs:26-55`): 본문과 **빈 줄 1개**로 분리된 **마지막 블록**의
 //   **모든 줄**이 `Key: value` 여야 trailer 로 인정된다. 한 줄만 어겨도 블록 전체가 본문으로 흡수된다
 //   (= Keywords·Importance 가 조용히 사라진다).
-// GOTCHA(cwiki): 신규 파일이 **정확히 1개**여야 한다 — id = 생성 커밋 해시이므로 2개면 id 가 충돌한다.
+// GOTCHA(cwiki): 신규 파일이 **정확히 1개**여야 한다 — 빌드의 커밋 컨벤션 가드가 강제한다(생성 원자성·
+//   감사추적). 문서 id 는 frontmatter 저작 UUIDv7 이라 커밋 해시 충돌 문제는 없지만 규칙은 유지된다.
 // GOTCHA(git mv·git rm): 내용 수정과 섞지 않는다 — rename 유사도 판정이 흔들린다.
 const STEPS = [
-  // 1-7 · cwiki — 문서 생성(각 커밋 해시가 그 문서의 id 가 된다)
+  // 1-7 · cwiki — 문서 생성(각 문서는 frontmatter 에 저작된 UUIDv7 id 를 갖는다)
   { apply: (repo) => createDoc(repo, DOC_SAMSUNG), message: 'cwiki: 삼성전자 문서 생성' },
   { apply: (repo) => createDoc(repo, DOC_HYNIX), message: 'cwiki: SK하이닉스 문서 생성' },
   { apply: (repo) => createDoc(repo, DOC_TSMC), message: 'cwiki: TSMC 문서 생성' },
