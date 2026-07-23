@@ -46,6 +46,38 @@ export function commit(cwd, message) {
   return git(cwd, ['rev-parse', 'HEAD'])
 }
 
+/**
+ * `feed:` 커밋 원자 — subject + `Keywords`/`Importance` trailer + **author-date 통제**.
+ *
+ * feeds 바운디드 워크(P5 git-walk) RED 시딩용이다. 기존 `commit` 은 generic subject 만 지원하고
+ * author-date 를 통제하지 못해(tick +60 자동) 워크순서=author-date 로 강제된다 — 그러면 "git
+ * 워크순서 ≠ author-date → JS 재정렬 권위"(GW3) 를 시딩으로 재현할 수 없다. 이 원자는:
+ *   · subject → `feed: <subject>` (feed.mjs FEED_SUBJECT_RE 매칭)
+ *   · keywords/importance → 커밋 body 하단 trailer(`Keywords: …`·`Importance: …`, feed.mjs extractTrailers)
+ *   · **date 를 GIT_AUTHOR_DATE/COMMITTER_DATE 로 그대로 주입**(피드 ts = author-date = `%aI`).
+ *     date 미지정이면 결정적 `nextDate()` (commit 과 동일 tick 계열).
+ *
+ * 스테이징 전량을 커밋하므로, 호출 **전에** `writeDoc`/`git mv`/`git rm` 등으로 vault 문서를 건드려
+ * 두면 그 문서를 가리키는 피드가 된다(feed.mjs 의 diff→docs 해석 계약). HEAD 해시를 돌려준다
+ * (feedId = `hash.slice(0, 12)`).
+ *
+ * @param {string} cwd vault 루트
+ * @param {{ date?: string, importance?: 'breaking'|'highlight'|'normal', keywords?: string[], subject: string }} spec
+ */
+export function feedCommit(cwd, { date, importance = 'normal', keywords = [], subject } = {}) {
+  const when = date ?? nextDate()
+  const trailers = []
+  if (keywords.length > 0) trailers.push(`Keywords: ${keywords.join(', ')}`)
+  trailers.push(`Importance: ${importance}`)
+  const message = `feed: ${subject}\n\n본문 문단이다.\n\n${trailers.join('\n')}`
+  git(cwd, ['add', '-A'])
+  git(cwd, ['commit', '--no-gpg-sign', '-m', message], {
+    GIT_AUTHOR_DATE: when,
+    GIT_COMMITTER_DATE: when,
+  })
+  return git(cwd, ['rev-parse', 'HEAD'])
+}
+
 export function initVault() {
   const vault = mkdtempSync(path.join(tmpdir(), 'wiki-red-'))
   git(vault, ['init', '-q'])

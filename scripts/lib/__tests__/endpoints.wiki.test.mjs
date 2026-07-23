@@ -1,81 +1,83 @@
 // @vitest-environment node
 //
-// P1 · Task 2C — endpoints.wiki 계약 pin (D5 · 3창구 정형화) — tdd §Task 2C
+// P1 · Task 3 — endpoints.wiki **on-demand per-doc git read+render** 전환 (D5 재작업) — tdd §Task 3 (E-W)
 //
-// RED 사유: `scripts/lib/endpoints.mjs` **부재** → 지연 import 가 "Cannot find module" 로 throw
-//   → 전 케이스 수집 실패 RED. (정적 import 는 소비자 eslint import-x/no-unresolved 로 RED 커밋 차단 → 런타임 지연.)
-//
-// GFS/RED 정직 표기(behavior 기준): W1~W4 = 🟢GFS(buildBody per-doc 투영 + seam getWikiDoc 상속 회귀 가드 —
-//   endpoints.mjs 트리비얼 wrap 후 즉시 green). wiki 는 미구현 hardening 지점이 아니다(계약 선택 pin).
+// RED 사유(엔진 전환): 초판 `wiki(payload, ref)` 는 pre-parsed payload.bodies 에서 1건을 골랐다(git·렌더
+//   미접근). 재작업 계약은 `wiki(vault, env, ref=path)` — 그 path 문서 **1건만** git 에서 읽어
+//   renderMarkdownToHtml 렌더·투영한다. 아래는 1번째 인자에 **vault 경로 문자열**을 넘긴다 → 현행이
+//   `vault.bodies.find` 를 호출해 **TypeError**(의도한 미구현)로 실패한다.
 //
 // 계약(GREEN 이 구현):
-//   wiki(payload, ref) → ref(=path, canonical) **1문서**.
-//     active → { html, headings, meta, sources, …식별메타 }(본문 4키 + 식별). 없는 path → null(throw 아님).
-//     disable → status='disable' 스텁(throw 아님). 요청 path 문서만 — 이웃 문서 본문이 새지 않는다(격리).
-//   본문 소싱: payload.bodies(active 본문 레코드, breadcrumb 키잉) · disable 스텁: payload.docs.
+//   wiki(vault, env, ref) → 그 path 문서 1건 { html, headings, meta, sources, path, status, breadcrumb }.
+//     없는 path → null(throw 아님) · disable → status='disable' 스텁 · 요청 path 만(이웃 본문 격리).
+//     렌더는 renderMarkdownToHtml **재사용**(build 렌더 경로와 동일 · 회귀 0).
 import { describe, expect, it } from 'vitest'
 
-import { aDisableStub } from './helpers/payload-builders.mjs'
-import { aPayload, DOC_A, DOC_B, DOC_D } from './helpers/endpoint-builders.mjs'
+import { cleanup, commit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs'
 
 const { wiki } = await import(new URL('../endpoints.mjs', import.meta.url).href)
 
-/** active 본문 레코드(breadcrumb·status + 본문 4키) — buildBody 입력 형태(payloads.test.mjs 미러). */
-function aBodyRecord(patch = {}) {
-  return {
-    breadcrumb: ['company', '삼성전자'],
-    headings: [{ anchor: 'hbm-사업', level: 2, text: 'HBM 사업' }],
-    html: '<h2 id="hbm-사업">HBM 사업</h2>',
-    meta: { ticker: '005930' },
-    sources: [],
-    status: 'active',
-    ...patch,
-  }
+const ID_A = '0192a000-0000-7000-8000-0000000000aa'
+const ID_B = '0192b000-0000-7000-8000-0000000000bb'
+const ID_D = '0192d000-0000-7000-8000-0000000000dd'
+
+const PATH_A = 'company/삼성전자'
+const PATH_B = 'tech/HBM'
+const PATH_DISABLE = 'concept/온디바이스-AI'
+
+/** active 2(A·B, 서로 다른 heading) + disable 1(D) 세계관 — 격리·disable 스텁을 드러낸다. */
+function seedWorld(vault) {
+  writeDoc(vault, PATH_A, { body: '## HBM 사업\n\n삼성 본문.\n', id: ID_A, title: '삼성전자', type: 'company' }) // prettier-ignore
+  writeDoc(vault, PATH_B, { body: '## 공급망\n\n공급망 본문.\n', id: ID_B, title: 'HBM', type: 'concept' }) // prettier-ignore
+  writeDoc(vault, PATH_DISABLE, { id: ID_D, status: 'disable', title: '온디바이스 AI', type: 'concept' }) // prettier-ignore
+  commit(vault, 'cwiki: active 2 + disable 1 생성')
 }
 
-const B_HTML = '<h2 id="공급망">공급망</h2>'
+describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () => {
+  it('E-W1: wiki(vault, env, path) → 그 문서 1건(본문 렌더) · 이웃 본문 미포함(격리)', () => {
+    const vault = initVault()
+    try {
+      seedWorld(vault)
 
-/** active 2(A·B) + disable 스텁 1(D) 세계관 — wiki 가 bodies·docs 양쪽을 소싱함을 드러낸다. */
-function aWikiPayload() {
-  return aPayload({
-    bodies: [
-      aBodyRecord(),
-      aBodyRecord({
-        breadcrumb: ['tech', 'HBM'],
-        headings: [{ anchor: '공급망', level: 2, text: '공급망' }],
-        html: B_HTML,
-      }),
-    ],
-    docs: [aDisableStub().build()], // DOC_D disable 스텁(breadcrumb concept/온디바이스-AI)
+      const doc = wiki(vault, 'dev', PATH_A)
+
+      expect(doc).not.toBeNull()
+      expect(doc.html).toContain('<h2')
+      expect(doc.html).toContain('HBM 사업')
+      expect(doc.headings.length).toBeGreaterThan(0)
+      expect(doc).toHaveProperty('meta')
+      expect(doc).toHaveProperty('sources')
+      expect(doc.html).not.toContain('공급망') // 이웃 문서 B 본문이 새지 않는다
+      expect(wiki(vault, 'dev', PATH_B).html).toContain('공급망') // B 는 정확히 B
+    } finally {
+      cleanup(vault)
+    }
   })
-}
+})
 
-describe('endpoints.wiki — per-document (🟢GFS 회귀 가드)', () => {
-  it('W1: ref=path → 그 문서 1건(본문 4키 존재)', () => {
-    const doc = wiki(aWikiPayload(), DOC_A.path)
+describe('endpoints.wiki — 계약 pin (E-W2·E-W3 🟢GFS)', () => {
+  it('E-W2: 없는 path → null(throw 아님)', () => {
+    const vault = initVault()
+    try {
+      seedWorld(vault)
 
-    expect(doc).not.toBeNull()
-    expect(doc.html).toBe('<h2 id="hbm-사업">HBM 사업</h2>')
-    expect(doc.headings).toEqual([{ anchor: 'hbm-사업', level: 2, text: 'HBM 사업' }])
-    expect(doc).toHaveProperty('meta')
-    expect(doc).toHaveProperty('sources')
-  })
-
-  it('W2: 없는 path → null(throw 아님)', () => {
-    expect(wiki(aWikiPayload(), '없는/경로')).toBeNull()
-  })
-
-  it('W3: disable 문서 → status=disable 스텁(throw 아님)', () => {
-    const doc = wiki(aWikiPayload(), DOC_D.path)
-
-    expect(doc).not.toBeNull()
-    expect(doc.status).toBe('disable')
+      expect(wiki(vault, 'dev', '없는/경로')).toBeNull()
+    } finally {
+      cleanup(vault)
+    }
   })
 
-  it('W4: ref=path 는 다른 문서로 새지 않는다(요청 문서만 · 이웃 본문 미포함)', () => {
-    const doc = wiki(aWikiPayload(), DOC_A.path)
+  it('E-W3: disable 문서 → status="disable" 스텁(throw 아님)', () => {
+    const vault = initVault()
+    try {
+      seedWorld(vault)
 
-    expect(doc.html).not.toContain('공급망') // 이웃 문서 B 의 본문이 섞이지 않는다
-    expect(wiki(aWikiPayload(), DOC_B.path).html).toBe(B_HTML) // B 는 정확히 B
+      const doc = wiki(vault, 'dev', PATH_DISABLE)
+
+      expect(doc).not.toBeNull()
+      expect(doc.status).toBe('disable')
+    } finally {
+      cleanup(vault)
+    }
   })
 })

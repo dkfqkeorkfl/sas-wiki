@@ -1,130 +1,96 @@
 // @vitest-environment node
 //
-// P1 · Task 2A — endpoints.summary 계약 pin (D5 · 3창구 정형화) — tdd §Task 2A
+// P1 · Task 3 — endpoints.summary **on-demand git 파싱** 전환 (D5 재작업) — tdd §Task 3 (E-S)
 //
-// RED 사유: `scripts/lib/endpoints.mjs` **부재** → 아래 지연 import 가 "Cannot find module" 로 throw →
-//   이 파일의 전 케이스가 수집 실패로 RED 다. 정적 import 로 적으면 소비자 eslint import-x/no-unresolved 가
-//   RED 커밋을 막으므로 해석을 런타임으로 미룬다(전례: ignore.test.mjs:17 · payloads.test.mjs:34 —
-//   in-process 라 coverage 계측 유지).
-//
-// GFS/RED 정직 표기(behavior 기준 — 모듈 부재의 균일 RED 와 별개):
-//   S1~S4 = 🟢GFS(payloads.buildSummary 투영 + build.mjs visibleDocs draft 필터 **상속** 회귀 가드 —
-//           endpoints.mjs 트리비얼 wrap 후 즉시 green).
-//   S5    = 🔴RED(빈 입력 경계 — 순진 구현이 throw/undocs 가능).
+// RED 사유(엔진 전환): 초판 `summary(payload, env)` 는 pre-parsed **payload 객체**를 자르기만 했다
+//   (git 미접근). 재작업 계약은 `summary(vault, env)` — **vault(git) 경로**를 받아 buildWirePayload 로
+//   전체 파싱 후 buildSummary 투영한다. 아래는 1번째 인자에 **vault 경로 문자열**을 넘긴다 →
+//   현행 payload-슬라이서가 `vault.docs.filter` 를 호출해 **TypeError**(의도한 미구현)로 실패한다.
+//   (지연 import 관례 유지 — endpoints.mjs 는 존재하나 시그니처가 payload→vault 로 전환돼야 green.)
 //
 // 계약(GREEN 이 구현):
-//   summary(payload, env) → { docs, generatedAt, schemaVersion, sourceCommit, tags, tree } 봉투.
-//     docs 는 active=10키 / disable=4키 로 **투영**(잉여 키 차단 — payloads.mjs 와 동일 계약).
-//     env='prod' → payload.docs 중 draft 마커(`draft:true`) 문서 **제외**(build.mjs:76 visibleDocs 상속).
-//     env='dev'  → 전량 포함. generatedAt/sourceCommit 는 payload 주입값을 그대로 싣는다(시계 미독).
+//   summary(vault, env) = buildWirePayload(vault, env) 전체 파싱 → buildSummary 투영.
+//     env='prod' → draft(dev/ 폴더·draft:true) 문서 제외(build.mjs visibleDocs 상속) · env='dev' → 전량.
+//     active=10키 / disable=4키 투영(본문 없음 — 부팅 페이로드에 html·md 미유출).
+//
+// 실 git 시딩(tmp-git-vault) — 순수 함수라 mock 대신 결정적 실 실행.
 import { describe, expect, it } from 'vitest'
 
-import { aDisableStub, aDoc } from './helpers/payload-builders.mjs'
-import { aPayload, DOC_B, GENERATED_AT, SOURCE_COMMIT } from './helpers/endpoint-builders.mjs'
+import { cleanup, commit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs'
 
 const { summary } = await import(new URL('../endpoints.mjs', import.meta.url).href)
 
-const TREE = [{ children: [], docs: [aDoc().build().id], path: 'company' }]
-const TAGS = { 반도체: [aDoc().build().id] }
+const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
+const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
 
-/** active 문서 하나를 draft 로 표식 — env='prod' 에서 사라져야 한다(build.mjs isDraft 상속). */
-function aDraftDoc() {
-  return aDoc().with({
-    breadcrumb: ['dev', '실험문서'],
-    draft: true,
-    id: DOC_B.id,
-    title: '실험 문서',
-  })
+const ENVELOPE_KEYS = ['docs', 'generatedAt', 'schemaVersion', 'sourceCommit', 'tags', 'tree']
+const ACTIVE_DOC_KEYS = [
+  'aliases',
+  'breadcrumb',
+  'created',
+  'excerpt',
+  'id',
+  'status',
+  'tags',
+  'title',
+  'type',
+  'updated',
+]
+
+/** active 1(prod 가시) + draft 1(dev/ 폴더) 세계관. */
+function seedMixed(vault) {
+  writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'company' })
+  writeDoc(vault, 'dev/실험문서', { id: ID_DRAFT, title: '실험 문서', type: 'concept' })
+  commit(vault, 'cwiki: 삼성전자 + dev 실험문서 생성')
 }
 
-function summaryWith(docs, env) {
-  return summary(aPayload({ docs, generatedAt: GENERATED_AT, sourceCommit: SOURCE_COMMIT, tags: TAGS, tree: TREE }), env) // prettier-ignore
-}
+describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)', () => {
+  it('E-S1: summary(vault, "prod") → 봉투 6키·draft 제외·본문 키 0', () => {
+    const vault = initVault()
+    try {
+      seedMixed(vault)
 
-describe('endpoints.summary — 봉투·투영 (🟢GFS 회귀 가드)', () => {
-  it('S1: 봉투 키 집합이 정확하다', () => {
-    const out = summaryWith([aDoc().build()], 'prod')
+      const out = summary(vault, 'prod')
 
-    expect(Object.keys(out).toSorted()).toEqual([
-      'docs',
-      'generatedAt',
-      'schemaVersion',
-      'sourceCommit',
-      'tags',
-      'tree',
-    ])
-    expect(out.schemaVersion).toBe(1)
+      expect(Object.keys(out).toSorted()).toEqual(ENVELOPE_KEYS)
+      expect(out.schemaVersion).toBe(1)
+      expect(out.docs.map((doc) => doc.id)).toContain(ID_A)
+      expect(out.docs.map((doc) => doc.id)).not.toContain(ID_DRAFT) // draft 제외
+      const active = out.docs.find((doc) => doc.id === ID_A)
+      expect(Object.keys(active).toSorted()).toEqual(ACTIVE_DOC_KEYS) // 본문(html·md) 미유출
+    } finally {
+      cleanup(vault)
+    }
   })
 
-  it('S2a: active doc 은 정확히 10키다(body 필드가 부팅 페이로드로 새지 않는다)', () => {
-    // 오염된 입력 — 투영이 없으면 html·md 가 summary 로 샌다(= 이 계약의 목적 붕괴).
-    const contaminated = aDoc().with({
-      html: '<p>본문</p>',
-      md: '# 본문',
-      path: 'company/삼성전자',
-    })
-    const out = summaryWith([contaminated.build()], 'prod')
+  it('E-S2: summary(vault, "dev") → 같은 vault 가 draft 문서를 포함한다', () => {
+    const vault = initVault()
+    try {
+      seedMixed(vault)
 
-    expect(Object.keys(out.docs[0]).toSorted()).toEqual([
-      'aliases',
-      'breadcrumb',
-      'created',
-      'excerpt',
-      'id',
-      'status',
-      'tags',
-      'title',
-      'type',
-      'updated',
-    ])
-  })
+      const out = summary(vault, 'dev')
 
-  it('S2b: disable doc 은 정확히 4키 스텁이다', () => {
-    const out = summaryWith([aDisableStub().with({ excerpt: '새면 안 된다' }).build()], 'prod')
-
-    expect(Object.keys(out.docs[0]).toSorted()).toEqual(['breadcrumb', 'id', 'status', 'title'])
-  })
-
-  it("S3: env='prod' → draft 문서가 출력 docs 에 없다(visibleDocs 상속)", () => {
-    const out = summaryWith([aDoc().build(), aDraftDoc().build()], 'prod')
-
-    expect(out.docs.map((doc) => doc.id)).not.toContain(DOC_B.id)
-  })
-
-  it("S4: env='dev' → **같은 입력** 이 draft 문서를 포함한다", () => {
-    const out = summaryWith([aDoc().build(), aDraftDoc().build()], 'dev')
-
-    expect(out.docs.map((doc) => doc.id)).toContain(DOC_B.id)
-  })
-
-  it('S4-대조: 같은 입력에서 prod⊂dev — draft 제외가 실제로 작동한다(no-op 하드코딩 방지)', () => {
-    const input = [aDoc().build(), aDraftDoc().build()]
-
-    expect(summaryWith(input, 'prod').docs.length).toBeLessThan(
-      summaryWith(input, 'dev').docs.length,
-    )
-  })
-
-  it('generatedAt/sourceCommit 은 payload 주입값을 그대로 싣는다', () => {
-    const out = summaryWith([aDoc().build()], 'prod')
-
-    expect(out.generatedAt).toBe(GENERATED_AT)
-    expect(out.sourceCommit).toBe(SOURCE_COMMIT)
+      expect(out.docs.map((doc) => doc.id)).toContain(ID_DRAFT)
+    } finally {
+      cleanup(vault)
+    }
   })
 })
 
-describe('endpoints.summary — 경계 (🔴RED)', () => {
-  it('S5: 빈 summary(prod 0문서)를 throw 없이 우아하게 처리한다', () => {
-    const out = summaryWith([], 'prod')
+describe('endpoints.summary — 경계 (E-S3 🔴RED)', () => {
+  it('E-S3: 전부 draft 인 prod → docs=[]·유효 봉투·throw 없음', () => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'dev/실험1', { id: ID_A, title: '실험1', type: 'concept' })
+      writeDoc(vault, 'dev/실험2', { id: ID_DRAFT, title: '실험2', type: 'concept' })
+      commit(vault, 'cwiki: dev 전용 문서만 생성')
 
-    expect(out.docs).toEqual([])
-    expect(Object.keys(out).toSorted()).toEqual([
-      'docs',
-      'generatedAt',
-      'schemaVersion',
-      'sourceCommit',
-      'tags',
-      'tree',
-    ])
+      const out = summary(vault, 'prod')
+
+      expect(out.docs).toEqual([])
+      expect(Object.keys(out).toSorted()).toEqual(ENVELOPE_KEYS)
+    } finally {
+      cleanup(vault)
+    }
   })
 })
