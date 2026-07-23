@@ -58,7 +58,11 @@ describe('endpoints.summary — 봉투·투영 (🟢GFS 회귀 가드)', () => {
 
   it('S2a: active doc 은 정확히 10키다(body 필드가 부팅 페이로드로 새지 않는다)', () => {
     // 오염된 입력 — 투영이 없으면 html·md 가 summary 로 샌다(= 이 계약의 목적 붕괴).
-    const contaminated = aDoc().with({ html: '<p>본문</p>', md: '# 본문', path: 'company/삼성전자' })
+    const contaminated = aDoc().with({
+      html: '<p>본문</p>',
+      md: '# 본문',
+      path: 'company/삼성전자',
+    })
     const out = summaryWith([contaminated.build()], 'prod')
 
     expect(Object.keys(out.docs[0]).toSorted()).toEqual([
@@ -96,7 +100,9 @@ describe('endpoints.summary — 봉투·투영 (🟢GFS 회귀 가드)', () => {
   it('S4-대조: 같은 입력에서 prod⊂dev — draft 제외가 실제로 작동한다(no-op 하드코딩 방지)', () => {
     const input = [aDoc().build(), aDraftDoc().build()]
 
-    expect(summaryWith(input, 'prod').docs.length).toBeLessThan(summaryWith(input, 'dev').docs.length)
+    expect(summaryWith(input, 'prod').docs.length).toBeLessThan(
+      summaryWith(input, 'dev').docs.length,
+    )
   })
 
   it('generatedAt/sourceCommit 은 payload 주입값을 그대로 싣는다', () => {
