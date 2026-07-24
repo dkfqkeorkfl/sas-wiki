@@ -274,9 +274,14 @@ export function readIdAtCreation(runGit, relFilePath) {
   let blob
   try {
     blob = runGit([...QUOTEPATH_OFF, 'show', `${creation.sha}:${creation.pathAtCommit}`])
-  } catch {
-    // 생성 blob 을 못 읽으면(경계 케이스) 게이트를 막지 않는다 — presence 는 스키마 required(id) 가 잡는다.
-    return null
+  } catch (error) {
+    // 생성 blob 을 못 읽으면 **멈춘다**. null 은 호출부(validate.mjs)에서 "pre-id era 문서 = 불변
+    //   검사 면제" 를 뜻하므로, 여기서 null 을 돌려주면 *조회 실패* 가 *면제* 로 둔갑해 제품 핵심
+    //   보증(생성 시점 id 불변)이 조용히 꺼진다. presence 는 스키마가 잡지만 **불변은 여기뿐**이다.
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`생성 blob 을 읽지 못했습니다(${relFilePath} @ ${creation.sha}): ${message}`, {
+      cause: error,
+    })
   }
   const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
   if (!match) return null

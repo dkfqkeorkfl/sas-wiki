@@ -9,7 +9,12 @@
  * @param {{ frontmatter: { draft?: unknown }, relPath: string }} parsed
  */
 export function isDraft(parsed) {
-  const flag = parsed.frontmatter.draft === true
+  // 불리언만 신뢰한다. `draft: yes`·`draft: 1` 처럼 **불리언이 아닌 값은 판단 불가**이므로 숨긴다 —
+  //   parse.mjs 의 parseScalar 는 리터럴 'true'/'false' 만 강제하고, 문서 스키마 검증(type: boolean)은
+  //   validate.mjs 에만 있어 엔드포인트 경로에서는 돌지 않는다. 오탈자로 공개되는 쪽이 오탈자로
+  //   숨는 쪽보다 훨씬 비싸다(숨김은 눈에 띄어 고쳐지고, 누출은 되돌릴 수 없다).
+  const raw = parsed.frontmatter.draft
+  const flag = raw !== undefined && raw !== false
   const inDevFolder = parsed.relPath === 'dev' || parsed.relPath.startsWith('dev/')
   return flag || inDevFolder
 }

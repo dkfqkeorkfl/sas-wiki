@@ -408,8 +408,11 @@ describe('walkFeeds — prod draft 참조 피드 제외 (GW17 🔴RED · F4)', (
       expect(titlesOf(walkFeeds(vault, { count: 10, env: 'dev' }))).toEqual(['draft 소식', '공개 소식']) // prettier-ignore
       // prod: draft 문서만 가리키는 피드 제외 → 공개 소식만(summary/wiki 와 같은 은닉 방향)
       expect(titlesOf(walkFeeds(vault, { count: 10, env: 'prod' }))).toEqual(['공개 소식'])
-      // env 미지정: 전량(fail-safe 는 prod 만 숨긴다 — 기존 호출 계약 보존)
-      expect(titlesOf(walkFeeds(vault, { count: 10 }))).toContain('draft 소식')
+      // env 미지정: **숨김**(fail-closed). 과거엔 "전량 — 기존 호출 계약 보존"으로 단언했으나 그것은
+      //   PRD D2("미지정·오류 = prod = dev 숨김")와 정면으로 어긋났고, summary/wiki(parse-vault 는
+      //   `env === 'dev'` 기준)와 극성이 반대여서 feeds 만 draft 를 노출했다. 판정을 PRD 로 되돌린다.
+      //   비-dev 값 전반의 회귀 가드는 lib/__tests__/fail-closed.verify.test.mjs(H3) 가 담당한다.
+      expect(titlesOf(walkFeeds(vault, { count: 10 }))).toEqual(['공개 소식'])
     } finally {
       cleanup(vault)
     }

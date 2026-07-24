@@ -6,10 +6,10 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkAnchorExists } from './lib/derive.mjs'
-import { readIdAtCreation } from './lib/git.mjs'
+import { buildPathIndex, collectEverDeletedDocPaths, readIdAtCreation } from './lib/git.mjs'
 import { applyIgnoreFeeds } from './lib/ignore.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
-import { extractWikilinks } from './lib/parse.mjs'
+import { collectMarkdownFilesRecursive, extractWikilinks, parseMarkdownFile } from './lib/parse.mjs'
 import { parseVault, WIKI_PREFIX } from './lib/parse-vault.mjs'
 import { buildBody, buildFeeds, buildSummary } from './lib/payloads.mjs'
 import { loadSchema, validateItem } from './lib/validate.mjs'
@@ -42,6 +42,8 @@ export function buildContent({ allowDeadlinks = false, env = 'prod', schema, vau
   validateParsedDocs(gate.visibleDocs, gate.runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
   checkDeadlinks(gate.visibleDocs, gate.derived, allowDeadlinks, vaultDir)
   checkFeedResolution(stats)
+  checkStrayDocs(vaultDir)
+  checkDeletedIdReuse(gate)
 
   const feedItems = applyIgnoreFeeds(wire.items, wire.ignore)
   const summary = buildSummary({
@@ -162,6 +164,70 @@ function checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir) {
     )
     .join('\n')
   throw new Error(`데드링크 ${deadlinks.length}건 발견:\n${detail}`)
+}
+
+/**
+ * **삭제된 문서의 id 를 다른 문서가 물려받는 것**을 막는다.
+ *
+ * 기존 두 게이트는 이 구멍을 못 봤다: 유일성은 HEAD 기준이라 이미 지워진 문서와는 안 겹치고,
+ * 불변성은 각 문서의 *자기* 생성 blob 과만 대조한다. 그 사이로 「A(id X) 삭제 → 무관한 B 가
+ * id X 로 생성」이 통과하면, A 를 가리키던 **과거 피드가 B 로 연결**된다. 피드가 곧 변경이력인
+ * 제품에서 이는 조용한 오귀속이다.
+ *
+ * rename·같은 경로 복원은 `buildPathIndex`(과거 경로 → 현재 doc id)가 이미 같은 문서로 묶으므로
+ * 통과한다 — 막는 것은 **경로도 id 도 다른 계보가 id 만 물려받은** 경우뿐이다.
+ */
+function checkDeletedIdReuse({ derived, runGit }) {
+  const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
+    filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
+    id: doc.id,
+  }))
+  const livePathById = new Map(headDocs.map((doc) => [doc.id, doc.filePath]))
+  const livePaths = new Set(headDocs.map((doc) => doc.filePath))
+  const pathIndex = buildPathIndex(headDocs, runGit)
+
+  const violations = []
+  for (const deletedPath of collectEverDeletedDocPaths(runGit, { wikiPrefix: WIKI_PREFIX })) {
+    if (pathIndex.has(deletedPath)) continue // rename 계보 — 같은 문서다
+    // 같은 경로로 되살아났으면 복원이다. `--follow` 는 삭제를 건너뛰지 못해 pathIndex 가 이 계보를
+    //   잇지 못하므로 경로 일치를 별도 신호로 쓴다(경로·id 가 모두 같다 = 가용한 최강의 동일성 근거).
+    if (livePaths.has(deletedPath)) continue
+    const idAtCreation = readIdAtCreation(runGit, deletedPath)
+    if (idAtCreation === null) continue // pre-id era — 대조할 id 가 없다
+    const livePath = livePathById.get(idAtCreation)
+    if (livePath !== undefined) violations.push({ deletedPath, id: idAtCreation, livePath })
+  }
+  if (violations.length === 0) return
+
+  const detail = violations
+    .map((entry) => `  - id ${entry.id}: 삭제된 ${entry.deletedPath} → 현재 ${entry.livePath}`)
+    .join('\n')
+  throw new Error(
+    `삭제된 문서의 id 재사용 ${violations.length}건 — 과거 피드가 다른 문서로 연결된다:\n${detail}\n` +
+      `  해결: 새 문서에는 새 UUIDv7 을 부여하거나, 같은 문서의 복원이라면 원래 경로로 되돌린다.`,
+  )
+}
+
+/**
+ * vault/wiki 아래에 **문서로 해석되지 않는 .md** 가 있으면 중단한다.
+ *
+ * `parseVault` 는 서빙 경로(요청마다 실행)라 이런 파일을 건너뛴다 — 오타 하나로 위키 전체가 죽으면
+ * 안 되기 때문이다. 그 대신 조용한 누락을 여기서 막는다: 저자는 올렸다고 믿는데 독자에겐 없는
+ * 상태가 가장 늦게 발견되는 결함이다.
+ *
+ * `checkFeedResolution` **뒤에** 놓는다 — 그 파일을 가리키는 feed 가 있으면 sha 를 담은 미해석
+ * 진단이 더 구체적이므로 먼저 나가야 하고, 여기서는 **아무도 안 건드린 stray** 를 담당한다.
+ */
+function checkStrayDocs(vaultDir) {
+  const wikiDir = path.join(vaultDir, 'vault', 'wiki')
+  const stray = collectMarkdownFilesRecursive(wikiDir).filter(
+    (filePath) => !parseMarkdownFile(filePath),
+  )
+  if (stray.length === 0) return
+  const detail = stray.map((filePath) => `  - ${path.relative(vaultDir, filePath)}`).join('\n')
+  throw new Error(
+    `frontmatter 가 없어 문서로 해석되지 않는 파일 ${stray.length}건 — 조용히 누락되지 않도록 중단한다:\n${detail}`,
+  )
 }
 
 /**

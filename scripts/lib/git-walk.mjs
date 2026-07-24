@@ -21,8 +21,10 @@ export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   const limit = typeof count === 'number' && count > 0 ? count : DEFAULT_FEED_LIMIT
   // F4: prod 는 draft 문서를 headIds/pathIndex 에서 제외한다 → draft 만 가리키는 피드는 resolve 실패로
   //   prune 되어 노출되지 않는다(build.mjs 의 excludedFeedRefs 와 같은 방향, `isDraft` SSOT 재사용).
-  //   dev(및 미지정)는 전량 — fail-safe 는 prod 만 숨긴다.
-  const headDocs = loadHeadDocs(vaultDir, env === 'prod')
+  //   판정은 **`dev` 만 전량, 그 외는 전부 prod**(fail-closed) — parse-vault.mjs 의 visibleDocs 와
+  //   같은 극성이어야 한다. 과거 `env === 'prod'` 였을 때는 'staging'·''·오타 같은 non-dev 값이
+  //   excludeDrafts=false 로 떨어져 summary/wiki 는 숨긴 draft 를 feeds 만 노출했다(PRD D2 위반).
+  const headDocs = loadHeadDocs(vaultDir, env !== 'dev')
   const headIds = new Set(headDocs.map((doc) => doc.id))
   const ignoreEntries = loadIgnoreFeeds(vaultDir)
   const runGit = makeGitRunner(vaultDir)
@@ -124,23 +126,25 @@ function revListChunk(runGit, tip, maxCount) {
     throw error
   }
 
-  return raw
-    .split('\x1e')
-    // git 은 각 커밋의 format 출력 뒤에 개행을 붙인다 → `\x1e` 로 자르면 **첫 레코드를 뺀 나머지**는
-    // 선행 `\n` 을 달고 온다. `^commit …` 는 (m 플래그 없이) 문자열 시작에 고정돼 있어 그 선행 개행 탓에
-    // 두 번째 레코드부터 헤더줄이 안 벗겨지고, hash 필드에 `\ncommit <sha>\n<hash>` 가 섞여 이후 모든
-    // git 조회가 조용히 실패했다(피드 1건만 resolve). 선행 개행을 함께 소거한다.
-    .map((record) => record.replace(/^\r?\n?commit [0-9a-f]{40}\r?\n/u, '').trimEnd())
-    .filter(Boolean)
-    .map((record) => {
-      const [hash, authorDate, subject, ...bodyParts] = record.split('\t')
-      return {
-        authorDate,
-        body: bodyParts.join('\t').replace(/^\n+/, '').replace(/\s+$/u, ''),
-        hash,
-        subject: subject || '',
-      }
-    })
+  return (
+    raw
+      .split('\x1e')
+      // git 은 각 커밋의 format 출력 뒤에 개행을 붙인다 → `\x1e` 로 자르면 **첫 레코드를 뺀 나머지**는
+      // 선행 `\n` 을 달고 온다. `^commit …` 는 (m 플래그 없이) 문자열 시작에 고정돼 있어 그 선행 개행 탓에
+      // 두 번째 레코드부터 헤더줄이 안 벗겨지고, hash 필드에 `\ncommit <sha>\n<hash>` 가 섞여 이후 모든
+      // git 조회가 조용히 실패했다(피드 1건만 resolve). 선행 개행을 함께 소거한다.
+      .map((record) => record.replace(/^\r?\n?commit [0-9a-f]{40}\r?\n/u, '').trimEnd())
+      .filter(Boolean)
+      .map((record) => {
+        const [hash, authorDate, subject, ...bodyParts] = record.split('\t')
+        return {
+          authorDate,
+          body: bodyParts.join('\t').replace(/^\n+/, '').replace(/\s+$/u, ''),
+          hash,
+          subject: subject || '',
+        }
+      })
+  )
 }
 
 function resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex) {

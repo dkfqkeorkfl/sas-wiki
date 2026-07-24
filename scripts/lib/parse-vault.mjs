@@ -52,6 +52,9 @@ export function parseVault(vaultDir, env, schemaDir) {
   const parsedDocs = collectMarkdownFilesRecursive(wikiDir)
     .map((filePath) => {
       const parsed = parseMarkdownFile(filePath)
+      // frontmatter 가 없는 파일은 여기서 건너뛴다 — parseVault 는 **dev 서빙의 모든 요청 경로**라
+      //   오타 하나로 위키 전체가 죽으면 안 된다. 다만 조용한 누락은 남기지 않는다:
+      //   `validate.mjs:checkStrayDocs` 가 게이트에서 이를 오류로 올린다(서빙은 견디고, 검증은 막는다).
       if (!parsed) return null
       if (parsed.frontmatter.type === undefined)
         throw new Error(`type 필드가 없습니다: ${filePath}`)
