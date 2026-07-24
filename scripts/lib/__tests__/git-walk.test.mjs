@@ -396,7 +396,7 @@ describe('walkFeeds — 뒤섞인 author-date 조기종료 방지 (GW16 🔴RED 
 })
 
 describe('walkFeeds — prod draft 참조 피드 제외 (GW17 🔴RED · F4)', () => {
-  it('GW17: env="prod" 는 draft(dev/) 문서만 가리키는 피드를 제외하고, dev·미지정은 포함한다', () => {
+  it('GW17: draft(dev/) 문서만 가리키는 피드는 dev 만 포함하고 prod·미지정은 제외한다', () => {
     const vault = initVault()
     try {
       seedDoc(vault, 'company/삼성', ID_A) // 공개 문서

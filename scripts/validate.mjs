@@ -184,11 +184,16 @@ function checkDeletedIdReuse({ derived, runGit }) {
   }))
   const livePathById = new Map(headDocs.map((doc) => [doc.id, doc.filePath]))
   const livePaths = new Set(headDocs.map((doc) => doc.filePath))
-  const pathIndex = buildPathIndex(headDocs, runGit)
+  // `buildPathIndex` 의 키는 `${sha}:${그 커밋 당시 경로}` 다 — 삭제 경로를 그대로 `has()` 에 넣으면
+  //   **절대 맞지 않아** 면제가 죽은 분기가 된다(rename 이 D 로 잡히는 순간 정당한 이동을 오탐).
+  //   sha 에는 콜론이 없으므로 첫 콜론 뒤가 경로다.
+  const lineagePaths = new Set(
+    [...buildPathIndex(headDocs, runGit).keys()].map((key) => key.slice(key.indexOf(':') + 1)),
+  )
 
   const violations = []
   for (const deletedPath of collectEverDeletedDocPaths(runGit, { wikiPrefix: WIKI_PREFIX })) {
-    if (pathIndex.has(deletedPath)) continue // rename 계보 — 같은 문서다
+    if (lineagePaths.has(deletedPath)) continue // rename 계보 — 같은 문서다
     // 같은 경로로 되살아났으면 복원이다. `--follow` 는 삭제를 건너뛰지 못해 pathIndex 가 이 계보를
     //   잇지 못하므로 경로 일치를 별도 신호로 쓴다(경로·id 가 모두 같다 = 가용한 최강의 동일성 근거).
     if (livePaths.has(deletedPath)) continue

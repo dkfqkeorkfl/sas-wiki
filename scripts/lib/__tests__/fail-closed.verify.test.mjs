@@ -208,7 +208,40 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
       writeDoc(vault, 'tech/새문서', { id: UUIDV7_PUBLIC, title: '새문서' }) // 같은 id 재사용
       commit(vault, 'cwiki: 새문서 생성')
 
-      expect(() => buildContent({ env: 'prod', vault })).toThrow(/구문서|재사용/u)
+      // 진단이 세 가지를 모두 담아야 조치가 가능하다 — 재사용된 id · 삭제된 경로 · 현재 경로.
+      //   느슨한 `/구문서|재사용/` 은 셋 중 하나만 있어도 통과해 약한 진단을 눈감아준다.
+      const detail = (() => {
+        try {
+          buildContent({ env: 'prod', vault })
+          return null
+        } catch (error) {
+          return error.message
+        }
+      })()
+
+      expect(detail, 'id 재사용을 잡지 못했다').not.toBeNull()
+      expect(detail).toContain(UUIDV7_PUBLIC)
+      expect(detail).toContain('company/구문서.md')
+      expect(detail).toContain('tech/새문서.md')
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  // rename 계보 면제는 `buildPathIndex` 로 판정하는데, 그 Map 의 키는 `${sha}:${경로}` 다.
+  //   삭제 경로(`vault/wiki/…md`)를 그대로 `has()` 에 넣으면 **절대 맞지 않아** 면제가 죽은 분기가 된다.
+  //   git 기본 rename 감지가 켜져 있으면 이동이 R 로 잡혀 D 목록에 안 들어와 증상이 가려지므로,
+  //   `diff.renames=false`(사용자가 설정 가능)로 감지를 끄고 그 아래를 드러낸다.
+  it('rename 감지가 꺼져 있어도 정당한 문서 이동은 통과한다 (계보 면제가 실제로 동작한다)', () => {
+    const vault = initVault()
+    try {
+      git(vault, ['config', 'diff.renames', 'false'])
+      writeDoc(vault, 'company/구경로', { id: UUIDV7_PUBLIC, title: '문서' })
+      commit(vault, 'cwiki: 문서 생성')
+      git(vault, ['mv', 'vault/wiki/company/구경로.md', 'vault/wiki/company/새경로.md'])
+      commit(vault, 'uwiki: 문서 이동')
+
+      expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
     } finally {
       cleanup(vault)
     }
