@@ -21,7 +21,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { buildContent, deriveGeneratedAt, parseArgs } from '../build.mjs'
+import { deriveGeneratedAt } from '../lib/parse-vault.mjs'
+import { buildContent, parseArgs } from '../validate.mjs'
 import { buildFeedItems } from '../lib/feed.mjs'
 import { cleanup, commit, git, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
 
@@ -96,28 +97,28 @@ describe('parseArgs --env — dev|prod · fail-closed 기본 · bogus throw', ()
   })
 
   it('--env dev → options.env === "dev" (RED — 현행은 알 수 없는 인자로 throw)', () => {
-    expect(parseArgs(['--vault', 'v', '--out', 'o', '--env', 'dev']).env).toBe('dev')
+    expect(parseArgs(['--vault', 'v', '--env', 'dev']).env).toBe('dev')
   })
 
   it('--env prod → options.env === "prod"', () => {
-    expect(parseArgs(['--vault', 'v', '--out', 'o', '--env', 'prod']).env).toBe('prod')
+    expect(parseArgs(['--vault', 'v', '--env', 'prod']).env).toBe('prod')
   })
 
   it('--env 미지정 → prod (fail-closed 기본, Layer B — RED: 현행은 env 부재)', () => {
-    expect(parseArgs(['--vault', 'v', '--out', 'o']).env).toBe('prod')
+    expect(parseArgs(['--vault', 'v']).env).toBe('prod')
   })
 
   it('--env 미지정 → console.error 경고 (silent 폴백 금지 — RED: 현행은 경고 없음)', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    parseArgs(['--vault', 'v', '--out', 'o'])
+    parseArgs(['--vault', 'v'])
 
     expect(spy).toHaveBeenCalled()
     expect(spy.mock.calls.flat().join(' ')).toMatch(/prod|fail-closed|미지정/i)
   })
 
   it('--env 잘못된 값(staging) → throw (E3 조용한 폴백 금지)', () => {
-    expect(() => parseArgs(['--vault', 'v', '--out', 'o', '--env', 'staging'])).toThrow()
+    expect(() => parseArgs(['--vault', 'v', '--env', 'staging'])).toThrow()
   })
 })
 

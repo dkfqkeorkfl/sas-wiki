@@ -29,7 +29,7 @@ import { extractTrailers } from '../lib/feed.mjs'
 import { isVaultDoc, readVaultFacts } from './helpers/vault-facts.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)) // scripts/wiki/__tests__
-const SEED_SCRIPT = path.resolve(HERE, '..', 'seed-example-vault.mjs') // GREEN 대상
+const SEED_SCRIPT = path.resolve(HERE, 'helpers', 'seed-example-vault.mjs') // GREEN 대상
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
 // 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신

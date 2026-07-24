@@ -11,7 +11,7 @@
 //   현행에서도 자명히 PASS 이므로 green-stay 이고, GREEN 후 게이트가 pre-id 를 안 건드리는지를 지킨다.
 import { describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 import { cleanup, commit, initVault, makeOut, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const UUIDV7_A = '0192f0c0-8000-7000-8000-0123456789ab'

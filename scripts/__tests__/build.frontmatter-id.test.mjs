@@ -12,7 +12,7 @@
 //   두 지점 반전(derive + build) 중 build 쪽 한 곳만 놓치면 이 스펙이 잡는다(침묵 no-op).
 import { describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 import { cleanup, commit, initVault, makeOut, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const UUIDV7_A = '0192f0c0-8000-7000-8000-0123456789ab'

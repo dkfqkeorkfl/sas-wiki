@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 
 const NAME = 'SAS Wiki Bot'
 const EMAIL = 'bot@sas.wiki'

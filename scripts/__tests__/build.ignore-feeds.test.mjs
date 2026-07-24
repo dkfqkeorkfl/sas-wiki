@@ -18,7 +18,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { buildContent, main } from '../build.mjs'
+import { buildContent, main } from '../validate.mjs'
 import { checkInvariants } from '../lib/invariants.mjs'
 import { cleanup, commit, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
 
@@ -137,7 +137,7 @@ describe('build 배선 — hygiene 경고(stale)', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
     let printed = ''
     try {
-      await main(['--vault', ctx.vault, '--out', out, '--env', 'dev'])
+      await main(['--vault', ctx.vault, '--env', 'dev'])
       printed = spy.mock.calls.flat().join('\n') // mockRestore 가 calls 를 비우므로 restore 전에 캡처
     } finally {
       spy.mockRestore()

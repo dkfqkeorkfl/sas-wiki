@@ -15,8 +15,8 @@ import { describe, expect, it } from 'vitest'
 
 import { cleanup, commit, feedCommit, initVault, makeOut, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
 
-const build = await import(new URL('../../build.mjs', import.meta.url).href)
-const { buildWirePayload } = build
+const { buildWirePayload } = await import(new URL('../parse-vault.mjs', import.meta.url).href)
+const build = await import(new URL('../../validate.mjs', import.meta.url).href)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb'

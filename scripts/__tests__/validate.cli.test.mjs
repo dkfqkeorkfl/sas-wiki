@@ -1,21 +1,12 @@
 // @vitest-environment node
 //
-// P2 RED-8 · scripts/wiki/build.mjs CLI 계약(인자 분리 · shallow 가드 · 통계 출력) — tdd §6.8
+// validate.mjs CLI 계약(인자 분리 · shallow/partial 가드 · 통계 출력 · JSON 미생산) — 구 build.cli.test.
 //
-// RED 사유:
-//   ① `parseArgs` 가 export 되지 않는다(현행은 모듈 내부 함수) → import 링크 실패(파일 전체 RED).
-//   ② 현행 인자는 `--root` 하나뿐이다 — 입력·schema·git·**출력**을 겸해 서브모듈에 산출물을 싸지른다.
-//   ③ shallow/partial 선제 fail·3파일 산출·통계 stdout 미구현.
+// build.mjs → validate.mjs 재정리 반영: `--out`/JSON 산출은 **제거**됐다(dev=미들웨어 on-demand,
+//   prod=미래 서버). CLI 는 무결성 검증 전용 — 통과 시 exit 0, 위반(컨벤션·스키마·unresolved·shallow·
+//   partial) 시 exit 1(fail-loud). 산출 파일은 만들지 않는다. 인자·게이트·통계 단언은 의미 보존.
 //
-// 계약(GREEN 이 구현할 seam):
-//   parseArgs(argv) → { allowDeadlinks, out, schema, vault }   // 테스트 가능하도록 **export**
-//     `--vault <dir>`(입력) · `--out <dir>`(출력) · `--schema <dir>`(기본 = 스크립트 옆 schema/)
-//     **`--root` 는 거부한다** — 호환 별칭을 만들지 마라(마이그레이션 금지).
-//   node build.mjs --vault <v> --out <o>
-//     → <o>/wiki_{summary,feeds,body}.json 3파일 · stdout 에 docs=·feeds=·prune=·unresolved=·warnings=
-//     → shallow·partial·스키마 위반이면 **exit 1**
-//
-// subprocess 는 **여기서만** 쓴다(CLI 회귀). 나머지는 in-process — 커버리지 계측 때문이다(tdd §11).
+// subprocess 는 **여기서만** 쓴다(CLI 회귀). 나머지는 in-process — 커버리지 계측 때문이다.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs' // prettier-ignore
 import { tmpdir } from 'node:os'
@@ -23,11 +14,11 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { parseArgs } from '../build.mjs'
+import { parseArgs } from '../validate.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const SCRIPT_DIR = path.resolve(HERE, '..') // scripts/wiki
-const BUILD_SCRIPT = path.join(SCRIPT_DIR, 'build.mjs')
+const SCRIPT_DIR = path.resolve(HERE, '..')
+const VALIDATE_SCRIPT = path.join(SCRIPT_DIR, 'validate.mjs')
 const REAL_SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 
 const NAME = 'SAS Wiki Bot'
@@ -74,18 +65,14 @@ function nextDate() {
   return `${tick} +0000`
 }
 
-// frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일). id 출처가 frontmatter 로 반전됐다.
+// frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일).
 let idSeq = 0
 function nextDocId() {
   return `0192f0d0-0000-7000-8000-${(idSeq += 1).toString(16).padStart(12, '0')}`
 }
 
-function outDir() {
-  return mkdtempSync(path.join(ctx.tmp, 'out-'))
-}
-
 function runCli(args) {
-  return spawnSync(process.execPath, [BUILD_SCRIPT, ...args], {
+  return spawnSync(process.execPath, [VALIDATE_SCRIPT, ...args], {
     encoding: 'utf8',
     env: { ...process.env, SOURCE_DATE_EPOCH: '1700000000' },
   })
@@ -118,9 +105,8 @@ function writeDoc(root, rel, title) {
 }
 
 function writeStray(root, text) {
-  // frontmatter 가 **없는** vault md — 문서가 아니다(parseMarkdownFile → null).
-  // 이 파일을 건드린 feed 커밋의 diff 경로는 역인덱스로도 삭제집합으로도 해석되지 않는다
-  // → **unresolvedPaths 로 집계**돼야 한다. `continue` 로 버리면 조용한 유실이다(tdd §8).
+  // frontmatter 가 **없는** vault md — 문서가 아니다(parseMarkdownFile → null). 이 파일을 건드린 feed
+  // 커밋의 diff 경로는 역인덱스로도 삭제집합으로도 해석되지 않는다 → **unresolvedPaths 로 집계**돼야 한다.
   const full = path.join(root, 'vault', 'wiki', 'concept', '메모장.md')
   mkdirSync(path.dirname(full), { recursive: true })
   writeFileSync(full, `${text}\n`)
@@ -155,19 +141,14 @@ beforeAll(() => {
   git(ctx.vault, ['rm', '-q', 'vault/wiki/misc/del-me.md'])
   commit(ctx.vault, 'uwiki: 폐기문서 삭제')
 
-  // 해석 불가(unresolved) 시나리오는 **별도 vault** 다 — 본 vault 에 섞으면 컨벤션 가드가 먼저
-  // 죽여서(신규 파일을 추가하는 uwiki 는 위반) 나머지 CLI 계약을 검증할 수 없다.
+  // 해석 불가(unresolved) 시나리오는 **별도 vault** 다 — 본 vault 에 섞으면 컨벤션 가드가 먼저 죽인다.
   ctx.unresolvedVault = path.join(ctx.tmp, 'unresolved-repo')
   mkdirSync(ctx.unresolvedVault, { recursive: true })
   git(ctx.unresolvedVault, ['init', '-q'])
   writeDoc(ctx.unresolvedVault, 'concept/foo', '삼성전자')
   commit(ctx.unresolvedVault, 'cwiki: 삼성전자 문서 생성')
-  // 컨벤션 밖(`chore:`) 커밋으로 stray 를 들인다 — 컨벤션 가드의 대상이 아니므로 통과하고,
-  // 그 경로를 건드리는 feed 만 남는다.
   writeStray(ctx.unresolvedVault, '# 메모\n\n프론트매터가 없는 임시 메모다.')
   commit(ctx.unresolvedVault, 'chore: 임시 메모 추가')
-
-  // 문서 1건 + **해석 불가 경로 1건**을 함께 건드리는 피드 → 삭제 이력이 없으므로 build fail
   writeStray(ctx.unresolvedVault, '# 메모\n\n갱신된 메모다.')
   writeFileSync(
     path.join(ctx.unresolvedVault, 'vault', 'wiki', 'concept', 'foo.md'),
@@ -210,92 +191,89 @@ afterAll(() => {
   if (ctx.tmp) rmSync(ctx.tmp, { force: true, recursive: true })
 })
 
-describe('parseArgs — 인자 분리(--root 폐기)', () => {
-  it('--vault·--out·--schema·--allow-deadlinks 를 절대경로로 파싱한다', () => {
-    const options = parseArgs(['--vault', 'sas-wiki', '--out', 'public', '--allow-deadlinks'])
+describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
+  it('--vault·--schema·--allow-deadlinks 를 절대경로로 파싱한다', () => {
+    const options = parseArgs(['--vault', 'sas-wiki', '--allow-deadlinks'])
 
     expect(options.vault).toBe(path.resolve('sas-wiki'))
-    expect(options.out).toBe(path.resolve('public'))
     expect(options.allowDeadlinks).toBe(true)
     // 서브모듈에는 schema/ 가 없다(실측) → 기본값은 **스크립트 옆** schema/ 다.
     expect(options.schema).toBe(REAL_SCHEMA_DIR)
   })
 
   it('--schema 를 주면 그 디렉토리를 쓴다', () => {
-    const options = parseArgs(['--vault', 'v', '--out', 'o', '--schema', 'custom/schema'])
+    const options = parseArgs(['--vault', 'v', '--schema', 'custom/schema'])
 
     expect(options.schema).toBe(path.resolve('custom/schema'))
   })
 
-  it('--root 는 거부한다(호환 별칭 금지 — 입력·출력이 한 인자에 뭉치던 결함)', () => {
-    expect(() => parseArgs(['--root', 'sas-wiki'])).toThrow(/--vault|--out/)
+  it('--out 은 거부한다(validate.mjs 는 JSON 을 생산하지 않는다 — 출력 인자 없음)', () => {
+    expect(() => parseArgs(['--vault', 'v', '--out', 'public'])).toThrow(/--out/)
+  })
+
+  it('--root 는 거부한다(호환 별칭 금지)', () => {
+    expect(() => parseArgs(['--root', 'sas-wiki'])).toThrow(/--vault/)
   })
 
   it('--vault 누락은 throw 한다(cwd 로 조용히 폴백하지 않는다)', () => {
-    expect(() => parseArgs(['--out', 'public'])).toThrow(/--vault/)
+    expect(() => parseArgs(['--allow-deadlinks'])).toThrow(/--vault/)
   })
 })
 
-describe('build CLI — 히스토리 무결성 선제 fail', () => {
+describe('validate CLI — 히스토리 무결성 선제 fail', () => {
   it('shallow 리포는 이유와 복구 명령을 담아 실패한다', () => {
-    const result = runCli(['--vault', ctx.shallow, '--out', outDir()])
+    const result = runCli(['--vault', ctx.shallow])
 
     expect(result.status).not.toBe(0)
-    // "얕은 히스토리는 문서 id 와 피드를 **조용히** 틀리게 만든다" — 왜 죽는지가 메시지에 있어야 한다.
     expect(`${result.stderr}${result.stdout}`).toMatch(/shallow|얕은/i)
     expect(`${result.stderr}${result.stdout}`).toMatch(/fetch-depth|unshallow|fetch/i)
   })
 
   it('partial clone(blob 필터)도 실패한다', () => {
-    const result = runCli(['--vault', ctx.partial, '--out', outDir()])
+    const result = runCli(['--vault', ctx.partial])
 
     expect(result.status).not.toBe(0)
     expect(`${result.stderr}${result.stdout}`).toMatch(/partial|blob/i)
   })
 
   it('정상 full clone 은 성공한다(과잉 검출 방지)', () => {
-    // 2번째 케이스: 하드코딩 fail 이면 정상 vault 까지 죽인다.
-    const result = runCli(['--vault', ctx.vault, '--out', outDir()])
+    const result = runCli(['--vault', ctx.vault])
 
     expect(result.status).toBe(0)
   })
 })
 
-describe('build CLI — 산출물', () => {
-  it('3파일을 --out 에 쓰고 vault 워킹트리를 더럽히지 않는다', () => {
-    const out = outDir()
-
-    const result = runCli(['--vault', ctx.vault, '--out', out])
+describe('validate CLI — JSON 미생산 · vault 무오염', () => {
+  it('무결성 통과해도 JSON 을 만들지 않고 vault 워킹트리를 더럽히지 않는다', () => {
+    const result = runCli(['--vault', ctx.vault])
 
     expect(result.status).toBe(0)
+    // validate 는 검증 전용 — 산출 JSON 을 vault 어디에도 쓰지 않는다.
     for (const file of ['wiki_summary.json', 'wiki_feeds.json', 'wiki_body.json']) {
-      expect(existsSync(path.join(out, file)), file).toBe(true)
+      expect(existsSync(path.join(ctx.vault, file)), file).toBe(false)
+      expect(existsSync(path.join(ctx.vault, 'vault', 'wiki', file)), file).toBe(false)
     }
     expect(git(ctx.vault, ['status', '--porcelain'])).toBe('')
   })
 
   it('content.json·prototype.html 을 더 이상 만들지 않는다', () => {
-    const out = outDir()
+    runCli(['--vault', ctx.vault])
 
-    runCli(['--vault', ctx.vault, '--out', out])
-
-    for (const dir of [out, ctx.vault]) {
-      expect(existsSync(path.join(dir, 'content.json')), `${dir}/content.json`).toBe(false)
-      expect(existsSync(path.join(dir, 'prototype.html')), `${dir}/prototype.html`).toBe(false)
-    }
+    expect(existsSync(path.join(ctx.vault, 'content.json'))).toBe(false)
+    expect(existsSync(path.join(ctx.vault, 'prototype.html'))).toBe(false)
   })
 
   it('스키마 위반은 exit 1 로 죽는다', () => {
-    const result = runCli(['--vault', ctx.vault, '--out', outDir(), '--schema', ctx.badSchema])
+    const result = runCli(['--vault', ctx.vault, '--schema', ctx.badSchema])
 
     expect(result.status).toBe(1)
     expect(`${result.stderr}${result.stdout}`).toMatch(/스키마|schema|NOPE/i)
   })
 })
 
-describe('build CLI — 통계 stdout (조용한 유실 종료)', () => {
+describe('validate CLI — 통계 stdout (조용한 유실 종료)', () => {
   it('docs·feeds·prune·unresolved·warnings 를 stdout 에 낸다', () => {
-    const result = runCli(['--vault', ctx.vault, '--out', outDir()])
+    const result = runCli(['--vault', ctx.vault])
 
     for (const token of ['docs=', 'feeds=', 'prune=', 'unresolved=', 'warnings=']) {
       expect(result.stdout, token).toContain(token)
@@ -303,10 +281,8 @@ describe('build CLI — 통계 stdout (조용한 유실 종료)', () => {
   })
 
   it('해석 실패 경로는 sha·경로를 담아 exit 1 로 죽는다', () => {
-    // 예전엔 unresolved=1 을 stdout 에 찍고도 exit 0 이었다 — 피드가 가리킨 문서 1건이 조용히
-    // 빠진 산출물이 그대로 배포된다. "삭제 이력으로도 설명되지 않는" 경로는 데이터 결함이므로
-    // 산출물을 쓰기 전에 중단한다(삭제로 설명되는 경로는 여전히 prune 이다 — 아래 케이스).
-    const result = runCli(['--vault', ctx.unresolvedVault, '--out', outDir()])
+    // "삭제 이력으로도 설명되지 않는" 경로는 데이터 결함이므로 통과시키지 않고 중단한다.
+    const result = runCli(['--vault', ctx.unresolvedVault])
 
     expect(result.status).toBe(1)
     const output = `${result.stderr}${result.stdout}`
@@ -315,7 +291,7 @@ describe('build CLI — 통계 stdout (조용한 유실 종료)', () => {
   })
 
   it('prune 건수가 stdout 에 나온다', () => {
-    const result = runCli(['--vault', ctx.vault, '--out', outDir()])
+    const result = runCli(['--vault', ctx.vault])
 
     expect(result.stdout).toContain('prune=1')
   })

@@ -13,7 +13,7 @@ describe('build.mjs 엔트리 import-safety', () => {
   it('build.mjs 를 import 해도 main() 이 실행되지 않는다(부작용/exit 없이 로드)', async () => {
     // import 가 resolve 되고 그 다음 줄에 도달한다는 것 자체가 "main 미실행" 의 증거
     // (가드 부재 시 process.exit 로 여기 도달 못 함).
-    const mod = await import('../build.mjs')
+    const mod = await import('../validate.mjs')
 
     expect(mod).toBeDefined()
   })

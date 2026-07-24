@@ -1,6 +1,6 @@
 // 3 엔드포인트 레퍼런스 SSOT (D5 · summary/feeds/wiki) — 순수 함수. 서빙 로직 없음.
 
-import { buildWirePayload } from '../build.mjs'
+import { buildWirePayload } from './parse-vault.mjs'
 import { walkFeeds } from './git-walk.mjs'
 import { buildFeeds, buildSummary } from './payloads.mjs'
 

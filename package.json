@@ -8,7 +8,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build:payloads": "node scripts/build.mjs --vault .",
+    "validate": "node scripts/validate.mjs --vault . --env dev",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write .",

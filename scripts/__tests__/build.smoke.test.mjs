@@ -19,7 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 import { loadSchema, validateItem } from '../lib/validate.mjs'
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
@@ -37,7 +37,7 @@ const NAME = 'SAS Wiki Bot'
 const EMAIL = 'bot@sas.wiki'
 let tick = 1_136_239_445
 
-const ctx = { ids: {}, out1: '', out2: '', prevEpoch: undefined, result: null, vault: '' }
+const ctx = { ids: {}, prevEpoch: undefined, result: null, result2: null, vault: '' }
 
 function appendDoc(root, rel, paragraph) {
   const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
@@ -72,10 +72,6 @@ function git(cwd, args, extraEnv = {}) {
 function nextDate() {
   tick += 60
   return `${tick} +0000`
-}
-
-function readPayload(dir, file) {
-  return JSON.parse(readFileSync(path.join(dir, file), 'utf8'))
 }
 
 // frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일). id 출처가 frontmatter 로 반전됐다.
@@ -116,8 +112,6 @@ function writeDoc(root, rel, title) {
 beforeAll(() => {
   const vault = mkdtempSync(path.join(tmpdir(), 'wiki-smoke-'))
   ctx.vault = vault
-  ctx.out1 = mkdtempSync(path.join(tmpdir(), 'wiki-smoke-out1-'))
-  ctx.out2 = mkdtempSync(path.join(tmpdir(), 'wiki-smoke-out2-'))
   git(vault, ['init', '-q'])
 
   // 1 · 문서 생성(cwiki — 신규 파일 정확히 1개. id = frontmatter 저작 UUIDv7)
@@ -174,23 +168,25 @@ beforeAll(() => {
   ctx.prevEpoch = process.env.SOURCE_DATE_EPOCH
   process.env.SOURCE_DATE_EPOCH = EPOCH
 
-  ctx.result = buildContent({ out: ctx.out1, vault })
-  buildContent({ out: ctx.out2, vault })
+  // 결정성 검증용 2회 조립(같은 입력·같은 SOURCE_DATE_EPOCH). validate 는 파일을 쓰지 않으므로
+  // in-memory payload 를 대조한다(구: out1·out2 byte-identical).
+  ctx.result = buildContent({ vault })
+  ctx.result2 = buildContent({ vault })
 })
 
 afterAll(() => {
   if (ctx.prevEpoch === undefined) delete process.env.SOURCE_DATE_EPOCH
   else process.env.SOURCE_DATE_EPOCH = ctx.prevEpoch
-  for (const dir of [ctx.vault, ctx.out1, ctx.out2]) {
+  for (const dir of [ctx.vault]) {
     if (dir) rmSync(dir, { force: true, recursive: true })
   }
 })
 
 describe('build.smoke — 3 페이로드 산출', () => {
-  it('wiki_summary·wiki_feeds·wiki_body 3파일을 쓰고 JSON.parse 가능하다', () => {
-    expect(readPayload(ctx.out1, 'wiki_summary.json').docs.length).toBeGreaterThan(0)
-    expect(readPayload(ctx.out1, 'wiki_feeds.json').items).toBeInstanceOf(Array)
-    expect(Object.keys(readPayload(ctx.out1, 'wiki_body.json').docs).length).toBeGreaterThan(0)
+  it('3 페이로드(summary·feeds·body)를 in-memory 로 조립하고 유효하다', () => {
+    expect(ctx.result.summary.docs.length).toBeGreaterThan(0)
+    expect(ctx.result.feeds.items).toBeInstanceOf(Array)
+    expect(Object.keys(ctx.result.body.docs).length).toBeGreaterThan(0)
   })
 
   it('3 페이로드가 strict 스키마를 통과한다', () => {
@@ -286,12 +282,12 @@ describe('build.smoke — 삭제·prune·재생성', () => {
 })
 
 describe('build.smoke — 결정성', () => {
-  it('같은 입력·같은 SOURCE_DATE_EPOCH 로 재빌드하면 3파일이 byte-identical 이다', () => {
-    for (const file of ['wiki_summary.json', 'wiki_feeds.json', 'wiki_body.json']) {
-      const first = readFileSync(path.join(ctx.out1, file), 'utf8')
-      const second = readFileSync(path.join(ctx.out2, file), 'utf8')
+  it('같은 입력·같은 SOURCE_DATE_EPOCH 로 재조립하면 payload 가 byte-identical 이다', () => {
+    for (const key of ['summary', 'feeds', 'body']) {
+      const first = JSON.stringify(ctx.result[key])
+      const second = JSON.stringify(ctx.result2[key])
 
-      expect(second, file).toBe(first)
+      expect(second, key).toBe(first)
     }
   })
 

@@ -18,9 +18,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 import { checkInvariants } from '../lib/invariants.mjs'
-import { cleanup, commit, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
+import { cleanup, commit, initVault } from './helpers/tmp-git-vault.mjs'
 
 const { applyIgnoreFeeds } = await import(new URL('../lib/ignore.mjs', import.meta.url).href)
 
@@ -57,16 +57,14 @@ function seedFeedVault() {
   return vault
 }
 
-const ctx = { docId: null, docPath: null, entries: null, filtered: null, out1: '', out2: '', raw: null, suppressId: null, vault: null } // prettier-ignore
+const ctx = { docId: null, docPath: null, entries: null, filtered: null, raw: null, suppressId: null, vault: null } // prettier-ignore
 const ids = (items) => items.map((item) => item.id)
 
 beforeAll(() => {
   ctx.vault = seedFeedVault()
-  ctx.out1 = makeOut()
-  ctx.out2 = makeOut()
 
   // raw = 빈-억제 빌드(ignore-feeds.json 부재 → 필터 항등). filtered = 억제 빌드.
-  ctx.raw = buildContent({ env: 'dev', out: ctx.out1, vault: ctx.vault })
+  ctx.raw = buildContent({ env: 'dev', vault: ctx.vault })
   const target = ctx.raw.feeds.items.find((item) => item.title === '알파 소식')
   ctx.suppressId = target.id
   ctx.docId = target.docs[0].id // 억제 피드가 가리키는 문서(살아남아야 한다)
@@ -74,11 +72,11 @@ beforeAll(() => {
   ctx.entries = [{ id: ctx.suppressId, when: WHEN }]
 
   writeFileSync(path.join(ctx.vault, 'ignore-feeds.json'), JSON.stringify(ctx.entries), 'utf8')
-  ctx.filtered = buildContent({ env: 'dev', out: ctx.out2, vault: ctx.vault })
+  ctx.filtered = buildContent({ env: 'dev', vault: ctx.vault })
 })
 
 afterAll(() => {
-  cleanup(ctx.vault, ctx.out1, ctx.out2)
+  cleanup(ctx.vault)
 })
 
 describe('RED-A 우회불가(Complete Mediation) — 빌드 피드 출력이 필터를 반드시 통과', () => {
@@ -92,11 +90,11 @@ describe('RED-A 우회불가(Complete Mediation) — 빌드 피드 출력이 필
     expect(ids(ctx.filtered.feeds.items)).toEqual(ids(expected))
   })
 
-  it('억제 id 는 wiki_feeds.json 어디에도 노출되지 않는다(디스크 산출까지) (#3)', () => {
-    const onDisk = JSON.parse(readFileSync(path.join(ctx.out2, 'wiki_feeds.json'), 'utf8'))
-
+  it('억제 id 는 산출 feeds payload(직렬화 포함) 어디에도 노출되지 않는다 (#3)', () => {
+    // validate 는 디스크에 쓰지 않는다 — 최종 산출은 반환 payload 다. 직렬화 문자열까지 훑어 억제 id 가
+    //   어떤 필드로도 새지 않음을 못 박는다(구: 디스크 wiki_feeds.json 대조 — Complete Mediation).
     expect(ids(ctx.filtered.feeds.items)).not.toContain(ctx.suppressId)
-    expect(ids(onDisk.items)).not.toContain(ctx.suppressId)
+    expect(JSON.stringify(ctx.filtered.feeds)).not.toContain(ctx.suppressId)
   })
 })
 

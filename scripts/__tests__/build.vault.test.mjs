@@ -32,9 +32,9 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 import { loadSchema, validateItem } from '../lib/validate.mjs'
-import { seedVault } from '../seed-example-vault.mjs'
+import { seedVault } from './helpers/seed-example-vault.mjs'
 import { git } from './helpers/vault-facts.mjs'
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
@@ -68,7 +68,7 @@ const BASE_IDENTITY = {
   GIT_COMMITTER_NAME: 'SAS Wiki Bot',
 }
 
-const ctx = { first: null, out1: '', out2: '', result: null, vault: '' }
+const ctx = { first: null, result: null, result2: null, vault: '' }
 
 /** 문서의 생성(A) 커밋 sha — created 날짜 파생 검증에 쓴다(id 출처는 더 이상 아니다). */
 function creationSha(relDoc) {
@@ -104,10 +104,6 @@ function feedOf(title) {
   return ctx.result.feeds.items.find((item) => item.title === title)
 }
 
-function readOut(dir, file) {
-  return readFileSync(path.join(dir, file), 'utf8')
-}
-
 function prepareSeedRepo() {
   const repo = mkdtempSync(path.join(tmpdir(), 'wiki-vault-repo-'))
   execFileSync('git', ['init', '-q', '-b', 'main', repo], { encoding: 'utf8' })
@@ -129,22 +125,19 @@ function prepareSeedRepo() {
 beforeAll(() => {
   ctx.vault = prepareSeedRepo()
 
-  ctx.out1 = mkdtempSync(path.join(tmpdir(), 'wiki-vault-1-'))
-  ctx.out2 = mkdtempSync(path.join(tmpdir(), 'wiki-vault-2-'))
-
   ctx.first = process.env.SOURCE_DATE_EPOCH
   process.env.SOURCE_DATE_EPOCH = EPOCH
 
   // in-process 호출 — 신규 lib(payloads·invariants)이 v8 커버리지에 잡히게 한다(tdd §11).
-  ctx.result = buildContent({ out: ctx.out1, vault: ctx.vault })
-  buildContent({ out: ctx.out2, vault: ctx.vault })
+  // validate 는 파일을 쓰지 않으므로 결정성은 in-memory payload 2회 조립으로 대조한다(구: out1·out2).
+  ctx.result = buildContent({ vault: ctx.vault })
+  ctx.result2 = buildContent({ vault: ctx.vault })
 })
 
 afterAll(() => {
   if (ctx.first === undefined) delete process.env.SOURCE_DATE_EPOCH
   else process.env.SOURCE_DATE_EPOCH = ctx.first
-  for (const dir of [ctx.out1, ctx.out2, ctx.vault])
-    if (dir) rmSync(dir, { force: true, recursive: true })
+  for (const dir of [ctx.vault]) if (dir) rmSync(dir, { force: true, recursive: true })
 })
 
 describe('실 vault ① 문서 집합', () => {
@@ -414,9 +407,9 @@ describe('실 vault ⑦ 전역 계약', () => {
     expect(ctx.result.stats.offConventionCommits).toEqual([])
   })
 
-  it('같은 SOURCE_DATE_EPOCH 로 재빌드하면 3파일이 byte-identical 이다', () => {
-    for (const file of ['wiki_summary.json', 'wiki_feeds.json', 'wiki_body.json']) {
-      expect(readOut(ctx.out2, file), file).toBe(readOut(ctx.out1, file))
+  it('같은 SOURCE_DATE_EPOCH 로 재조립하면 payload 가 byte-identical 이다', () => {
+    for (const key of ['summary', 'feeds', 'body']) {
+      expect(JSON.stringify(ctx.result2[key]), key).toBe(JSON.stringify(ctx.result[key]))
     }
   })
 

@@ -11,7 +11,7 @@
 //   · pre-id : 생성 blob 에 id 부재(마이그레이션 전) → build PASS (false-fail 금지)
 import { describe, expect, it } from 'vitest'
 
-import { buildContent } from '../build.mjs'
+import { buildContent } from '../validate.mjs'
 import { cleanup, commit, initVault, makeOut, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const UUIDV7_B = '0192f0c0-8000-7000-9abc-0123456789ab'
