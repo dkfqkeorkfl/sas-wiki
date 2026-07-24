@@ -6,7 +6,7 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkAnchorExists } from './lib/derive.mjs'
-import { buildPathIndex, collectEverDeletedDocPaths, readIdAtCreation } from './lib/git.mjs'
+import { collectDeletedDocEvents, readIdAtCreation, readIdAtDeletion } from './lib/git.mjs'
 import { applyIgnoreFeeds } from './lib/ignore.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
 import { collectMarkdownFilesRecursive, extractWikilinks, parseMarkdownFile } from './lib/parse.mjs'
@@ -174,33 +174,34 @@ function checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir) {
  * id X 로 생성」이 통과하면, A 를 가리키던 **과거 피드가 B 로 연결**된다. 피드가 곧 변경이력인
  * 제품에서 이는 조용한 오귀속이다.
  *
- * rename·같은 경로 복원은 `buildPathIndex`(과거 경로 → 현재 doc id)가 이미 같은 문서로 묶으므로
- * 통과한다 — 막는 것은 **경로도 id 도 다른 계보가 id 만 물려받은** 경우뿐이다.
+ * **규칙은 하나, 면제는 없다**: 삭제된 문서가 갖고 있던 id 를 지금 살아 있는 문서가 갖고 있으면
+ * 위반이다.
+ *
+ * 예외를 두지 않는 이유 —
+ *  - *이동* 은 삭제가 아니다. `collectDeletedDocEvents` 가 `--find-renames` 를 못박아 rename 을
+ *    `R` 로 잡으므로 애초에 이 목록에 들어오지 않는다(로컬 `diff.renames=false` 도 무력화).
+ *  - *같은 경로 재생성* 은 복원이 아니다. 데이터 계약(`docs/data-contract.md` · Document id)이
+ *    "If a deleted path is later recreated, that is a new document with a newly authored id" 라고
+ *    못박는다. 경로는 정체성이 아니며, 삭제는 그 문서의 피드를 prune 한다 — 같은 경로에 옛 id 를
+ *    다시 쓰면 prune 된 이력이 새 내용 위로 되살아나 오귀속된다.
+ *
+ * 초판은 이 자리에 경로 기반 면제 두 개(rename 계보·현재 살아 있는 경로)를 뒀는데, 둘 다 sha 를
+ * 버린 **경로 문자열** 비교라 재생성된 문서가 자기 자신을 면제했다(3차 감사). 경로로 정체성을
+ * 판정하려 한 것이 오류의 뿌리다 — 이제 id 만 본다.
  */
 function checkDeletedIdReuse({ derived, runGit }) {
-  const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
-    filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
-    id: doc.id,
-  }))
-  const livePathById = new Map(headDocs.map((doc) => [doc.id, doc.filePath]))
-  const livePaths = new Set(headDocs.map((doc) => doc.filePath))
-  // `buildPathIndex` 의 키는 `${sha}:${그 커밋 당시 경로}` 다 — 삭제 경로를 그대로 `has()` 에 넣으면
-  //   **절대 맞지 않아** 면제가 죽은 분기가 된다(rename 이 D 로 잡히는 순간 정당한 이동을 오탐).
-  //   sha 에는 콜론이 없으므로 첫 콜론 뒤가 경로다.
-  const lineagePaths = new Set(
-    [...buildPathIndex(headDocs, runGit).keys()].map((key) => key.slice(key.indexOf(':') + 1)),
+  const livePathById = new Map(
+    [...derived.pathToDoc.values()].map((doc) => [doc.id, `${WIKI_PREFIX}${doc.relPath}.md`]),
   )
 
   const violations = []
-  for (const deletedPath of collectEverDeletedDocPaths(runGit, { wikiPrefix: WIKI_PREFIX })) {
-    if (lineagePaths.has(deletedPath)) continue // rename 계보 — 같은 문서다
-    // 같은 경로로 되살아났으면 복원이다. `--follow` 는 삭제를 건너뛰지 못해 pathIndex 가 이 계보를
-    //   잇지 못하므로 경로 일치를 별도 신호로 쓴다(경로·id 가 모두 같다 = 가용한 최강의 동일성 근거).
-    if (livePaths.has(deletedPath)) continue
-    const idAtCreation = readIdAtCreation(runGit, deletedPath)
-    if (idAtCreation === null) continue // pre-id era — 대조할 id 가 없다
-    const livePath = livePathById.get(idAtCreation)
-    if (livePath !== undefined) violations.push({ deletedPath, id: idAtCreation, livePath })
+  for (const event of collectDeletedDocEvents(runGit, { wikiPrefix: WIKI_PREFIX })) {
+    const deletedId = readIdAtDeletion(runGit, event)
+    if (deletedId === null) continue // pre-id era — 대조할 id 가 없다
+    const livePath = livePathById.get(deletedId)
+    if (livePath !== undefined) {
+      violations.push({ deletedPath: event.path, id: deletedId, livePath })
+    }
   }
   if (violations.length === 0) return
 
@@ -209,7 +210,9 @@ function checkDeletedIdReuse({ derived, runGit }) {
     .join('\n')
   throw new Error(
     `삭제된 문서의 id 재사용 ${violations.length}건 — 과거 피드가 다른 문서로 연결된다:\n${detail}\n` +
-      `  해결: 새 문서에는 새 UUIDv7 을 부여하거나, 같은 문서의 복원이라면 원래 경로로 되돌린다.`,
+      `  해결: 새 문서에 새 UUIDv7 을 부여한다 — 삭제된 경로의 재생성은 계약상 새 문서다\n` +
+      `        (docs/data-contract.md · Document id). 문서를 *이동* 한 것이라면 삭제·재생성이 아니라\n` +
+      `        rename 으로 커밋해야 계보가 이어진다.`,
   )
 }
 

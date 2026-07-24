@@ -247,15 +247,47 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     }
   })
 
-  it('같은 경로로 복원하면 통과한다 (rename·복원 계보는 같은 문서다)', () => {
+  // 3차 감사 지적. 초판은 이 케이스를 "복원 = 같은 문서" 로 보고 **통과**시켰다(경로 일치 면제).
+  //   그 규칙은 어디에도 없었다 — 데이터 계약(docs/data-contract.md · Document id)은 정반대를 못박는다:
+  //   "If a deleted path is later recreated, that is a new document with a newly authored id."
+  //   경로는 정체성이 아니다. 삭제는 그 문서의 피드를 prune 하므로, 같은 경로에 옛 id 를 다시 쓰면
+  //   prune 된 이력이 새 내용 위로 되살아나 오귀속된다 — 게이트가 막아야 할 바로 그 사고다.
+  it('같은 경로로 재생성하며 옛 id 를 재사용하면 막는다 (경로는 정체성이 아니다)', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' })
       commit(vault, 'cwiki: 문서 생성')
       git(vault, ['rm', '-q', 'vault/wiki/company/문서.md'])
       commit(vault, 'uwiki: 문서 삭제')
-      writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' }) // 같은 경로 복원
-      commit(vault, 'cwiki: 문서 복원')
+      writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '전혀 다른 신규 문서' })
+      commit(vault, 'cwiki: 같은 경로에 신규 문서 생성')
+
+      let detail = ''
+      expect(() => {
+        try {
+          buildContent({ env: 'prod', vault })
+        } catch (error) {
+          detail = error.message
+          throw error
+        }
+      }).toThrow(/재사용/u)
+      expect(detail, 'id 를 짚어야 한다').toContain(UUIDV7_PUBLIC)
+      expect(detail, '삭제 경로를 짚어야 한다').toContain('company/문서.md')
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  // 대조군 — 삭제된 경로를 **새 id 로** 재생성하는 것은 계약이 정한 정상 경로다(막지 않는다).
+  it('같은 경로라도 새 UUIDv7 을 부여하면 통과한다 (계약이 정한 정상 경로)', () => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' })
+      commit(vault, 'cwiki: 문서 생성')
+      git(vault, ['rm', '-q', 'vault/wiki/company/문서.md'])
+      commit(vault, 'uwiki: 문서 삭제')
+      writeDoc(vault, 'company/문서', { id: UUIDV7_DRAFT, title: '신규 문서' })
+      commit(vault, 'cwiki: 같은 경로에 신규 문서 생성')
 
       expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
     } finally {

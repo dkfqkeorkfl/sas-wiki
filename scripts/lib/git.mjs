@@ -105,6 +105,67 @@ export function collectEverDeletedDocPaths(runGit, { wikiPrefix }) {
   return deleted
 }
 
+/**
+ * 문서 **삭제 이벤트** 목록 — `{ path, sha }`(그 문서가 지워진 커밋). 한 경로가 여러 번 살고
+ * 죽었다면 이벤트도 여러 건이다.
+ *
+ * `--find-renames` 를 **명시**한다. 이동은 삭제가 아니므로 `R` 로 잡혀 여기 들어오면 안 되는데,
+ * `diff.renames=false` 는 사용자가 로컬에 설정할 수 있는 값이라 config 에 맡기면 게이트의 의미가
+ * 그 사람 환경에 따라 달라진다(정당한 `git mv` 가 삭제로 보인다). 커맨드라인 플래그가 config 를
+ * 이기므로 여기서 못박는다 — `getFileHistory` 가 이미 같은 이유로 같은 플래그를 쓴다.
+ */
+export function collectDeletedDocEvents(runGit, { wikiPrefix }) {
+  const raw = tryGit(runGit, [
+    ...QUOTEPATH_OFF,
+    'log',
+    '--diff-filter=D',
+    '--find-renames',
+    '--name-status',
+    '--format=%H',
+  ])
+  const events = []
+  let sha = null
+  for (const line of raw.split(/\r?\n/)) {
+    if (line.trim() === '') continue
+    const match = line.match(STATUS_LINE_RE)
+    if (!match) {
+      sha = line.trim()
+      continue
+    }
+    if (match[1] !== 'D' || sha === null) continue
+    const filePath = match[3].split('\t').at(-1)
+    if (!isWikiDocPath(filePath, wikiPrefix)) continue
+    events.push({ path: filePath, sha })
+  }
+  return events
+}
+
+/**
+ * 삭제 **직전** blob 의 frontmatter id — 즉 *지워진 그 문서* 의 id.
+ *
+ * `readIdAtCreation` 을 쓰면 안 된다: 그것은 `getFileHistory` 를 타고, 그 함수는 생성 커밋에서
+ * 끊으므로 **삭제 후 재생성된 경로에서는 새 문서의 id** 를 돌려준다(의도된 동작 — 재생성은 새
+ * 문서다). 삭제된 쪽의 id 를 알아야 하는 이 게이트에는 정반대 값이다.
+ *
+ * @returns {string|null} id. frontmatter·id 가 없으면 null(pre-id era).
+ */
+export function readIdAtDeletion(runGit, { path: relFilePath, sha }) {
+  let blob
+  try {
+    blob = runGit([...QUOTEPATH_OFF, 'show', `${sha}^:${relFilePath}`])
+  } catch (error) {
+    // 조회 실패를 null(=pre-id era = 면제)로 삼키면 게이트가 조용히 꺼진다 — 멈춘다(H6 와 같은 규칙).
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`삭제 직전 blob 을 읽지 못했습니다(${relFilePath} @ ${sha}^): ${message}`, {
+      cause: error,
+    })
+  }
+  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
+  if (!match) return null
+  const id = parseFrontmatterYaml(match[1], relFilePath).id
+  return id === undefined ? null : id
+}
+
 export function collectGitLog(runGit) {
   const sep = String.fromCodePoint(31)
   const end = String.fromCodePoint(30)
