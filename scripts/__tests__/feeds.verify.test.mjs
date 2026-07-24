@@ -17,10 +17,10 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
+import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs' // prettier-ignore
 
-const { walkFeeds } = await import(new URL('../git-walk.mjs', import.meta.url).href)
-const { feeds } = await import(new URL('../endpoints.mjs', import.meta.url).href)
+const { walkFeeds } = await import(new URL('../lib/git-walk.mjs', import.meta.url).href)
+const { feeds } = await import(new URL('../feeds.mjs', import.meta.url).href)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const T1 = '2026-01-01T00:00:00Z'

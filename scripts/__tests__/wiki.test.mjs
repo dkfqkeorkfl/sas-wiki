@@ -13,9 +13,9 @@
 //     렌더는 renderMarkdownToHtml **재사용**(build 렌더 경로와 동일 · 회귀 0).
 import { describe, expect, it } from 'vitest'
 
-import { cleanup, commit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs'
+import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const { wiki } = await import(new URL('../endpoints.mjs', import.meta.url).href)
+const { wiki } = await import(new URL('../wiki.mjs', import.meta.url).href)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'

@@ -14,11 +14,11 @@
 //     억제·정렬·경계·tie-break·continuation 은 walkFeeds 에 **위임**(endpoints 층 재구현 금지 · SSOT).
 import { describe, expect, it } from 'vitest'
 
-import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
+import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs' // prettier-ignore
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-const { feeds } = await import(new URL('../endpoints.mjs', import.meta.url).href)
+const { feeds } = await import(new URL('../feeds.mjs', import.meta.url).href)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const T1 = '2026-01-01T00:00:00Z'

@@ -1,9 +1,42 @@
 #!/usr/bin/env node
-// feeds 엔드포인트 CLI — 얇은 진입점. 억제·정렬·커서·상한 로직은 lib/endpoints.feeds→walkFeeds 가 갖는다.
+// feeds 엔드포인트 — 함수 export + CLI 가드 자기완결 파일. walkFeeds 가 억제·정렬·커서·상한을
+//   결정하고 여기서는 봉투만 씌운다(로직은 lib/git-walk·parse-vault·payloads 공유부품).
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 
-import { feeds } from './lib/endpoints.mjs'
+import { walkFeeds } from './lib/git-walk.mjs'
+import { buildWirePayload } from './lib/parse-vault.mjs'
+import { buildFeeds } from './lib/payloads.mjs'
+
+/** feeds 기본 상한 — 소비자 DEFAULT_FEED_LIMIT 과 parity(미지정·0 이면 이 값으로 슬라이스). */
+const DEFAULT_FEED_LIMIT = 50
+
+/**
+ * feeds 엔드포인트 — `env` 를 walkFeeds 로 배선한다(summary/wiki 와 시그니처 일관) — **prod 는 draft
+ * 문서 참조 피드를 제외**한다(env 미전달이면 walkFeeds 가 전체 HEAD 로 resolve 해 prod 에서 draft 피드 노출).
+ *
+ * @param {string} vault git vault repository root
+ * @param {'dev'|'prod'} env
+ * @param {{ after?: object|string, count?: number, from?: string, to?: string }} [window]
+ */
+export function feeds(vault, env = 'prod', window = {}) {
+  const payload = buildWirePayload(vault, env)
+  const items = walkFeeds(vault, {
+    after: window.after,
+    count: window.count ?? DEFAULT_FEED_LIMIT,
+    env,
+    from: window.from,
+    to: window.to,
+  })
+  return {
+    ...buildFeeds({
+      generatedAt: payload.generatedAt,
+      items,
+      sourceCommit: payload.sourceCommit,
+    }),
+    nextCursor: items.nextCursor ?? null,
+  }
+}
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({

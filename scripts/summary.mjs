@@ -1,9 +1,27 @@
 #!/usr/bin/env node
-// summary 엔드포인트 CLI — 얇은 진입점. 로직은 lib/endpoints.summary 가 전부 갖는다(중복 0).
+// summary 엔드포인트 — 함수 export + CLI 가드 자기완결 파일. 서빙 로직 없음(순수 함수 + 얇은 CLI).
 import { parseArgs } from 'node:util'
 import { pathToFileURL } from 'node:url'
 
-import { summary } from './lib/endpoints.mjs'
+import { buildWirePayload } from './lib/parse-vault.mjs'
+import { buildSummary } from './lib/payloads.mjs'
+
+/**
+ * summary 엔드포인트 — vault 를 on-demand 파싱해 화면 뼈대만 투영한다.
+ *
+ * @param {string} vault git vault repository root
+ * @param {'dev'|'prod'} env
+ */
+export function summary(vault, env = 'prod') {
+  const payload = buildWirePayload(vault, env)
+  return buildSummary({
+    docs: payload.docs,
+    generatedAt: payload.generatedAt,
+    sourceCommit: payload.sourceCommit,
+    tags: payload.tags,
+    tree: payload.tree,
+  })
+}
 
 export async function main(argv = process.argv.slice(2)) {
   const { values } = parseArgs({

@@ -6,7 +6,7 @@
 //   (git 미접근). 재작업 계약은 `summary(vault, env)` — **vault(git) 경로**를 받아 buildWirePayload 로
 //   전체 파싱 후 buildSummary 투영한다. 아래는 1번째 인자에 **vault 경로 문자열**을 넘긴다 →
 //   현행 payload-슬라이서가 `vault.docs.filter` 를 호출해 **TypeError**(의도한 미구현)로 실패한다.
-//   (지연 import 관례 유지 — endpoints.mjs 는 존재하나 시그니처가 payload→vault 로 전환돼야 green.)
+//   (지연 import 관례 유지 — summary.mjs(구 endpoints.summary)로 접힘 · payload→vault 시그니처.)
 //
 // 계약(GREEN 이 구현):
 //   summary(vault, env) = buildWirePayload(vault, env) 전체 파싱 → buildSummary 투영.
@@ -16,9 +16,9 @@
 // 실 git 시딩(tmp-git-vault) — 순수 함수라 mock 대신 결정적 실 실행.
 import { describe, expect, it } from 'vitest'
 
-import { cleanup, commit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs'
+import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const { summary } = await import(new URL('../endpoints.mjs', import.meta.url).href)
+const { summary } = await import(new URL('../summary.mjs', import.meta.url).href)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
 const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
