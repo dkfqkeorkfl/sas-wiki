@@ -1,0 +1,242 @@
+// @vitest-environment node
+//
+// P1 — sas-wiki CLI 계약 정비 (D3): `--vault` 필수→선택(기본값 = 스크립트 자기 리포 루트), 순수 함수
+//   `vault` 인자 필수 유지, package.json 사람용 스크립트. RED 운반체 — tdd.md(P1.cli-contract) 케이스
+//   매트릭스 C1~C6·V1·V2·T3 을 그대로 담는다.
+//
+// 실행 대상은 **절대 스크립트 경로**(cwd 무관 재현). subprocess 는 CLI 계약 회귀에만 쓰고(runCli),
+//   순수 함수(C5)는 직접 import 로 격리 단언한다. 시딩은 helpers/tmp-git-vault(정상 원자만; 결함은
+//   각 스펙 본문에서 한 곳만 주입).
+//
+// RED/green 지도 (저작 시점) — 각 케이스 헤더에 재명시:
+//   🔴 지금 red(= RED 구동, GREEN 이 통과시킨다): C1 · C4a · C6 · V1 · T3
+//        사유: 현행 main()/validate parseArgs 의 `if(!vault) throw '--vault is required'`(성공 경로도
+//        exit 1) · package.json 미추가. 첫 단언(status===0 / scripts.summary===…)이 clean assertion
+//        으로 실패한다(문법/셋업 오류 아님 = 유효 RED).
+//   🟢 지금 green(= 회귀·대조 컨트롤, GREEN 후에도 green 유지): C2 · C3 · C4b · C5 · V2
+//
+// 비공허성(vacuity 방지): 각 단언은 tdd.md "무엇을 깨면 red" 를 반영한다 — status 만이 아니라
+//   페이로드 실질(docs.length>0 · id 포함/제외 · null · sourceCommit 동일 · throw)을 확인한다.
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterAll, describe, expect, it } from 'vitest'
+
+// 순수 함수는 직접 import 로 격리 단언한다(C5) — vault 기본값이 없음을(= undefined 흡수 안 함) 확인.
+import { feeds } from '../feeds.mjs'
+import { summary } from '../summary.mjs'
+import { wiki } from '../wiki.mjs'
+
+import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const SCRIPT_DIR = path.resolve(HERE, '..') // /…/sas-wiki/scripts
+const REPO_ROOT = path.resolve(HERE, '..', '..') // /…/sas-wiki (기본값이 파생해야 하는 루트)
+
+const SUMMARY = path.join(SCRIPT_DIR, 'summary.mjs')
+const FEEDS = path.join(SCRIPT_DIR, 'feeds.mjs')
+const WIKI = path.join(SCRIPT_DIR, 'wiki.mjs')
+const VALIDATE = path.join(SCRIPT_DIR, 'validate.mjs')
+const PACKAGE_JSON = path.join(REPO_ROOT, 'package.json')
+
+const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
+const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
+
+// validate.cli.test.mjs:74 runCli 를 mirror + cwd 옵션. 절대 스크립트 경로라 cwd 는 기본값 파생을
+//   흔들지 못해야 한다(C6 가 이를 증명). SOURCE_DATE_EPOCH 는 결정성 관례(기존 CLI 테스트 동일).
+function runCli(script, args, { cwd } = {}) {
+  return spawnSync(process.execPath, [script, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: { ...process.env, SOURCE_DATE_EPOCH: '1700000000' },
+  })
+}
+
+// 생성한 tmp 는 전부 등록 후 afterAll 에서 일괄 정리(누수 0).
+const tmps = []
+function makeVault() {
+  const vault = initVault()
+  tmps.push(vault)
+  return vault
+}
+
+// 존재하지 않는 vault 경로(부모는 존재, 자식은 미생성) — C4b 의 에러 경로 입력.
+const ABSENT_BASE = mkdtempSync(path.join(tmpdir(), 'wiki-cli-absent-'))
+tmps.push(ABSENT_BASE)
+const ABSENT_VAULT = path.join(ABSENT_BASE, 'no-such-vault')
+
+afterAll(() => cleanup(...tmps))
+
+// ── C1: 3 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.
+//    🔴 지금 red: `if(!vault) throw` 존치 → exit1 → status 단언 실패. (docs.length>0 는 REPO_ROOT
+//       오파생(`vault/wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
+const C1_CASES = [
+  { assert: (p) => expect(p.docs.length).toBeGreaterThan(0), args: ['--env', 'dev'], name: 'summary', script: SUMMARY }, // prettier-ignore
+  { assert: (p) => expect(Array.isArray(p.items)).toBe(true), args: ['--env', 'dev'], name: 'feeds', script: FEEDS }, // prettier-ignore
+  { assert: (p) => expect(p).toBeNull(), args: ['--env', 'dev', '--path', 'no/such'], name: 'wiki', script: WIKI }, // prettier-ignore
+]
+
+describe('C1 — 기본 vault(REPO_ROOT) · --vault 생략 (🔴 지금 red)', () => {
+  it.each(C1_CASES)(
+    '$name: --env dev(cwd=repo) → exit0 · 1건 유효 JSON · 페이로드 계약',
+    ({ args, assert, script }) => {
+      const result = runCli(script, args, { cwd: REPO_ROOT })
+
+      expect(result.status).toBe(0) // ← RED 신호(현행 exit1). 아래 JSON.parse 전에 clean 실패.
+      const payload = JSON.parse(result.stdout)
+      assert(payload)
+    },
+  )
+})
+
+// ── C2: override 존중 — --vault <tmp seed(ID_A)> --env dev → docs 에 ID_A. 🟢 green(회귀).
+//    무엇을 깨면 red: GREEN 이 override 무시하고 REPO_ROOT 를 **과잉** 적용 → ID_A 부재 → red.
+describe('C2 — --vault override 존중 (🟢 회귀)', () => {
+  it('summary --vault <tmp seed(ID_A)> --env dev → exit0 · docs 에 ID_A', () => {
+    const vault = makeVault()
+    writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'company' })
+    commit(vault, 'cwiki: 삼성전자 생성')
+
+    const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
+
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout).docs.map((doc) => doc.id)).toContain(ID_A)
+  })
+})
+
+// ── C3: env 배선이 강등과 무관함 고정 — (a) --env 생략(=prod) → draft 제외, (b) --env dev → draft 포함.
+//    🟢 green(회귀). 무엇을 깨면 red: GREEN 이 env{default:'prod'} 를 훼손 → (a) 에서 draft 누출.
+//    ID_A 존재도 함께 단언해 "docs 가 비어 not.toContain 이 공허히 통과" 하는 vacuity 를 막는다.
+describe('C3 — env 기본값(prod) 무변경 · draft 필터 (🟢 회귀)', () => {
+  it('--env 생략 → draft 제외 · --env dev → draft 포함', () => {
+    const vault = makeVault()
+    writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'company' })
+    writeDoc(vault, 'dev/실험문서', { id: ID_DRAFT, title: '실험 문서', type: 'concept' })
+    commit(vault, 'cwiki: active + draft 생성')
+
+    const prod = runCli(SUMMARY, ['--vault', vault]) // --env 생략 → parseArgs default 'prod'
+    expect(prod.status).toBe(0)
+    const prodIds = JSON.parse(prod.stdout).docs.map((doc) => doc.id)
+    expect(prodIds).toContain(ID_A) // active 는 항상 보인다(비공허)
+    expect(prodIds).not.toContain(ID_DRAFT) // draft 는 prod 에서 숨는다
+
+    const dev = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
+    expect(dev.status).toBe(0)
+    expect(JSON.parse(dev.stdout).docs.map((doc) => doc.id)).toContain(ID_DRAFT)
+  })
+})
+
+// ── C4a: 성공 경로 stdout = 정확히 1줄 JSON(선/후행 비-JSON 0). 🔴 지금 red(현행 exit1·stdout 0).
+//    무엇을 깨면 red(GREEN 후): main() 에 디버그 log 혼입 → 2줄 → lines 단언 실패 / 파싱 throw.
+const C4A_CASES = [
+  { args: ['--env', 'dev'], name: 'summary', script: SUMMARY },
+  { args: ['--env', 'dev'], name: 'feeds', script: FEEDS },
+  { args: ['--env', 'dev'], name: 'wiki', script: WIKI },
+]
+
+describe('C4a — stdout 순수(정확히 1줄 JSON) (🔴 지금 red)', () => {
+  it.each(C4A_CASES)(
+    '$name: --env dev(--vault 생략) → stdout 은 단 1줄의 파싱 가능한 JSON',
+    ({ args, script }) => {
+      const result = runCli(script, args, { cwd: REPO_ROOT })
+
+      expect(result.status).toBe(0) // ← RED 신호(현행 exit1).
+      const lines = result.stdout.split('\n').filter((line) => line.length > 0)
+      expect(lines).toHaveLength(1) // 선행/후행 비-JSON 로그 0
+      expect(() => JSON.parse(result.stdout)).not.toThrow()
+    },
+  )
+})
+
+// ── C4b: 에러 채널 분리 — --vault <존재X> --env dev → exit≠0 · stdout 비어있음 · stderr 에 에러.
+//    🟢 green(회귀). 무엇을 깨면 red: 에러를 stdout 으로 흘리거나 부분 JSON 방출.
+const C4B_CASES = [
+  { name: 'summary', script: SUMMARY },
+  { name: 'feeds', script: FEEDS },
+  { name: 'wiki', script: WIKI },
+]
+
+describe('C4b — 에러는 stderr, stdout 무오염 (🟢 회귀)', () => {
+  it.each(C4B_CASES)(
+    '$name: --vault <존재X> --env dev → exit≠0 · stdout="" · stderr 에 에러',
+    ({ script }) => {
+      const result = runCli(script, ['--vault', ABSENT_VAULT, '--env', 'dev'])
+
+      expect(result.status).not.toBe(0)
+      expect(result.stdout).toBe('') // 부분 JSON 0
+      expect(result.stderr.length).toBeGreaterThan(0)
+    },
+  )
+})
+
+// ── C5: 순수 함수 격리 불변식 — 직접 호출은 vault 기본값으로 흡수하지 않고 **throw**. 🟢 green(대조).
+//    무엇을 깨면 red: GREEN 이 순수 summary/feeds/wiki 에 `vault = vault ?? REPO_ROOT` 를 부여하면
+//    undefined 가 흡수돼 throw 안 함 → red. (기본값은 오직 main()/validate parseArgs 의 imperative shell.)
+describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격리 불변) (🟢 대조)', () => {
+  it('summary(undefined, "dev") → throw', () => {
+    expect(() => summary(undefined, 'dev')).toThrow()
+  })
+
+  it('feeds(undefined, "dev") → throw', () => {
+    expect(() => feeds(undefined, 'dev')).toThrow()
+  })
+
+  it('wiki(undefined, "dev", "") → throw', () => {
+    expect(() => wiki(undefined, 'dev', '')).toThrow()
+  })
+})
+
+// ── C6: 기본값이 import.meta.url 파생(≠ cwd) 임을 증명 — cwd=os.tmpdir() 에서도 REPO_ROOT 를 읽는다.
+//    🔴 지금 red(현행 exit1). 무엇을 깨면 red(GREEN 후): 기본값을 process.cwd() 파생으로 하면 tmpdir 에
+//    `vault/wiki` 부재 → red. 두 cwd 의 sourceCommit 동일 = 같은 REPO_ROOT 확증.
+describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (🔴 지금 red)', () => {
+  it('summary --env dev(--vault 생략), cwd=tmpdir → exit0 · docs>0 · sourceCommit=cwd repo 실행값', () => {
+    const inRepo = runCli(SUMMARY, ['--env', 'dev'], { cwd: REPO_ROOT })
+    const inTmp = runCli(SUMMARY, ['--env', 'dev'], { cwd: tmpdir() })
+
+    expect(inTmp.status).toBe(0) // ← RED 신호(현행 exit1). 아래 parse 전에 clean 실패.
+    const tmpPayload = JSON.parse(inTmp.stdout)
+    expect(tmpPayload.docs.length).toBeGreaterThan(0)
+    // cwd 만 다르고 대상 리포는 같아야 한다 → HEAD sourceCommit 이 동일.
+    expect(tmpPayload.sourceCommit).toBe(JSON.parse(inRepo.stdout).sourceCommit)
+  })
+})
+
+// ── V1: validate 도 동일 강등 — --env dev(--vault 생략) → exit0 · stats stdout(`[wiki] docs=`).
+//    🔴 지금 red(parseArgs:122 throw). validate 는 JSON 이 아니라 stats 를 stdout 에 낸다(다른 계약).
+describe('V1 — validate 기본 vault(REPO_ROOT) (🔴 지금 red)', () => {
+  it('validate --env dev(--vault 생략) → exit0 · stdout 에 "[wiki] docs="', () => {
+    const result = runCli(VALIDATE, ['--env', 'dev'], { cwd: REPO_ROOT })
+
+    expect(result.status).toBe(0) // ← RED 신호(현행 exit1).
+    expect(result.stdout).toContain('[wiki] docs=')
+  })
+})
+
+// ── V2: env fail-closed 불변 — --vault <tmp> --env staging → exit≠0 · dev|prod 거부. 🟢 green(회귀).
+//    무엇을 깨면 red: 강등 리팩터가 validate 의 unknown-env fail-closed 를 깨면 staging 이 통과.
+describe('V2 — validate unknown-env 거부(fail-closed) (🟢 회귀)', () => {
+  it('validate --vault <tmp> --env staging → exit≠0 · 출력에 dev|prod 거부', () => {
+    const vault = makeVault()
+
+    const result = runCli(VALIDATE, ['--vault', vault, '--env', 'staging'])
+
+    expect(result.status).not.toBe(0)
+    expect(`${result.stderr}${result.stdout}`).toMatch(/dev\|prod/)
+  })
+})
+
+// ── T3: package.json 정적 드리프트 — 사람용 스크립트 추가 · validate 에서 `--vault` 제거.
+//    🔴 지금 red(scripts.summary undefined · validate 에 `--vault .` 잔존).
+describe('T3 — package.json 사람용 스크립트 (🔴 지금 red)', () => {
+  it('scripts.summary/feeds/wiki 는 node 직행 · validate 에 --vault 없음', () => {
+    const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8'))
+
+    expect(pkg.scripts.summary).toBe('node scripts/summary.mjs')
+    expect(pkg.scripts.feeds).toBe('node scripts/feeds.mjs')
+    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs')
+    expect(pkg.scripts.validate).not.toContain('--vault')
+  })
+})
