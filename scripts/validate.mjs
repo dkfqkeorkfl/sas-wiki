@@ -15,6 +15,8 @@ import { buildBody, buildFeeds, buildSummary } from './lib/payloads.mjs'
 import { loadSchema, validateItem } from './lib/validate.mjs'
 
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'schema')
+// --vault 미지정 시 기본값 = 스크립트 자기 리포 루트(scripts/ 의 상위). cwd 무관(import.meta.url 파생).
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 /** payload key → 생산 JSON 파일명(산출물 스키마 검증의 key 매핑·에러 라벨용 — 파일을 쓰지는 않는다). */
 const PAYLOAD_FILES = {
@@ -118,8 +120,9 @@ export function parseArgs(argv) {
     i += 1
   }
 
-  // 조용한 cwd 폴백 금지 — 엉뚱한 리포를 vault 로 읽으면 검증 대상이 통째로 틀린다.
-  if (!options.vault) throw new Error(`vault 를 지정하세요: --vault <vault 리포>\n${usage()}`)
+  // --vault 미지정 → 스크립트 자기 리포 루트(REPO_ROOT). cwd 폴백이 아니라 import.meta.url 파생이라
+  // 엉뚱한 리포를 읽지 않는다(cwd 무관·결정적). 다른 vault 는 --vault 로 override.
+  if (!options.vault) options.vault = REPO_ROOT
 
   // Layer B fail-closed: --env 미지정 → prod(draft 숨김) + 관측 가능한 warning(silent 폴백 금지).
   if (options.env === null) {

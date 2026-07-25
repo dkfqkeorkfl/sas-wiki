@@ -4,7 +4,7 @@
 //
 // 얇은 셸이라 로직은 endpoints 가 갖는다 — 이 smoke 는 각 CLI 의 argv 파싱·출력·에러 경로만 실 git
 //   시딩으로 1회 태워 "셸이 실제로 돈다"를 고정한다(0% 커버리지 → 셸 분기 커버).
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 import { main as feedsMain } from '../feeds.mjs'
@@ -38,6 +38,27 @@ async function run(main, argv) {
   return chunks.join('')
 }
 
+// D3: --vault 누락 시 기본값 = REPO_ROOT(실 repo). vitest 의 GIT_CONFIG_GLOBAL=/dev/null 로 전역
+//   safe.directory 예외가 사라져 9p/컨테이너에서 실 repo git 이 dubious-ownership 로 죽으므로 주입한다
+//   (build.uuidv7-e2e 관례). tmp vault 케이스엔 무해.
+const SAVED_GIT_ENV = {}
+beforeAll(() => {
+  for (const [k, v] of [
+    ['GIT_CONFIG_COUNT', '1'],
+    ['GIT_CONFIG_KEY_0', 'safe.directory'],
+    ['GIT_CONFIG_VALUE_0', '*'],
+  ]) {
+    SAVED_GIT_ENV[k] = process.env[k]
+    process.env[k] = v
+  }
+})
+afterAll(() => {
+  for (const [k, v] of Object.entries(SAVED_GIT_ENV)) {
+    if (v === undefined) delete process.env[k]
+    else process.env[k] = v
+  }
+})
+
 let vault
 beforeEach(() => {
   vault = seed()
@@ -54,21 +75,26 @@ describe('summary.mjs CLI smoke', () => {
     expect(json.docs.some((doc) => doc.id === ID_A)).toBe(true)
   })
 
-  it('--vault 누락 → throw', async () => {
-    await expect(summaryMain(['--env', 'dev'])).rejects.toThrow(/vault/iu)
+  it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
+    const json = JSON.parse(await run(summaryMain, ['--env', 'dev']))
+    expect(Array.isArray(json.docs)).toBe(true)
+    expect(json.docs.length).toBeGreaterThan(0)
   })
 })
 
 describe('feeds.mjs CLI smoke', () => {
   it('feeds → 유효 JSON(items 에 그 피드)', async () => {
-    const json = JSON.parse(await run(feedsMain, ['--vault', vault, '--env', 'dev', '--count', '5']))
+    const json = JSON.parse(
+      await run(feedsMain, ['--vault', vault, '--env', 'dev', '--count', '5']),
+    )
 
     expect(Array.isArray(json.items)).toBe(true)
     expect(json.items.map((item) => item.title)).toContain('삼성 소식')
   })
 
-  it('--vault 누락 → throw', async () => {
-    await expect(feedsMain(['--env', 'dev'])).rejects.toThrow(/vault/iu)
+  it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
+    const json = JSON.parse(await run(feedsMain, ['--env', 'dev']))
+    expect(Array.isArray(json.items)).toBe(true)
   })
 })
 
@@ -85,7 +111,7 @@ describe('wiki.mjs CLI smoke', () => {
     expect(JSON.parse(await run(wikiMain, ['--vault', vault, '--env', 'dev', '--path', 'none/x']))).toBeNull() // prettier-ignore
   })
 
-  it('--vault 누락 → throw', async () => {
-    await expect(wikiMain(['--env', 'dev'])).rejects.toThrow(/vault/iu)
+  it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
+    expect(JSON.parse(await run(wikiMain, ['--env', 'dev', '--path', 'no/such']))).toBeNull()
   })
 })

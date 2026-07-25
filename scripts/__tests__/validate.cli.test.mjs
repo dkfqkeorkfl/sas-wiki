@@ -215,8 +215,10 @@ describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
     expect(() => parseArgs(['--root', 'sas-wiki'])).toThrow(/--vault/)
   })
 
-  it('--vault 누락은 throw 한다(cwd 로 조용히 폴백하지 않는다)', () => {
-    expect(() => parseArgs(['--allow-deadlinks'])).toThrow(/--vault/)
+  it('--vault 누락 시 스크립트 자기 리포 루트로 기본값 파생한다(cwd 조용한 폴백 아님 — D3)', () => {
+    // D3: --vault 필수→선택. 기본값은 cwd 가 아니라 import.meta.url 로 파생한 스크립트 자기 리포 루트.
+    const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
+    expect(parseArgs(['--allow-deadlinks']).vault).toBe(REPO_ROOT)
   })
 })
 

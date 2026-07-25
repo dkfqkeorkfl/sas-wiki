@@ -50,7 +50,16 @@ function runCli(script, args, { cwd } = {}) {
   return spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, SOURCE_DATE_EPOCH: '1700000000' },
+    // vitest 가 GIT_CONFIG_GLOBAL=/dev/null 로 전역 safe.directory 예외를 지우므로, 9p/컨테이너에서
+    //   기본 vault(=실 repo)가 러너와 다른 소유자면 자식 git 이 dubious-ownership 로 죽는다. safe.directory=*
+    //   를 자식 env 로 주입해 방어(build.uuidv7-e2e.test.mjs 관례). C1/C4a/C6/V1(실 repo) 필수·tmp 케이스 무해.
+    env: {
+      ...process.env,
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'safe.directory',
+      GIT_CONFIG_VALUE_0: '*',
+      SOURCE_DATE_EPOCH: '1700000000',
+    },
   })
 }
 

@@ -8,7 +8,10 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "validate": "node scripts/validate.mjs --vault . --env dev",
+    "validate": "node scripts/validate.mjs --env dev",
+    "summary": "node scripts/summary.mjs",
+    "feeds": "node scripts/feeds.mjs",
+    "wiki": "node scripts/wiki.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write .",
