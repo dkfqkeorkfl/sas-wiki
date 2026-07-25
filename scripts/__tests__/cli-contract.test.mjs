@@ -9,11 +9,11 @@
 //   각 스펙 본문에서 한 곳만 주입).
 //
 // RED/green 지도 (저작 시점) — 각 케이스 헤더에 재명시:
-//   🔴 지금 red(= RED 구동, GREEN 이 통과시킨다): C1 · C4a · C6 · V1 · T3
-//        사유: 현행 main()/validate parseArgs 의 `if(!vault) throw '--vault is required'`(성공 경로도
+//   RED 단계에서 실패했던 케이스: C1 · C4a · C6 · V1 · T3
+//        사유: 당시 main()/validate parseArgs 의 `if(!vault) throw '--vault is required'`(성공 경로도
 //        exit 1) · package.json 미추가. 첫 단언(status===0 / scripts.summary===…)이 clean assertion
-//        으로 실패한다(문법/셋업 오류 아님 = 유효 RED).
-//   🟢 지금 green(= 회귀·대조 컨트롤, GREEN 후에도 green 유지): C2 · C3 · C4b · C5 · V2
+//        으로 실패했다(문법/셋업 오류 아님 = 유효 RED).
+//   당시에도 green 이던 회귀·대조 컨트롤: C2 · C3 · C4b · C5 · V2
 //
 // 비공허성(vacuity 방지): 각 단언은 tdd.md "무엇을 깨면 red" 를 반영한다 — status 만이 아니라
 //   페이로드 실질(docs.length>0 · id 포함/제외 · null · sourceCommit 동일 · throw)을 확인한다.
@@ -79,7 +79,7 @@ const ABSENT_VAULT = path.join(ABSENT_BASE, 'no-such-vault')
 afterAll(() => cleanup(...tmps))
 
 // ── C1: 3 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.
-//    🔴 지금 red: `if(!vault) throw` 존치 → exit1 → status 단언 실패. (docs.length>0 는 REPO_ROOT
+//    RED 단계에서는 `if(!vault) throw` 존치 → exit1 → status 단언 실패. (docs.length>0 는 REPO_ROOT
 //       오파생(`vault/wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
 const C1_CASES = [
   { assert: (p) => expect(p.docs.length).toBeGreaterThan(0), args: ['--env', 'dev'], name: 'summary', script: SUMMARY }, // prettier-ignore
@@ -87,13 +87,13 @@ const C1_CASES = [
   { assert: (p) => expect(p).toBeNull(), args: ['--env', 'dev', '--path', 'no/such'], name: 'wiki', script: WIKI }, // prettier-ignore
 ]
 
-describe('C1 — 기본 vault(REPO_ROOT) · --vault 생략 (🔴 지금 red)', () => {
+describe('C1 — 기본 vault(REPO_ROOT) · --vault 생략 (RED 단계 회귀 가드)', () => {
   it.each(C1_CASES)(
     '$name: --env dev(cwd=repo) → exit0 · 1건 유효 JSON · 페이로드 계약',
     ({ args, assert, script }) => {
       const result = runCli(script, args, { cwd: REPO_ROOT })
 
-      expect(result.status).toBe(0) // ← RED 신호(현행 exit1). 아래 JSON.parse 전에 clean 실패.
+      expect(result.status).toBe(0) // RED 단계 신호였던 단언. 아래 JSON.parse 전에 clean 실패했다.
       const payload = JSON.parse(result.stdout)
       assert(payload)
     },
@@ -137,7 +137,7 @@ describe('C3 — env 기본값(prod) 무변경 · draft 필터 (🟢 회귀)', (
   })
 })
 
-// ── C4a: 성공 경로 stdout = 정확히 1줄 JSON(선/후행 비-JSON 0). 🔴 지금 red(현행 exit1·stdout 0).
+// ── C4a: 성공 경로 stdout = 정확히 1줄 JSON(선/후행 비-JSON 0). RED 단계에서는 exit1·stdout 0.
 //    무엇을 깨면 red(GREEN 후): main() 에 디버그 log 혼입 → 2줄 → lines 단언 실패 / 파싱 throw.
 const C4A_CASES = [
   { args: ['--env', 'dev'], name: 'summary', script: SUMMARY },
@@ -145,13 +145,13 @@ const C4A_CASES = [
   { args: ['--env', 'dev'], name: 'wiki', script: WIKI },
 ]
 
-describe('C4a — stdout 순수(정확히 1줄 JSON) (🔴 지금 red)', () => {
+describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)', () => {
   it.each(C4A_CASES)(
     '$name: --env dev(--vault 생략) → stdout 은 단 1줄의 파싱 가능한 JSON',
     ({ args, script }) => {
       const result = runCli(script, args, { cwd: REPO_ROOT })
 
-      expect(result.status).toBe(0) // ← RED 신호(현행 exit1).
+      expect(result.status).toBe(0) // RED 단계 신호였던 단언.
       const lines = result.stdout.split('\n').filter((line) => line.length > 0)
       expect(lines).toHaveLength(1) // 선행/후행 비-JSON 로그 0
       expect(() => JSON.parse(result.stdout)).not.toThrow()
@@ -198,14 +198,14 @@ describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격�
 })
 
 // ── C6: 기본값이 import.meta.url 파생(≠ cwd) 임을 증명 — cwd=os.tmpdir() 에서도 REPO_ROOT 를 읽는다.
-//    🔴 지금 red(현행 exit1). 무엇을 깨면 red(GREEN 후): 기본값을 process.cwd() 파생으로 하면 tmpdir 에
+//    RED 단계에서는 exit1. 무엇을 깨면 red(GREEN 후): 기본값을 process.cwd() 파생으로 하면 tmpdir 에
 //    `vault/wiki` 부재 → red. 두 cwd 의 sourceCommit 동일 = 같은 REPO_ROOT 확증.
-describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (🔴 지금 red)', () => {
+describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (RED 단계 회귀 가드)', () => {
   it('summary --env dev(--vault 생략), cwd=tmpdir → exit0 · docs>0 · sourceCommit=cwd repo 실행값', () => {
     const inRepo = runCli(SUMMARY, ['--env', 'dev'], { cwd: REPO_ROOT })
     const inTmp = runCli(SUMMARY, ['--env', 'dev'], { cwd: tmpdir() })
 
-    expect(inTmp.status).toBe(0) // ← RED 신호(현행 exit1). 아래 parse 전에 clean 실패.
+    expect(inTmp.status).toBe(0) // RED 단계 신호였던 단언. 아래 parse 전에 clean 실패했다.
     const tmpPayload = JSON.parse(inTmp.stdout)
     expect(tmpPayload.docs.length).toBeGreaterThan(0)
     // cwd 만 다르고 대상 리포는 같아야 한다 → HEAD sourceCommit 이 동일.
@@ -214,12 +214,12 @@ describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (🔴 지�
 })
 
 // ── V1: validate 도 동일 강등 — --env dev(--vault 생략) → exit0 · stats stdout(`[wiki] docs=`).
-//    🔴 지금 red(parseArgs:122 throw). validate 는 JSON 이 아니라 stats 를 stdout 에 낸다(다른 계약).
-describe('V1 — validate 기본 vault(REPO_ROOT) (🔴 지금 red)', () => {
+//    RED 단계에서는 parseArgs:122 throw. validate 는 JSON 이 아니라 stats 를 stdout 에 낸다(다른 계약).
+describe('V1 — validate 기본 vault(REPO_ROOT) (RED 단계 회귀 가드)', () => {
   it('validate --env dev(--vault 생략) → exit0 · stdout 에 "[wiki] docs="', () => {
     const result = runCli(VALIDATE, ['--env', 'dev'], { cwd: REPO_ROOT })
 
-    expect(result.status).toBe(0) // ← RED 신호(현행 exit1).
+    expect(result.status).toBe(0) // RED 단계 신호였던 단언.
     expect(result.stdout).toContain('[wiki] docs=')
   })
 })
@@ -238,8 +238,8 @@ describe('V2 — validate unknown-env 거부(fail-closed) (🟢 회귀)', () => 
 })
 
 // ── T3: package.json 정적 드리프트 — 사람용 스크립트 추가 · validate 에서 `--vault` 제거.
-//    🔴 지금 red(scripts.summary undefined · validate 에 `--vault .` 잔존).
-describe('T3 — package.json 사람용 스크립트 (🔴 지금 red)', () => {
+//    RED 단계에서는 scripts.summary undefined · validate 에 `--vault .` 잔존.
+describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)', () => {
   it('scripts.summary/feeds/wiki 는 node 직행 · validate 에 --vault 없음', () => {
     const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8'))
 
