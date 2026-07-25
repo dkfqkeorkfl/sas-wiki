@@ -14,9 +14,10 @@ import { parseVault, WIKI_PREFIX } from './lib/parse-vault.mjs'
 import { buildBody, buildFeeds, buildSummary } from './lib/payloads.mjs'
 import { loadSchema, validateItem } from './lib/validate.mjs'
 
-const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'schema')
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 // --vault 미지정 시 기본값 = 스크립트 자기 리포 루트(scripts/ 의 상위). cwd 무관(import.meta.url 파생).
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
 
 /** payload key → 생산 JSON 파일명(산출물 스키마 검증의 key 매핑·에러 라벨용 — 파일을 쓰지는 않는다). */
 const PAYLOAD_FILES = {
