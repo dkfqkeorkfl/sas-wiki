@@ -7,9 +7,11 @@ import {
   anyMarkdown,
   buildPathIndex,
   catFileBatch,
+  collectEverDeletedDocPaths,
   getCommitDocStatuses,
   makeGitRunner,
 } from './git.mjs'
+import { judgeFeedSurvival } from './feed-survival.mjs'
 import { applyIgnoreFeeds } from './ignore.mjs'
 import {
   collectMarkdownFilesRecursive,
@@ -24,13 +26,13 @@ const DEFAULT_FEED_LIMIT = 50
 export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   const vaultDir = path.resolve(vault)
   const limit = typeof count === 'number' && count > 0 ? count : DEFAULT_FEED_LIMIT
-  // F4: prod 는 draft 문서를 headIds/pathIndex 에서 제외한다 → draft 만 가리키는 피드는 resolve 실패로
-  //   prune 되어 노출되지 않는다(build.mjs 의 excludedFeedRefs 와 같은 방향, `isDraft` SSOT 재사용).
-  //   판정은 **`dev` 만 전량, 그 외는 전부 prod**(fail-closed) — parse-vault.mjs 의 visibleDocs 와
-  //   같은 극성이어야 한다. 과거 `env === 'prod'` 였을 때는 'staging'·''·오타 같은 non-dev 값이
-  //   excludeDrafts=false 로 떨어져 summary/wiki 는 숨긴 draft 를 feeds 만 노출했다(PRD D2 위반).
-  const headDocs = loadHeadDocs(vaultDir, env !== 'dev')
-  const headIds = new Set(headDocs.map((doc) => doc.id))
+  // 판정은 **`dev` 만 전량, 그 외는 전부 prod**(fail-closed) — parse-vault.mjs 의 visibleDocs 와
+  // 같은 극성이어야 한다. `pathIndex` 는 draft 포함 전 문서로 만들어야 삭제와 draft 배제 사유를 가른다.
+  const excludeDrafts = env !== 'dev'
+  const headDocs = loadHeadDocs(vaultDir)
+  const visibleHeadDocs = excludeDrafts ? headDocs.filter((doc) => !doc.draft) : headDocs
+  const headIds = new Set(visibleHeadDocs.map((doc) => doc.id))
+  const allHeadIds = new Set(headDocs.map((doc) => doc.id))
   const ignoreEntries = loadIgnoreFeeds(vaultDir)
   const runGit = makeGitRunner(vaultDir)
   // pre-D1 폴백용 경로 역인덱스(경로→현재 doc-id · rename 추적) — build.mjs:buildContent 와 **동일 입력·
@@ -38,6 +40,9 @@ export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   // 만들지 않아 비용 0. 실 vault(pre-D1: 피드가 id 부여 이전 커밋)에서만 트리거된다.
   let pathIndex = null
   const resolvePathIndex = () => (pathIndex ??= buildPathIndex(headDocs, runGit))
+  let everDeletedPaths = null
+  const resolveEverDeletedPaths = () =>
+    (everDeletedPaths ??= collectEverDeletedDocPaths(runGit, { isDocPath: anyMarkdown }))
   const collected = new Map()
 
   // F1: **전량 워크(count 기반 조기 종료 금지)**. git rev-list 워크순서는 선형 히스토리에서 사실상
@@ -47,7 +52,12 @@ export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   //   가정 없이는 불가능하므로, 피드 커밋을 **전량 수집**한 뒤 JS 재정렬(byRecencyThenId)을 권위로
   //   페이지를 확정한다(억제·from/to·after·상한은 pageItems 가 최종 1회 적용 — 전량이라 언더필 없음).
   const commits = revListFeedCandidates(runGit)
-  for (const item of resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex)) {
+  for (const item of resolveFeedItems(vaultDir, runGit, commits, {
+    allHeadIds,
+    headIds,
+    resolveEverDeletedPaths,
+    resolvePathIndex,
+  })) {
     collected.set(item.id, item)
   }
 
@@ -139,7 +149,7 @@ function revListFeedCandidates(runGit) {
   )
 }
 
-function resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex) {
+function resolveFeedItems(vaultDir, runGit, commits, context) {
   const feedCommits = commits
     .map((commit) => ({ commit, post: parseCommitForFeed(commit) }))
     .filter((entry) => entry.post !== null)
@@ -159,17 +169,14 @@ function resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex) 
   const items = []
   for (const { commit, post } of feedCommits) {
     const docs = []
-    const seenDocIds = new Set()
     for (const status of statusesByCommit.get(commit.hash) ?? []) {
-      const id = resolveDocId(status, commit.hash, blobs, headIds, resolvePathIndex)
-      if (!id || seenDocIds.has(id)) continue
-      seenDocIds.add(id)
-      docs.push({ anchor: null, anchorText: null, id })
+      docs.push(resolveDocRef(status, commit.hash, blobs, context))
     }
-    if (docs.length === 0) continue
+    const survival = judgeFeedSurvival({ importance: post.importance, refs: docs })
+    if (!survival.feedSurvives) continue
     items.push({
       body: post.articleBody,
-      docs,
+      docs: survival.docs,
       id: commit.hash.slice(0, 12),
       importance: post.importance,
       keywords: post.keywords,
@@ -188,19 +195,30 @@ function resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex) 
  *      먼저라 ①이 전부 null → 이 폴백이 없으면 피드가 통째로 prune 돼 feeds 가 빈다.
  *   어느 쪽도 headIds 에 없으면(문서 삭제됨) null → prune. 폴백은 resolve 실패 지점에만 얹는다.
  */
-function resolveDocId(status, sha, blobs, headIds, resolvePathIndex) {
+function resolveDocRef(
+  status,
+  sha,
+  blobs,
+  { allHeadIds, headIds, resolveEverDeletedPaths, resolvePathIndex },
+) {
   for (const ref of refsForStatus(sha, status)) {
     const id = readBlobId(blobs.get(ref), ref)
-    if (id && headIds.has(id)) return id
+    if (id && headIds.has(id)) return { id, reason: null }
+    if (id && allHeadIds.has(id)) return { id: null, reason: 'draft-excluded' }
   }
   const pathIndex = resolvePathIndex()
   for (const key of [`${sha}:${status.path}`, status.oldPath ? `${sha}:${status.oldPath}` : null]) {
     if (key !== null) {
       const id = pathIndex.get(key)
-      if (id && headIds.has(id)) return id
+      if (id && headIds.has(id)) return { id, reason: null }
+      if (id && allHeadIds.has(id)) return { id: null, reason: 'draft-excluded' }
     }
   }
-  return null
+  const deleted = resolveEverDeletedPaths()
+  if (deleted.has(status.path) || (status.oldPath && deleted.has(status.oldPath))) {
+    return { id: null, reason: 'deleted' }
+  }
+  return { id: null, reason: 'unresolved' }
 }
 
 function refsForStatus(sha, status) {
@@ -220,25 +238,24 @@ function readBlobId(blob, filePath) {
 }
 
 /**
- * HEAD 문서 목록 — `{ filePath(리포 상대 posix), id(현재 doc-id) }`. `buildPathIndex` 입력이자
- * `headIds` 원천이다(둘을 한 번의 파싱으로 얻는다). id 는 frontmatter id, 없으면 path 폴백(기존
- * loadHeadDocIds 계약 보존). build.mjs 의 headDocs 구성(`${WIKI_PREFIX}${relPath}.md`)과 동형.
- *
- * `excludeDrafts`(prod) 면 draft 문서를 목록에서 뺀다 → 그 id 가 headIds/pathIndex 에 없어 draft 만
- * 가리키는 피드가 resolve 실패로 prune 된다(F4 · build.mjs 의 excludedFeedRefs 와 같은 방향).
+ * HEAD 문서 목록 — `{ filePath(리포 상대 posix), id(현재 doc-id), draft }`. `buildPathIndex` 는 draft 포함
+ * 전 문서로 만들고, 노출 가능 id 집합만 env 별로 좁힌다.
  */
-function loadHeadDocs(vaultDir, excludeDrafts) {
+function loadHeadDocs(vaultDir) {
   const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
   return collectMarkdownFilesRecursive(wikiDir)
     .map((filePath) => {
       const parsed = parseMarkdownFile(filePath)
       if (!parsed) return null
       const derived = derivePathAndBreadcrumb(filePath, wikiDir)
-      if (excludeDrafts && isDraft({ frontmatter: parsed.frontmatter, relPath: derived.path })) {
-        return null
-      }
       const id = parsed.frontmatter.id ?? derived.path
-      return typeof id === 'string' ? { filePath: `${WIKI_PREFIX}${derived.path}.md`, id } : null
+      return typeof id === 'string'
+        ? {
+            draft: isDraft({ frontmatter: parsed.frontmatter, relPath: derived.path }),
+            filePath: `${WIKI_PREFIX}${derived.path}.md`,
+            id,
+          }
+        : null
     })
     .filter((doc) => doc !== null)
 }

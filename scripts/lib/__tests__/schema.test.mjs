@@ -89,40 +89,38 @@ describe('feeds.schema — 제거된 필드가 있으면 fail', () => {
     },
   )
 
-  it('docs[].anchor·anchorText 는 string | null 을 허용한다', () => {
+  it('docs[] 는 id 만 허용한다', () => {
     const feeds = aFeeds()
-      .withItem(aFeedItem().refs([{ anchor: null, anchorText: null, id: DOC_A.id }]))
+      .withItem(aFeedItem().refs([{ id: DOC_A.id }]))
       .build()
 
     expect(validateItem(feeds, feedsSchema)).toEqual([])
   })
 
-  it('docs[].anchor 가 숫자면 fail 한다(nullable 계약 고정)', () => {
-    // 2번째 케이스: `anchor: {}` 같은 무제한 타입이면 이 위반이 통과해버린다.
+  it('docs[].anchor 가 남아 있으면 fail 한다', () => {
     const feeds = aFeeds()
-      .withItem(aFeedItem().refs([{ anchor: 3, anchorText: null, id: DOC_A.id }]))
+      .withItem(aFeedItem().refs([{ anchor: null, id: DOC_A.id }]))
       .build()
 
     expect(validateItem(feeds, feedsSchema).length).toBeGreaterThan(0)
   })
 
-  it('docs[].anchorText 가 숫자면 fail 한다(표시용 라벨은 문자열이다)', () => {
+  it('docs[].anchorText 가 남아 있으면 fail 한다', () => {
     const feeds = aFeeds()
-      .withItem(aFeedItem().refs([{ anchor: 'hbm-사업', anchorText: 3, id: DOC_A.id }]))
+      .withItem(aFeedItem().refs([{ anchorText: null, id: DOC_A.id }]))
       .build()
 
     expect(validateItem(feeds, feedsSchema).length).toBeGreaterThan(0)
   })
 
-  it('docs[].anchorText 가 없으면 fail 한다(계약 필수 — 카드가 라벨을 못 그린다)', () => {
-    // additionalProperties:false 와 짝을 이루는 required — 필드가 **빠지는** 회귀를 잡는다.
+  it('docs[].id 가 없으면 fail 한다', () => {
     const feeds = aFeeds()
-      .withItem(aFeedItem().refs([{ anchor: 'hbm-사업', id: DOC_A.id }]))
+      .withItem(aFeedItem().refs([{}]))
       .build()
     const errors = validateItem(feeds, feedsSchema)
 
     expect(errors.length).toBeGreaterThan(0)
-    expect(errors.join(' ')).toContain('anchorText')
+    expect(errors.join(' ')).toContain('id')
   })
 })
 

@@ -216,12 +216,13 @@ describe('삭제 이력 — 이관 전 경로의 삭제를 설명한다 (DL1·DL
     try {
       const result = buildContent({ env: 'dev', vault })
 
-      expect(result.feeds.items).toHaveLength(1)
-      expect(titlesOf(result.feeds.items)).toEqual(['생존 소식'])
+      expect(result.feeds.items).toHaveLength(2)
+      expect(titlesOf(result.feeds.items)).toEqual(['폐기 소식', '생존 소식'])
+      expect(result.feeds.items.find((item) => item.title === '폐기 소식').docs).toEqual([])
       expect(result.stats.unresolvedPaths).toEqual([])
       // 정확 일치(하한 아님) — "전부 prune 해서 통과"를 막는다.
       expect(result.stats.prunedDocRefs).toBe(1)
-      expect(result.stats.prunedFeeds).toBe(1)
+      expect(result.stats.prunedFeeds).toBe(0)
     } finally {
       cleanup(vault)
     }

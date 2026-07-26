@@ -202,16 +202,16 @@ node scripts/wiki.mjs --env dev --path 'company/삼성전자'
 vault 무결성 검사 전용. **JSON 을 생산하지 않는다.** 페이로드를 메모리에서만 조립해 게이트를 전량 돌리고, 통과하면 exit 0, 위반하면 사유를 출력하고 exit 1 로 죽는다.
 
 ```bash
-node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>] [--allow-deadlinks]
+node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error]
 ```
 
-| 플래그              | 의미                                                                  |
-| ------------------- | --------------------------------------------------------------------- |
-| `--env`             | 미지정 시 prod + **stderr 경고**. 알 수 없는 값은 에러로 끊는다       |
-| `--schema`          | 스키마 디렉토리 override (기본 `scripts/schema`)                      |
-| `--allow-deadlinks` | 데드링크를 실패가 아니라 통과로 본다                                  |
-| `--help` `-h`       | 사용법 출력                                                           |
-| `--out` `--root`    | **제거됨**. 넘기면 에러로 끊는다 (JSON 을 안 만드니 출력 인자도 없다) |
+| 플래그           | 의미                                                                  |
+| ---------------- | --------------------------------------------------------------------- |
+| `--env`          | 미지정 시 prod + **stderr 경고**. 알 수 없는 값은 에러로 끊는다       |
+| `--schema`       | 스키마 디렉토리 override (기본 `scripts/schema`)                      |
+| `--deadlinks`    | 데드링크 심각도. `ignore`, `warn`(기본), `error` 중 하나              |
+| `--help` `-h`    | 사용법 출력                                                           |
+| `--out` `--root` | **제거됨**. 넘기면 에러로 끊는다 (JSON 을 안 만드니 출력 인자도 없다) |
 
 > `pnpm run validate` 는 **`--env dev` 가 박혀 있다.** prod 를 검증하려면 `node scripts/validate.mjs` 를 직접 부른다. 둘은 결과가 크게 다르다 — 이 리포의 예제 vault 는 전량 draft 라 prod 에서는 `docs=0` 이 나온다.
 

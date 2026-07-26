@@ -8,13 +8,10 @@
 
 import { getCommitDocStatuses, underWikiPrefix } from './git.mjs'
 
-const CONVENTION_RE = /^(cwiki|uwiki|feed):\s/
-
 /** 커밋 subject 규약이 문서 id 안정성을 깨뜨리는 파일 상태를 만들면 build fail 한다. */
 export function checkCommitConventions(commits, runGit, wikiPrefix) {
   const violations = []
   for (const commit of commits) {
-    const match = (commit.subject || '').match(CONVENTION_RE)
     // D26: 접두어 없는 커밋도 A+D(문서 id 소실 시그니처)를 검사해야 하므로 statuses 를 모든
     // 커밋에 대해 구한다(이전엔 접두어 커밋만). 마진 비용은 non-vault(툴링) 커밋 수에 한정된다 —
     // vault 커밋(cwiki/uwiki/feed)은 원래도 여기서 git show 됐다. sha 가 달라 커밋마다 1회 spawn.
@@ -26,25 +23,7 @@ export function checkCommitConventions(commits, runGit, wikiPrefix) {
     const added = statuses.filter((entry) => entry.status === 'A')
     const deleted = statuses.filter((entry) => entry.status === 'D')
 
-    if (!match) {
-      if (added.length > 0 && deleted.length > 0) {
-        violations.push({ added, commit, deleted, kind: null })
-      }
-      continue
-    }
-
-    const kind = match[1]
-
-    if (kind === 'cwiki') {
-      if (added.length !== 1 || deleted.length > 0) {
-        violations.push({ added, commit, deleted, kind })
-      }
-      continue
-    }
-
-    if ((kind === 'uwiki' || kind === 'feed') && added.length > 0) {
-      violations.push({ added, commit, deleted, kind })
-    }
+    if (added.length > 0 && deleted.length > 0) violations.push({ added, commit, deleted })
   }
   if (violations.length > 0) fail(formatConventionViolations(violations))
 }
@@ -74,51 +53,8 @@ export function checkInvariants(summary, feeds, body) {
   checkTreeMembership(summary, activeIds)
   checkTagIndex(summary, activeIds)
   checkTreePaths(summary, docById)
-  checkAnchors(feeds, body, docById)
   checkSourceCommit(summary, feeds, body)
   checkUniqueIds(summary)
-}
-
-/**
- * 6. `feeds[].docs[].anchor` ∈ headings(그 문서) **또는** null. 죽은 앵커는 점프를 무반응으로 만든다.
- *
- * `anchorText`(카드 점프 칩 라벨 — 표시용 비정규화)도 **함께** 검사한다: 그 앵커를 가진 heading 의
- * `text` 와 일치해야 하고, `anchor` 가 null 이면 `anchorText` 도 null 이어야 한다. 어긋나면 카드가
- * 엉뚱한 섹션 이름을 보여준다 — 에러 없이, 조용히.
- */
-function checkAnchors(feeds, body, docById) {
-  for (const item of feeds.items) {
-    for (const ref of item.docs) {
-      const doc = docById.get(ref.id)
-      const docPath = doc ? doc.breadcrumb.join('/') : ref.id
-      const where = `feed ${item.id} → doc ${ref.id} (${docPath})`
-
-      if (ref.anchor === null || ref.anchor === undefined) {
-        if (ref.anchorText !== null && ref.anchorText !== undefined) {
-          fail(
-            `불변식 6: ${where} 의 anchor 는 null 인데 anchorText 가 "${ref.anchorText}" 다(가리킬 섹션이 없는데 라벨만 남았다)`,
-          )
-        }
-        continue
-      }
-
-      const bodyDoc = Object.hasOwn(body.docs, docPath) ? body.docs[docPath] : undefined
-      if (!bodyDoc) {
-        fail(
-          `불변식 6: ${where} 의 앵커 "${ref.anchor}" — 그 문서에는 body 가 없다(disable·삭제 → anchor 는 null 로 강등돼야 한다)`,
-        )
-      }
-      const heading = bodyDoc.headings.find((candidate) => candidate.anchor === ref.anchor)
-      if (!heading) {
-        fail(`불변식 6: ${where} 의 앵커 "${ref.anchor}" 가 headings 에 없다(죽은 앵커)`)
-      }
-      if (heading.text !== ref.anchorText) {
-        fail(
-          `불변식 6: ${where} 의 anchorText "${ref.anchorText}" 가 앵커 "${ref.anchor}" 의 heading 원문("${heading.text}")과 다르다(카드가 엉뚱한 섹션 이름을 보여준다)`,
-        )
-      }
-    }
-  }
 }
 
 /** 2. `keys(body.docs)` == active 문서의 `breadcrumb.join('/')` — **양방향**. */
@@ -210,14 +146,14 @@ function checkTreePaths(summary, docById) {
   }
 }
 
-/** 8. `summary.docs[].id` 유일 — `cwiki` 1파일 규칙의 최후 방어선. 중복이면 참조가 **틀린 문서**를 가리킨다. */
+/** 8. `summary.docs[].id` 유일 — 중복이면 참조가 **틀린 문서**를 가리킨다. */
 function checkUniqueIds(summary) {
   const seen = new Map()
   for (const doc of summary.docs) {
     const twin = seen.get(doc.id)
     if (twin) {
       fail(
-        `불변식 8: doc id ${doc.id} 가 중복이다("${twin.breadcrumb.join('/')}", "${doc.breadcrumb.join('/')}") — 한 커밋이 문서 2개를 만들었다`,
+        `불변식 8: doc id ${doc.id} 가 중복이다("${twin.breadcrumb.join('/')}", "${doc.breadcrumb.join('/')}") — 문서 id 는 전역에서 유일해야 한다`,
       )
     }
     seen.set(doc.id, doc)
@@ -240,26 +176,18 @@ function flattenTree(nodes) {
   return out
 }
 
-function formatConventionViolation({ added, commit, deleted, kind }) {
+function formatConventionViolation({ added, commit, deleted }) {
   const lines = [`  - ${commit.hash.slice(0, 12)} ${commit.subject}`]
-  if (kind === 'cwiki') {
-    lines.push(
-      `      cwiki 는 신규 vault 문서 1개만 추가해야 한다(현재 신규 ${added.length}개, 삭제 ${deleted.length}개).`,
-    )
-  } else if (!kind) {
-    lines.push(
-      `      접두어 없는 커밋은 vault 문서 추가와 삭제를 같은 커밋에 담을 수 없다(현재 신규 ${added.length}개, 삭제 ${deleted.length}개).`,
-    )
-  } else {
-    lines.push(`      ${kind} 는 신규 vault 문서를 추가할 수 없다(현재 신규 ${added.length}개).`)
-  }
+  lines.push(
+    `      vault 문서 추가와 삭제를 같은 커밋에 담을 수 없다(현재 신규 ${added.length}개, 삭제 ${deleted.length}개).`,
+  )
   for (const entry of added) lines.push(`      신규 파일 추가: ${entry.path}`)
   for (const entry of deleted) lines.push(`      동시 삭제:     ${entry.path}`)
   if (added.length > 0 && deleted.length > 0) {
     lines.push(
       '      → 이동을 git 이 rename 으로 못 봤다(유사도 미달). 이동과 내용 재작성을 같은 커밋에',
-      '        넣지 마라 — 문서 id 가 바뀌고 과거 피드가 전부 사라진다. 이동만 담은 uwiki 커밋과',
-      '        내용 수정 커밋으로 분리하라.',
+      '        넣지 마라 — 문서 id 가 바뀌고 과거 피드가 전부 사라진다. 이동 커밋과 내용 수정 커밋으로',
+      '        분리하라.',
     )
   }
   return lines.join('\n')

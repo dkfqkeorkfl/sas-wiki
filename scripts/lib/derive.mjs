@@ -210,7 +210,8 @@ function makeTargetResolver(pathToDoc) {
  *
  * 렌더 플러그인(wikilink-plugin.mjs)이 이 결과로 `<a>` 계약(class·href·data-*·label)을 조립한다.
  * 대상 생략(`[[#anchor]]`)은 자기 문서로, 미해결·동명충돌은 `exists:false` 로 돌려준다(데드 class).
- * (정상 빌드는 checkDeadlinks/checkAmbiguous 가 선차단하므로 미해결 경로는 실출력에 도달하지 않는다.)
+ * 동명충돌은 검증에서 계속 선차단하고, 미해결 문서·앵커는 `--deadlinks` 심각도에 따라 런타임에
+ * 도달할 수 있다.
  */
 function makeWikilinkResolver(pathToDoc, resolveTargetPath, selfPath) {
   return (target, _anchor) => {

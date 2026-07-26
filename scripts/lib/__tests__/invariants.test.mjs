@@ -155,45 +155,6 @@ describe('불변식 5 — tree[].path == 그 노드 문서들의 breadcrumb.slic
   })
 })
 
-describe('불변식 6 — feeds[].docs[].anchor ∈ headings(그 문서) 또는 null · anchorText 정합', () => {
-  it('죽은 앵커(그 문서 headings 에 없음)는 throw 한다', () => {
-    const { body, feeds, summary } = worldWith((world) => {
-      world.feeds.items[0].docs[0].anchor = 'ghost-heading'
-    })
-
-    expect(() => checkInvariants(summary, feeds, body)).toThrow(/ghost-heading/)
-  })
-
-  it('disable 문서를 가리키는 피드에 앵커가 있으면 throw 한다(body 가 없다)', () => {
-    // 생산 측(feed.mjs)이 null 로 강등해야 한다 — 강등을 빠뜨리면 여기서 죽는다.
-    const { body, feeds, summary } = worldWith((world) => {
-      world.feeds.items[1].docs[0].anchor = '적용-사례'
-    })
-
-    expect(() => checkInvariants(summary, feeds, body)).toThrow(/적용-사례/)
-  })
-
-  it('anchorText 가 그 앵커의 heading 원문과 다르면 throw 한다', () => {
-    // 앵커는 살아 있으므로(hbm-사업 ∈ headings) 앵커 검사만으로는 **통과한다** — 그런데 카드는
-    // 엉뚱한 섹션 이름("공급망")을 보여준다. 조용히 틀리는 표시를 여기서 끊는다.
-    const { body, feeds, summary } = worldWith((world) => {
-      world.feeds.items[0].docs[0].anchorText = '공급망'
-    })
-
-    expect(() => checkInvariants(summary, feeds, body)).toThrow(/공급망/)
-    expect(() => checkInvariants(summary, feeds, body)).toThrow(/HBM 사업/) // 진짜 원문도 메시지에 있다
-  })
-
-  it('anchor 가 null 인데 anchorText 만 남아 있으면 throw 한다', () => {
-    // 가리킬 섹션이 없는데 라벨만 있으면 카드가 존재하지 않는 섹션으로 안내한다.
-    const { body, feeds, summary } = worldWith((world) => {
-      world.feeds.items[1].docs[0].anchorText = '적용 사례'
-    })
-
-    expect(() => checkInvariants(summary, feeds, body)).toThrow(/적용 사례/)
-  })
-})
-
 describe('불변식 7 — 3 페이로드의 sourceCommit 이 동일', () => {
   it('feeds 의 sourceCommit 만 다르면 throw 한다', () => {
     const skew = '0000000000000000000000000000000000000000'

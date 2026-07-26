@@ -205,19 +205,13 @@ describe('build.smoke — 3 페이로드 산출', () => {
     expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
   })
 
-  it('docs[] 는 정확히 3키(id·anchor·anchorText)이고 anchorText 는 body heading 의 원문이다', () => {
-    // 카드 점프 칩은 **부팅 페이로드만으로** 그려져야 한다 — body(지연 로드)를 당겨오면 이 계약의
-    // 목적(부팅에 본문 없음)이 무너진다. 그래서 표시용 원문을 피드에 비정규화한다.
+  it('docs[] 는 정확히 1키(id)만 갖는다', () => {
     const refs = ctx.result.feeds.items.flatMap((item) => item.docs)
     const feed = ctx.result.feeds.items.find((item) => item.title === '삼성전자 HBM4 로드맵 공개')
-    const heading = ctx.result.body.docs['concept/foo'].headings.find(
-      (candidate) => candidate.anchor === feed.docs[0].anchor,
-    )
 
     expect(refs.length).toBeGreaterThan(0)
-    for (const ref of refs) expect(Object.keys(ref).toSorted()).toEqual(['anchor', 'anchorText', 'id']) // prettier-ignore
-    expect(feed.docs[0].anchor).toBe('로드맵') // 덧붙인 문단이 마지막 섹션 아래다
-    expect(feed.docs[0].anchorText).toBe(heading.text)
+    for (const ref of refs) expect(Object.keys(ref).toSorted()).toEqual(['id'])
+    expect(feed.docs[0]).toEqual({ id: ctx.ids.foo })
   })
 
   it('제거된 필드가 산출물에 하나도 없다', () => {
@@ -246,13 +240,16 @@ describe('build.smoke — 삭제·prune·재생성', () => {
     expect('misc/del-me' in ctx.result.body.docs).toBe(false)
   })
 
-  it('삭제된 문서만 가리키던 피드는 prune 되고 건수가 남는다', () => {
-    // ts 내림차순 — '폐기문서 관련 소식' 만 빠진다.
+  it('삭제된 문서만 가리키던 피드는 docs[] 없이 살아남고 건수가 남는다', () => {
     expect(ctx.result.feeds.items.map((item) => item.title)).toEqual([
       '이사간문서 신제품 공개',
+      '폐기문서 관련 소식',
       '삼성전자 HBM4 로드맵 공개',
     ])
-    expect(ctx.result.stats.prunedFeeds).toBe(1)
+    expect(ctx.result.feeds.items.find((item) => item.title === '폐기문서 관련 소식').docs).toEqual(
+      [],
+    )
+    expect(ctx.result.stats.prunedFeeds).toBe(0)
     expect(ctx.result.stats.prunedDocRefs).toBe(1)
   })
 

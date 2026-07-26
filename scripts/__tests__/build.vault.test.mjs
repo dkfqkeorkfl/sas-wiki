@@ -34,6 +34,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildContent } from '../validate.mjs'
 import { loadSchema, validateItem } from '../lib/validate.mjs'
+
 import { seedVault } from './helpers/seed-example-vault.mjs'
 import { git } from './helpers/vault-facts.mjs'
 
@@ -230,20 +231,16 @@ describe('실 vault ② rename (커밋 11 ↔ 12) — 조용한 유실의 본진
     expect(item.docs.map((ref) => ref.id)).toEqual([docOf(HBM).id])
   })
 
-  it('앵커가 살아 있고 현재 문서의 headings 에 실재한다', () => {
+  it('feed 문서 참조는 현재 문서 id 만 싣는다', () => {
     const item = feedOf('HBM4 로드맵 갱신')
-    const anchors = ctx.result.body.docs[HBM].headings.map((heading) => heading.anchor)
 
-    expect(item.docs[0].anchor).toBe('공급망')
-    expect(anchors).toContain('공급망')
+    expect(item.docs[0]).toEqual({ id: docOf(HBM).id })
   })
 
-  it('anchorText 는 그 heading 의 원문이다(카드 점프 칩 라벨 — body 없이 그린다)', () => {
+  it('feed 문서 참조에는 anchorText 가 없다', () => {
     const item = feedOf('HBM4 로드맵 갱신')
-    const heading = ctx.result.body.docs[HBM].headings.find((h) => h.anchor === '공급망')
 
-    expect(item.docs[0].anchorText).toBe('공급망') // 실 vault 의 `## 공급망` 원문
-    expect(item.docs[0].anchorText).toBe(heading.text) // body 를 당겨오지 않아도 같은 값이 나온다
+    expect(Object.keys(item.docs[0])).toEqual(['id'])
   })
 
   it('해석 실패 경로가 0건이다(집계기가 실제로 센다는 증거는 feed.test #13)', () => {
@@ -257,17 +254,17 @@ describe('실 vault ② rename (커밋 11 ↔ 12) — 조용한 유실의 본진
 })
 
 describe('실 vault ③ prune (커밋 15 ↔ 16)', () => {
-  it('삭제된 문서만 가리키던 피드가 사라진다', () => {
-    expect(feedOf('폐기예정 메모 관련 소식')).toBeUndefined()
+  it('삭제된 문서만 가리키던 피드는 docs[] 없이 살아남는다', () => {
+    expect(feedOf('폐기예정 메모 관련 소식').docs).toEqual([])
   })
 
   it('prune 건수가 stats 에 남는다(조용한 삭제 금지)', () => {
     expect(ctx.result.stats.prunedDocRefs).toBe(1)
-    expect(ctx.result.stats.prunedFeeds).toBe(1)
+    expect(ctx.result.stats.prunedFeeds).toBe(0)
   })
 
-  it('발행 6건 중 1건이 prune 되어 5건이 남는다', () => {
-    expect(ctx.result.feeds.items).toHaveLength(5)
+  it('발행 6건이 모두 남는다', () => {
+    expect(ctx.result.feeds.items).toHaveLength(6)
   })
 })
 
@@ -282,11 +279,10 @@ describe('실 vault ④ disable (커밋 13 ↔ 14)', () => {
     expect(item.docs.map((ref) => ref.id)).toEqual([docOf(ONDEVICE).id])
   })
 
-  it('anchor 는 null 로 강등된다(body·headings 가 없다 — 불변식 6)', () => {
+  it('disable 피드도 문서 id 만 싣는다', () => {
     const item = feedOf('온디바이스 AI, 스마트폰 탑재 확대')
 
-    expect(item.docs[0].anchor).toBeNull()
-    expect(item.docs[0].anchorText).toBeNull() // 라벨만 남으면 없는 섹션으로 안내한다
+    expect(item.docs[0]).toEqual({ id: docOf(ONDEVICE).id })
   })
 })
 
@@ -303,23 +299,16 @@ describe('실 vault ⑤ 다중 문서 (커밋 9)', () => {
     )
   })
 
-  it('각 문서의 앵커가 그 문서에서 바뀐 섹션을 가리킨다', () => {
+  it('각 문서 참조는 id 만 싣는다', () => {
     const item = feedOf('SK하이닉스·삼성전자, HBM 공급 계약 체결')
-    const anchorOf = (relDoc) => item.docs.find((ref) => ref.id === docOf(relDoc).id).anchor
 
-    expect(anchorOf(SAMSUNG)).toBe('메모리-로드맵')
-    expect(anchorOf(HYNIX)).toBe('메모리-사업')
-    expect(ctx.result.body.docs[SAMSUNG].headings.map((h) => h.anchor)).toContain('메모리-로드맵')
-    expect(ctx.result.body.docs[HYNIX].headings.map((h) => h.anchor)).toContain('메모리-사업')
+    expect(item.docs.map((ref) => Object.keys(ref))).toEqual([['id'], ['id']])
   })
 
-  it('각 문서의 anchorText 가 그 섹션의 원문이다(슬러그의 하이픈이 아니다)', () => {
-    // 카드는 `삼성전자 › 메모리 로드맵` 을 그린다 — `메모리-로드맵` 이 아니다(§7).
+  it('각 문서 참조에는 anchorText 가 없다', () => {
     const item = feedOf('SK하이닉스·삼성전자, HBM 공급 계약 체결')
-    const textOf = (relDoc) => item.docs.find((ref) => ref.id === docOf(relDoc).id).anchorText
 
-    expect(textOf(SAMSUNG)).toBe('메모리 로드맵')
-    expect(textOf(HYNIX)).toBe('메모리 사업')
+    expect(item.docs.every((ref) => !Object.hasOwn(ref, 'anchorText'))).toBe(true)
   })
 
   it('trailer 가 keywords·importance 로 파싱된다(Tags: 는 사라졌다)', () => {
@@ -346,9 +335,8 @@ describe('실 vault ⑤ 다중 문서 (커밋 9)', () => {
 })
 
 describe('실 vault ⑥ anchor null (커밋 17)', () => {
-  it('frontmatter 만 고친 피드는 anchor 가 null 이다', () => {
-    expect(feedOf('삼성전자 거래소 정보 정정').docs[0].anchor).toBeNull()
-    expect(feedOf('삼성전자 거래소 정보 정정').docs[0].anchorText).toBeNull()
+  it('frontmatter 만 고친 피드도 문서 id 만 싣는다', () => {
+    expect(feedOf('삼성전자 거래소 정보 정정').docs[0]).toEqual({ id: docOf(SAMSUNG).id })
   })
 
   it('그래도 문서는 가리킨다(문서 참조까지 사라지면 안 된다)', () => {
@@ -404,7 +392,8 @@ describe('실 vault ⑦ 전역 계약', () => {
   it('규약 밖 커밋 warning 이 0건이다(루트 README 커밋은 vault 를 안 건드린다)', () => {
     // vacuous 방지 짝: 파서가 실제로 커밋을 훑었다는 하한(피드 5건)과 같은 블록에 둔다.
     expect(ctx.result.feeds.items.length).toBeGreaterThanOrEqual(5)
-    expect(ctx.result.stats.offConventionCommits).toEqual([])
+    expect(Object.hasOwn(ctx.result.stats, 'offConventionCommits')).toBe(false)
+    expect(ctx.result.stats.unpublishedFeedCommits).toEqual([])
   })
 
   it('같은 SOURCE_DATE_EPOCH 로 재조립하면 payload 가 byte-identical 이다', () => {

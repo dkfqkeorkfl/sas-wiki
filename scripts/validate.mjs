@@ -38,17 +38,17 @@ const PAYLOAD_FILES = {
  * 순서는 conventions→schema→deadlinks→feedResolution 를 보존한다(컨벤션 위반이 unresolved-feed 보다
  * 먼저 진단돼야 한다). 반환은 in-memory 3 payload — 소비/쓰기는 하지 않는다(검증용).
  *
- * @param {{ allowDeadlinks?: boolean, env?: 'dev'|'prod', schema?: string, vault: string }} options
+ * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod', schema?: string, vault: string }} options
  * @returns {{ body: object, feeds: object, stats: object, summary: object }}
  */
-export function buildContent({ allowDeadlinks = false, env = 'prod', schema, vault }) {
+export function buildContent({ deadlinks = 'warn', env = 'prod', schema, vault }) {
   const vaultDir = path.resolve(vault)
   const schemaDir = schema ? path.resolve(schema) : SCHEMA_DIR
 
   const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
   validateParsedDocs(gate.visibleDocs, gate.runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
-  checkDeadlinks(gate.visibleDocs, gate.derived, allowDeadlinks, vaultDir)
+  stats.deadlinks = checkDeadlinks(gate.visibleDocs, gate.derived, deadlinks, vaultDir)
   checkFeedResolution(stats)
   checkStrayDocs(vaultDir)
   checkDeletedIdReuse(gate)
@@ -85,21 +85,17 @@ export async function main(argv = process.argv.slice(2)) {
 }
 
 /**
- * `--vault`(선택, 기본 REPO_ROOT) · `--env dev|prod` · `--schema` · `--allow-deadlinks`.
+ * `--vault`(선택, 기본 REPO_ROOT) · `--env dev|prod` · `--schema` · `--deadlinks ignore|warn|error`.
  *
  * **`--out`/`--root` 은 거부한다** — validate.mjs 는 JSON 을 생산하지 않으므로 출력 인자가 없다(호환
  * 별칭·마이그레이션 금지). 옛 스크립트가 넘기면 시끄럽게 끊어 오배선을 드러낸다.
  */
 export function parseArgs(argv) {
-  const options = { allowDeadlinks: false, env: null, schema: SCHEMA_DIR, vault: null }
+  const options = { deadlinks: 'warn', env: null, schema: SCHEMA_DIR, vault: null }
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--help' || arg === '-h') return { ...options, help: true }
-    if (arg === '--allow-deadlinks') {
-      options.allowDeadlinks = true
-      continue
-    }
     if (arg === '--out') {
       throw new Error(
         '--out 는 제거되었습니다: validate.mjs 는 무결성 검증 전용이며 JSON 을 생산하지 않습니다.',
@@ -115,6 +111,16 @@ export function parseArgs(argv) {
         throw new Error(`알 수 없는 --env 값: "${value}" — dev|prod 만 허용합니다`)
       }
       options.env = value
+      i += 1
+      continue
+    }
+    if (arg === '--deadlinks') {
+      const value = argv[i + 1]
+      if (!value) throw new Error('--deadlinks 에는 ignore, warn, error 중 하나가 필요합니다')
+      if (!['ignore', 'warn', 'error'].includes(value)) {
+        throw new Error(`알 수 없는 --deadlinks 값: "${value}" — ignore|warn|error 만 허용합니다`)
+      }
+      options.deadlinks = value
       i += 1
       continue
     }
@@ -140,9 +146,10 @@ export function parseArgs(argv) {
   return options
 }
 
-function checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir) {
+function checkDeadlinks(parsedDocs, derived, severity, vaultDir) {
   const { pathToDoc, resolveTargetPath } = derived
   const deadlinks = []
+  const ambiguous = []
   for (const doc of parsedDocs) {
     for (const link of extractWikilinks(doc.body)) {
       if (!link.targetRaw) {
@@ -153,7 +160,7 @@ function checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir) {
       }
       const resolved = resolveTargetPath(link.targetRaw)
       if (resolved.ambiguous) {
-        deadlinks.push({ anchor: link.anchorRaw, from: doc.filePath, reason: '동명 문서 충돌', target: link.targetRaw }) // prettier-ignore
+        ambiguous.push({ anchor: link.anchorRaw, from: doc.filePath, reason: '동명 문서 충돌', target: link.targetRaw }) // prettier-ignore
         continue
       }
       if (!resolved.path) {
@@ -165,14 +172,25 @@ function checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir) {
       }
     }
   }
-  if (deadlinks.length === 0 || allowDeadlinks) return
+  if (ambiguous.length > 0) {
+    throw new Error(formatDeadlinks(ambiguous, vaultDir, '동명 문서 충돌'))
+  }
+  if (severity === 'ignore') return []
+  if (deadlinks.length === 0 || severity === 'warn') return deadlinks
+  throw new Error(
+    `${formatDeadlinks(deadlinks, vaultDir, `데드링크 ${deadlinks.length}건 발견`)}\n` +
+      '  → 완화하려면 --deadlinks warn 또는 --deadlinks ignore 를 사용하세요.',
+  )
+}
+
+function formatDeadlinks(deadlinks, vaultDir, header) {
   const detail = deadlinks
     .map(
       (dead) =>
         `  - ${path.relative(vaultDir, dead.from)} -> [[${dead.target}${dead.anchor ? `#${dead.anchor}` : ''}]] (${dead.reason})`,
     )
     .join('\n')
-  throw new Error(`데드링크 ${deadlinks.length}건 발견:\n${detail}`)
+  return `${header}:\n${detail}`
 }
 
 /**
@@ -255,13 +273,18 @@ function reportStats({ body, feeds, stats, summary }) {
     `[wiki] docs=${summary.docs.length} body=${Object.keys(body.docs).length} feeds=${feeds.items.length}` +
       ` prune=${stats.prunedDocRefs} prunedFeeds=${stats.prunedFeeds}` +
       ` unresolved=${stats.unresolvedPaths.length}` +
-      ` warnings=${stats.warnings.length + stats.offConventionCommits.length}`,
+      ` warnings=${stats.warnings.length + stats.unpublishedFeedCommits.length + stats.deadlinks.length}`,
   )
   for (const entry of stats.unresolvedPaths) {
     console.log(`[wiki]   unresolved: ${entry.sha.slice(0, 12)} ${entry.path}`)
   }
-  for (const entry of stats.offConventionCommits) {
-    console.log(`[wiki]   off-convention: ${entry.sha.slice(0, 12)} "${entry.subject}"`)
+  for (const entry of stats.unpublishedFeedCommits) {
+    console.log(`[wiki]   unpublished-feed: ${entry.sha.slice(0, 12)} "${entry.subject}"`)
+  }
+  for (const entry of stats.deadlinks) {
+    console.log(
+      `[wiki]   deadlink: ${path.relative(process.cwd(), entry.from)} -> [[${entry.target}${entry.anchor ? `#${entry.anchor}` : ''}]] (${entry.reason})`,
+    )
   }
   for (const entry of stats.warnings) {
     console.log(`[wiki]   warning: ${entry.sha.slice(0, 12)} ${entry.reason}`)
@@ -269,7 +292,7 @@ function reportStats({ body, feeds, stats, summary }) {
 }
 
 function usage() {
-  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--allow-deadlinks]'
+  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error]'
 }
 
 function validateParsedDocs(parsedDocs, runGit, vaultDir, wikiSchema) {

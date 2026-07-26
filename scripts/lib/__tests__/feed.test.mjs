@@ -214,7 +214,7 @@ describe('buildFeedItems — 문서 참조(docs[])', () => {
     expect(items[0].ts).toBe('2026-01-06T00:00:00Z') // author date
   })
 
-  it('한 커밋이 문서 2개를 고치면 docs[] 가 2건이고 각자의 앵커를 갖는다', () => {
+  it('한 커밋이 문서 2개를 고치면 docs[] 가 2건이고 각 문서 id 만 갖는다', () => {
     const commits = [aCommit({ hash: 'c1' })]
     const ctx = aContext({
       diffs: {
@@ -226,17 +226,12 @@ describe('buildFeedItems — 문서 참조(docs[])', () => {
     })
 
     const { items } = buildFeedItems(commits, ctx)
-    const refOf = (id) => items[0].docs.find((ref) => ref.id === id)
 
     expect(items[0].docs).toHaveLength(2)
-    expect(refOf(SAMSUNG_ID).anchor).toBe('메모리-로드맵')
-    expect(refOf(HYNIX_ID).anchor).toBe('메모리-사업')
+    expect(items[0].docs).toEqual([{ id: SAMSUNG_ID }, { id: HYNIX_ID }])
   })
 
-  it('anchorText 는 그 heading 의 **원문**이다(슬러그가 아니다)', () => {
-    // 카드 점프 칩은 `삼성전자 › 메모리 로드맵` 을 보여준다(계약 §7) — URL 슬러그(`메모리-로드맵`)가
-    // 아니다. 원문은 headings 에만 있고 headings 는 지연 로드되는 body 에 있으므로, 피드가 들고 있지
-    // 않으면 피드 화면이 본문을 당겨오게 된다(= 부팅 페이로드에 본문이 없다는 목적 붕괴).
+  it('docs[] 는 앵커 없이 문서 id 만 싣는다', () => {
     const commits = [aCommit({ hash: 'c1' })]
     const ctx = aContext({
       diffs: { c1: aDiff([{ hunks: [{ count: 2, start: 20 }], path: SAMSUNG_FILE }]) },
@@ -244,12 +239,10 @@ describe('buildFeedItems — 문서 참조(docs[])', () => {
 
     const { items } = buildFeedItems(commits, ctx)
 
-    expect(items[0].docs).toEqual([
-      { anchor: '메모리-로드맵', anchorText: '메모리 로드맵', id: SAMSUNG_ID },
-    ])
+    expect(items[0].docs).toEqual([{ id: SAMSUNG_ID }])
   })
 
-  it('rename: 당시 경로가 역인덱스로 현재 문서에 해석되고 앵커가 살아남는다', () => {
+  it('rename: 당시 경로가 역인덱스로 현재 문서에 해석된다', () => {
     // 커밋 11 은 concept/HBM.md 를 고쳤고, 커밋 12 가 tech/HBM.md 로 옮겼다.
     // 현재 경로로 조회하면 못 찾는다 → (sha, 당시경로) 역인덱스가 유일한 길이다.
     const commits = [aCommit({ hash: 'c1', subject: 'feed: HBM4 로드맵 갱신' })]
@@ -259,38 +252,32 @@ describe('buildFeedItems — 문서 참조(docs[])', () => {
 
     const { items, stats } = buildFeedItems(commits, ctx)
 
-    expect(items[0].docs).toEqual([{ anchor: '공급망', anchorText: '공급망', id: HBM_ID }])
+    expect(items[0].docs).toEqual([{ id: HBM_ID }])
     expect(stats.unresolvedPaths).toEqual([])
   })
 
-  it('frontmatter 전용 수정은 anchor 가 null 이다(bodyLineOffset 보정)', () => {
-    // 파일 12행 = 본문 4행(offset 8) → 첫 heading(1행) 아래지만…
-    // 보정을 빠뜨리면 파일 12행이 본문 12행으로 읽혀 **메모리-로드맵**(9행)이 잡힌다 → 엉뚱한 앵커.
+  it('frontmatter 전용 수정도 문서 id 만 남긴다', () => {
     const commits = [aCommit({ hash: 'c1' })]
     const ctxBody = aContext({
       diffs: { c1: aDiff([{ hunks: [{ count: 1, start: 12 }], path: SAMSUNG_FILE }]) },
     })
 
-    expect(buildFeedItems(commits, ctxBody).items[0].docs[0].anchor).toBe('개요')
+    expect(buildFeedItems(commits, ctxBody).items[0].docs).toEqual([{ id: SAMSUNG_ID }])
 
-    // frontmatter(파일 6행)만 고친 커밋 → 본문 hunk 가 없다 → null
     const ctxFront = aContext({
       diffs: { c1: aDiff([{ hunks: [{ count: 1, start: 6 }], path: SAMSUNG_FILE }]) },
     })
 
-    expect(buildFeedItems(commits, ctxFront).items[0].docs[0].anchor).toBeNull()
+    expect(buildFeedItems(commits, ctxFront).items[0].docs).toEqual([{ id: SAMSUNG_ID }])
   })
 
-  it('anchor 가 null 이면 anchorText 도 null 이다(라벨만 남으면 안 된다)', () => {
-    // 가리킬 섹션이 없는데 라벨만 남으면 카드가 존재하지 않는 섹션으로 안내한다(불변식 6 이 그것도 잡는다).
+  it('문서 id 외 필드를 생산하지 않는다', () => {
     const commits = [aCommit({ hash: 'c1' })]
     const ctxFront = aContext({
       diffs: { c1: aDiff([{ hunks: [{ count: 1, start: 6 }], path: SAMSUNG_FILE }]) }, // frontmatter 전용
     })
 
-    expect(buildFeedItems(commits, ctxFront).items[0].docs).toEqual([
-      { anchor: null, anchorText: null, id: SAMSUNG_ID },
-    ])
+    expect(Object.keys(buildFeedItems(commits, ctxFront).items[0].docs[0])).toEqual(['id'])
   })
 
   it('정렬은 ts 내림차순, 동률이면 id 오름차순이다(결정성)', () => {
@@ -367,7 +354,7 @@ describe('buildFeedItems — prune (삭제 문서) vs disable (유지)', () => {
     expect(stats.prunedFeeds).toBe(0)
   })
 
-  it('disable 문서는 prune 하지 않는다 — 피드는 살고 anchor 만 null 로 강등된다', () => {
+  it('disable 문서는 prune 하지 않는다 — 피드는 살고 문서 id 만 남는다', () => {
     // 스텁 4키가 링크를 살려두는 이유가 이것이다(README · summary 반환값).
     const commits = [aCommit({ hash: 'c1', subject: 'feed: 온디바이스 AI, 스마트폰 탑재 확대' })]
     const ctx = aContext({
@@ -376,7 +363,7 @@ describe('buildFeedItems — prune (삭제 문서) vs disable (유지)', () => {
 
     const { items, stats } = buildFeedItems(commits, ctx)
 
-    expect(items[0].docs).toEqual([{ anchor: null, anchorText: null, id: DISABLED_ID }])
+    expect(items[0].docs).toEqual([{ id: DISABLED_ID }])
     expect(stats.prunedDocRefs).toBe(0)
     expect(stats.prunedFeeds).toBe(0)
   })
@@ -398,7 +385,7 @@ describe('buildFeedItems — 조용한 유실 금지 (tdd §8)', () => {
     expect(stats.unresolvedPaths).toEqual([{ path: SAMSUNG_FILE, sha: 'c1' }])
   })
 
-  it('규약 밖 subject 가 vault 문서를 건드리면 offConventionCommits 에 집계된다', () => {
+  it('규약 밖 subject 는 feed 경고로 집계하지 않는다', () => {
     const commits = [
       aCommit({ hash: 'c1', subject: 'refactor: 문서 손질' }),
       aCommit({ hash: 'c2', subject: 'chore: CI 설정' }),
@@ -412,8 +399,8 @@ describe('buildFeedItems — 조용한 유실 금지 (tdd §8)', () => {
 
     const { stats } = buildFeedItems(commits, ctx)
 
-    // vault 를 건드리지 않는 관리용 커밋(chore·ci·docs)은 **warning 이 아니다**(노이즈 금지).
-    expect(stats.offConventionCommits).toEqual([{ sha: 'c1', subject: 'refactor: 문서 손질' }])
+    expect(Object.hasOwn(stats, 'offConventionCommits')).toBe(false)
+    expect(stats.unpublishedFeedCommits).toEqual([])
   })
 })
 

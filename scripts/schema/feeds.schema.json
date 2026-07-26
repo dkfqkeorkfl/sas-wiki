@@ -28,21 +28,19 @@
         "body": { "type": "string" },
         "keywords": { "type": "array", "items": { "type": "string" } },
         "docs": { "type": "array", "items": { "$ref": "#/definitions/docRef" } },
-        "importance": { "type": "string", "enum": ["normal", "highlight", "breaking"] }
+        "importance": { "type": "string", "enum": ["normal", "highlight", "breaking", "fix"] }
       }
     },
     "docRef": {
       "type": "object",
-      "description": "이 커밋이 고친 문서 — path 가 아니라 **불변 id** 로 가리킨다(문서 이동 내성). anchor 는 URL 슬러그, anchorText 는 그 heading 의 표시용 원문(카드 점프 칩 라벨). 원문은 headings 에만 있고 headings 는 지연 로드되는 body 에 있으므로 **피드에 비정규화한다** — 아니면 피드 화면이 본문을 당겨오게 되어 '부팅 페이로드에 본문 없음' 이 무너진다.",
+      "description": "이 커밋이 고친 문서 — path 가 아니라 **불변 id** 로 가리킨다(문서 이동 내성).",
       "additionalProperties": false,
-      "required": ["id", "anchor", "anchorText"],
+      "required": ["id"],
       "properties": {
         "id": {
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-        },
-        "anchor": { "type": ["string", "null"] },
-        "anchorText": { "type": ["string", "null"] }
+        }
       }
     },
     "feedCursor": {

@@ -107,14 +107,14 @@ describe('grandfathering — 이관 이전 커밋은 현행 계약의 심사 대
       const result = buildContent({ env: 'dev', vault })
 
       expect(result.summary.docs).toHaveLength(1)
-      expect(result.stats.offConventionCommits).toEqual([])
+      expect(Object.hasOwn(result.stats, 'offConventionCommits')).toBe(false)
+      expect(result.stats.unpublishedFeedCommits).toEqual([])
     } finally {
       cleanup(vault)
     }
   })
 
-  it('CN2b: 이관 **이후** 경로를 건드린 접두어 없는 커밋은 여전히 잡는다(경고를 끈 게 아니다)', () => {
-    // CN2 의 짝. 이 케이스가 없으면 "위생 경고를 통째로 껐다"와 "이관 이전만 면제했다"를 구분할 수 없다.
+  it('CN2b: 이관 **이후** 경로를 건드린 접두어 없는 커밋도 feed 경고 대상이 아니다', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'vault/wiki' })
@@ -131,8 +131,8 @@ describe('grandfathering — 이관 이전 커밋은 현행 계약의 심사 대
       const result = buildContent({ env: 'dev', vault })
 
       expect(result.summary.docs).toHaveLength(1)
-      expect(result.stats.offConventionCommits).toHaveLength(1)
-      expect(result.stats.offConventionCommits[0].subject).toBe('문서 대개편 2')
+      expect(Object.hasOwn(result.stats, 'offConventionCommits')).toBe(false)
+      expect(result.stats.unpublishedFeedCommits).toEqual([])
     } finally {
       cleanup(vault)
     }

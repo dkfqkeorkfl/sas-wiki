@@ -46,8 +46,7 @@ const DEFAULT_DOC = {
 
 const DEFAULT_FEED_ITEM = {
   body: '2026년 하반기 양산 목표를 제시했다.',
-  // anchorText = 그 앵커를 가진 heading 의 **원문**(DEFAULT_BODY_DOC 의 'HBM 사업') — 슬러그가 아니다.
-  docs: [{ anchor: 'hbm-사업', anchorText: 'HBM 사업', id: DOC_A.id }],
+  docs: [{ id: DOC_A.id }],
   id: 'f1f1f1f1f1f1',
   importance: 'breaking',
   keywords: ['실적'],
@@ -90,7 +89,7 @@ export function aDoc() {
   return builder(DEFAULT_DOC)
 }
 
-/** FeedItem — 정확히 7키. `.refs([{id, anchor, anchorText}])` 로 문서 참조를 갈아끼운다. */
+/** FeedItem — 정확히 7키. `.refs([{id}])` 로 문서 참조를 갈아끼운다. */
 export function aFeedItem() {
   return builder(DEFAULT_FEED_ITEM, { refs: (value, docs) => ({ ...value, docs }) })
 }
@@ -151,9 +150,8 @@ export function aWorld() {
     .withItem(aFeedItem())
     .withItem(
       // disable 문서를 가리키는 피드 — **정상**이다(불변식 1 이 disable 을 포함한다).
-      // anchor 는 null 로 강등돼 있다(body·headings 가 없으므로 — 불변식 6). 라벨(anchorText)도 함께 null 이다.
       aFeedItem().with({
-        docs: [{ anchor: null, anchorText: null, id: DOC_D.id }],
+        docs: [{ id: DOC_D.id }],
         id: 'f2f2f2f2f2f2',
         title: '온디바이스 AI, 스마트폰 탑재 확대',
         ts: '2026-01-05T00:00:00Z',

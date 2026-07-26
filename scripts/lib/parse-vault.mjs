@@ -82,13 +82,17 @@ export function parseVault(vaultDir, env, schemaDir) {
 
   const derived = derive(visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
 
+  const allHeadDocs = parsedDocs.map((doc) => ({
+    filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
+    id: doc.frontmatter.id,
+  }))
   const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
     filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
     id: doc.id,
   }))
-  const pathIndex = buildPathIndex(headDocs, runGit)
+  const pathIndex = buildPathIndex(allHeadDocs, runGit)
   const deletedPaths = collectDeletedDocPaths(runGit, {
-    headPaths: new Set(headDocs.map((doc) => doc.filePath)),
+    headPaths: new Set(allHeadDocs.map((doc) => doc.filePath)),
     isDocPath: anyMarkdown,
   })
   const everDeletedPaths = collectEverDeletedDocPaths(runGit, { isDocPath: anyMarkdown })
@@ -98,26 +102,13 @@ export function parseVault(vaultDir, env, schemaDir) {
       runGit,
     ).keys(),
   )
-  const docsById = new Map()
-  const headingsById = new Map()
-  for (const doc of derived.pathToDoc.values()) {
-    docsById.set(doc.id, {
-      bodyLineOffset: doc.bodyLineOffset || 0,
-      status: doc.frontmatter.status,
-    })
-    if (doc.frontmatter.status !== 'disable') headingsById.set(doc.id, doc.headingsWithLines)
-  }
-
   const { items, stats } = buildFeedItems(commits, {
     deletedPaths,
-    docsById,
     everDeletedPaths,
     excludedFeedRefs,
-    headingsById,
     pathIndex,
     runGit,
     strayDocPaths,
-    wikiPrefix: WIKI_PREFIX,
   })
 
   const ignore = loadIgnoreFeeds(vaultDir, schemaDir)

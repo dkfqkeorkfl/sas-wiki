@@ -248,8 +248,11 @@ describe('buildContent — feed 참조의 explained prune', () => {
 
     const result = buildContent({ out, vault })
 
-    expect(result.feeds.items.map((item) => item.title)).not.toContain('옛문서 마지막 소식')
+    expect(result.feeds.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ docs: [], title: '옛문서 마지막 소식' })]),
+    )
     expect(result.stats.prunedDocRefs).toBeGreaterThanOrEqual(1)
+    expect(result.stats.prunedFeeds).toBe(0)
     expect(result.stats.unresolvedPaths).toEqual([])
   })
 })
