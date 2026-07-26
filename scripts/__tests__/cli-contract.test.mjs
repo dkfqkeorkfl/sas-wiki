@@ -80,7 +80,7 @@ afterAll(() => cleanup(...tmps))
 
 // ── C1: 3 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.
 //    RED 단계에서는 `if(!vault) throw` 존치 → exit1 → status 단언 실패. (docs.length>0 는 REPO_ROOT
-//       오파생(`vault/wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
+//       오파생(`wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
 const C1_CASES = [
   { assert: (p) => expect(p.docs.length).toBeGreaterThan(0), args: ['--env', 'dev'], name: 'summary', script: SUMMARY }, // prettier-ignore
   { assert: (p) => expect(Array.isArray(p.items)).toBe(true), args: ['--env', 'dev'], name: 'feeds', script: FEEDS }, // prettier-ignore
@@ -199,7 +199,7 @@ describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격�
 
 // ── C6: 기본값이 import.meta.url 파생(≠ cwd) 임을 증명 — cwd=os.tmpdir() 에서도 REPO_ROOT 를 읽는다.
 //    RED 단계에서는 exit1. 무엇을 깨면 red(GREEN 후): 기본값을 process.cwd() 파생으로 하면 tmpdir 에
-//    `vault/wiki` 부재 → red. 두 cwd 의 sourceCommit 동일 = 같은 REPO_ROOT 확증.
+//    `wiki` 부재 → red. 두 cwd 의 sourceCommit 동일 = 같은 REPO_ROOT 확증.
 describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (RED 단계 회귀 가드)', () => {
   it('summary --env dev(--vault 생략), cwd=tmpdir → exit0 · docs>0 · sourceCommit=cwd repo 실행값', () => {
     const inRepo = runCli(SUMMARY, ['--env', 'dev'], { cwd: REPO_ROOT })

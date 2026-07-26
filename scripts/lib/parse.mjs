@@ -103,10 +103,7 @@ export function collectMarkdownFilesRecursive(dir) {
  * 계약에 문자열 `path` 필드는 없다 — 경로가 필요하면 이 유도식을 쓴다.
  * 폴더 크럼(표시용)은 `breadcrumb.slice(0, -1)` 이다.
  */
-export function derivePathAndBreadcrumb(
-  filePath,
-  wikiDir = path.join(process.cwd(), 'vault', 'wiki'),
-) {
+export function derivePathAndBreadcrumb(filePath, wikiDir) {
   const relWithExt = path.relative(wikiDir, filePath).split(path.sep).join('/')
   const rel = relWithExt.replace(/\.md$/, '')
   return { breadcrumb: rel.split('/'), path: rel }

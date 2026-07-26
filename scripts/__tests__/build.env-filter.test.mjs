@@ -33,7 +33,7 @@ function nextValidId() {
 }
 
 /**
- * vault/wiki/<rel>.md 를 유효 frontmatter 로 쓴다.
+ * wiki/<rel>.md 를 유효 frontmatter 로 쓴다.
  *  - draft   : 지정 시 `draft: true|false` 프론트매터 추가(parseScalar → boolean).
  *  - id      : 명시하면 그대로(비유효 id 로 스키마-위반 앵커를 만들 때 사용), 생략 시 유효 UUIDv7.
  *  - status  : 'active' | 'disable'.
@@ -52,7 +52,7 @@ function writeWikiDoc(
   } = {},
 ) {
   const docId = id ?? nextValidId()
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
   const fm = ['---', `id: "${docId}"`, `title: ${title ?? rel.split('/').at(-1)}`, `type: ${type}`, `status: ${status}`] // prettier-ignore
   if (draft !== undefined) fm.push(`draft: ${draft}`)
@@ -79,7 +79,7 @@ function docIds(result) {
 
 /** 문서 끝에 문단을 덧붙인다(마지막 `##` 섹션에 속하므로 feed anchor 가 산출된다). */
 function appendDoc(root, rel, paragraph) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
 }
 
@@ -387,8 +387,8 @@ describe('이동한 draft feed — 과거경로도 prune (rename 좌표)', () =>
     commit(vault, 'feed: movable 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
     // 순수 rename(내용 수정 없음) 단독 커밋 → git 이 R 로 감지(D 아님). 이동+재작성 혼합은
     // 커밋 컨벤션 가드가 막으므로(build 은 R 만 허용) 여기서도 pure mv 만 한다.
-    mkdirSync(path.join(vault, 'vault', 'wiki', 'tech'), { recursive: true })
-    git(vault, ['mv', 'vault/wiki/concept/movable.md', 'vault/wiki/tech/movable.md'])
+    mkdirSync(path.join(vault, 'wiki', 'tech'), { recursive: true })
+    git(vault, ['mv', 'wiki/concept/movable.md', 'wiki/tech/movable.md'])
     commit(vault, 'uwiki: movable 을 tech/ 로 이동')
     ctx.vault = vault
     ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
@@ -456,7 +456,7 @@ describe('draft+public 혼합 feed — per-ref prune', () => {
 //      · excludedFeedRefs 안 → prune(삭제 동급, unresolved 아님).
 // ────────────────────────────────────────────────────────────────────────────
 describe('excludedFeedRefs — 게이트 보존 대조 (buildFeedItems 단위)', () => {
-  const GHOST_FILE = 'vault/wiki/concept/ghost.md'
+  const GHOST_FILE = 'wiki/concept/ghost.md'
   const commits = [
     { authorDate: '2026-01-06T00:00:00Z', body: '본문.\n\nKeywords: k\nImportance: normal', hash: 'c1', subject: 'feed: 헤드라인' }, // prettier-ignore
   ]
@@ -466,7 +466,7 @@ describe('excludedFeedRefs — 게이트 보존 대조 (buildFeedItems 단위)',
     return [`diff --git a/${filePath} b/${filePath}`, `--- a/${filePath}`, `+++ b/${filePath}`, '@@ -1,0 +1,2 @@'].join('\n') // prettier-ignore
   }
 
-  /** pathIndex 가 비어 아무것도 해석 못 하는(=!docId) 최소 컨텍스트. */
+  /** pathIndex 가 현재 커밋 좌표를 못 풀어 docId 가 없는 최소 컨텍스트. */
   function ctxWith(excludedFeedRefs) {
     return {
       deletedPaths: new Set(),
@@ -474,8 +474,9 @@ describe('excludedFeedRefs — 게이트 보존 대조 (buildFeedItems 단위)',
       everDeletedPaths: new Set(),
       excludedFeedRefs,
       headingsById: new Map(),
-      pathIndex: new Map(),
+      pathIndex: new Map([[`c0:${GHOST_FILE}`, 'ghost-doc-id']]),
       runGit: (args) => (args.at(-1) === 'c1' ? feedDiff(GHOST_FILE) : ''),
+      wikiPrefix: 'wiki/',
     }
   }
 

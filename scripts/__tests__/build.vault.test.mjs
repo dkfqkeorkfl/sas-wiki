@@ -85,7 +85,7 @@ function creationSha(relDoc) {
 
 /** vault 문서의 리포 상대 md 경로. */
 function docFile(relDoc) {
-  return `vault/wiki/${relDoc}.md`
+  return `wiki/${relDoc}.md`
 }
 
 /** 문서 id = frontmatter 에 저작된 불변 UUIDv7 (D1). 이동해도 파일과 함께 옮겨간다 → working tree 에서 읽는다. */

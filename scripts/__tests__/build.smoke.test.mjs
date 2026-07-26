@@ -40,7 +40,7 @@ let tick = 1_136_239_445
 const ctx = { ids: {}, prevEpoch: undefined, result: null, result2: null, vault: '' }
 
 function appendDoc(root, rel, paragraph) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
 }
 
@@ -82,7 +82,7 @@ function nextDocId() {
 }
 
 function writeDoc(root, rel, title) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
   const id = nextDocId()
   writeFileSync(
@@ -135,11 +135,11 @@ beforeAll(() => {
   commit(vault, 'feed: 폐기문서 관련 소식\n\n본문.\n\nKeywords: 정리\nImportance: normal')
 
   // 6 · uwiki — 피드 미발행 수정(재생성 준비: 삭제)
-  git(vault, ['rm', '-q', 'vault/wiki/concept/reborn.md'])
+  git(vault, ['rm', '-q', 'wiki/concept/reborn.md'])
   commit(vault, 'uwiki: 부활문서 삭제')
 
   // 7 · uwiki — 삭제(→ 5번 피드가 prune 된다)
-  git(vault, ['rm', '-q', 'vault/wiki/misc/del-me.md'])
+  git(vault, ['rm', '-q', 'wiki/misc/del-me.md'])
   commit(vault, 'uwiki: 폐기문서 삭제')
 
   // 8 · cwiki — **같은 경로에 재생성 → 새 문서(새 id)**  (README · 문서 id)
@@ -156,13 +156,13 @@ beforeAll(() => {
   appendDoc(vault, 'company/reuse-x', '신제품 라인업을 공개했다.')
   commit(vault, 'feed: 이사간문서 신제품 공개\n\n본문.\n\nKeywords: 신제품\nImportance: normal')
 
-  git(vault, ['mv', 'vault/wiki/company/reuse-x.md', 'vault/wiki/company/reuse-y.md'])
+  git(vault, ['mv', 'wiki/company/reuse-x.md', 'wiki/company/reuse-y.md'])
   commit(vault, 'uwiki: 이사간문서를 reuse-y 로 이동')
 
   writeDoc(vault, 'company/reuse-x', '경로재사용문서')
   commit(vault, 'cwiki: 경로재사용문서 생성')
 
-  git(vault, ['rm', '-q', 'vault/wiki/company/reuse-x.md'])
+  git(vault, ['rm', '-q', 'wiki/company/reuse-x.md'])
   commit(vault, 'uwiki: 경로재사용문서 삭제')
 
   ctx.prevEpoch = process.env.SOURCE_DATE_EPOCH

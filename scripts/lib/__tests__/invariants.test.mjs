@@ -238,7 +238,7 @@ describe('불변식 8 — summary.docs[].id 가 유일 (cwiki 1파일 규칙의 
 //   getCommitDocStatuses(runGit, hash, wikiPrefix) 를 부르고, 그 함수는
 //   `git -c core.quotepath=false show --find-renames --name-status --format= <sha>` 를 실행한다.
 //   → sha 별 name-status stdout(`A\tpath` · `D\tpath` · `R100\told\tnew`)만 돌려주면 된다.
-const WIKI_PREFIX = 'vault/wiki/'
+const WIKI_PREFIX = 'wiki/'
 
 /** sha → `git show --name-status` stdout. D26 은 show 조회만 본다(그 외는 ''). */
 function stubGitStatuses(byHash) {
@@ -250,7 +250,7 @@ describe('checkCommitConventions — D26 접두어 없는 커밋의 vault A+D �
     // git 이 rename 으로 못 붙인 이동 = 문서 id 소실. 현행은 `!match continue` 로 통과 → RED.
     const commits = [{ hash: 'c0ffee000001', subject: '문서 대개편' }]
     const runGit = stubGitStatuses({
-      c0ffee000001: ['A\tvault/wiki/tech/온디바이스AI.md', 'D\tvault/wiki/company/삼성전자.md'].join('\n'), // prettier-ignore
+      c0ffee000001: ['A\twiki/tech/온디바이스AI.md', 'D\twiki/company/삼성전자.md'].join('\n'), // prettier-ignore
     })
 
     expect(() => checkCommitConventions(commits, runGit, WIKI_PREFIX)).toThrow()
@@ -259,7 +259,7 @@ describe('checkCommitConventions — D26 접두어 없는 커밋의 vault A+D �
   it('[R-T4a 음성] 접두어 없는 커밋이 기존 문서만 수정(M)하면 throw 하지 않는다', () => {
     // 과잉검출 가드: 일상 수정 커밋(A=0·D=0)이 빌드를 죽이면 계약이 틀린 것이다. GREEN 전후 모두 통과.
     const commits = [{ hash: 'c0ffee000002', subject: '오타 수정' }]
-    const runGit = stubGitStatuses({ c0ffee000002: 'M\tvault/wiki/company/삼성전자.md' })
+    const runGit = stubGitStatuses({ c0ffee000002: 'M\twiki/company/삼성전자.md' })
 
     expect(() => checkCommitConventions(commits, runGit, WIKI_PREFIX)).not.toThrow()
   })
@@ -268,7 +268,7 @@ describe('checkCommitConventions — D26 접두어 없는 커밋의 vault A+D �
     // --find-renames 가 R 로 흡수한 이동은 A/D 가 남지 않는다(id 유지). GREEN 전후 모두 통과.
     const commits = [{ hash: 'c0ffee000003', subject: '폴더 재배치' }]
     const runGit = stubGitStatuses({
-      c0ffee000003: 'R100\tvault/wiki/company/삼성전자.md\tvault/wiki/tech/삼성전자.md',
+      c0ffee000003: 'R100\twiki/company/삼성전자.md\twiki/tech/삼성전자.md',
     })
 
     expect(() => checkCommitConventions(commits, runGit, WIKI_PREFIX)).not.toThrow()

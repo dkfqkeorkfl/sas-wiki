@@ -13,7 +13,7 @@ let tick = 1_500_000_000
 const dirs = []
 
 function appendDoc(root, rel, paragraph) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
 }
 
@@ -65,7 +65,7 @@ function nextDocId() {
 }
 
 function writeDoc(root, rel, title, body = `${title} 문서의 정의 문단이다.`) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
   const id = nextDocId()
   writeFileSync(
@@ -104,8 +104,8 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     appendDoc(vault, 'company/삼성전자', 'HBM4 양산 로드맵을 공개했다.')
     commit(vault, 'feed: 삼성전자 HBM4 로드맵 공개\n\n본문.\n\nKeywords: HBM')
 
-    const oldPath = path.join(vault, 'vault', 'wiki', 'company', '삼성전자.md')
-    const newPath = path.join(vault, 'vault', 'wiki', 'tech', '삼성전자.md')
+    const oldPath = path.join(vault, 'wiki', 'company', '삼성전자.md')
+    const newPath = path.join(vault, 'wiki', 'tech', '삼성전자.md')
     mkdirSync(path.dirname(newPath), { recursive: true })
     renameSync(oldPath, newPath)
     writeDoc(
@@ -117,8 +117,8 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     commit(vault, 'uwiki: 삼성전자 문서를 tech/ 로 이동하며 전면 재작성')
 
     expect(() => buildContent({ out, vault })).toThrow(/컨벤션 위반/)
-    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/company\/삼성전자\.md/)
-    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/tech\/삼성전자\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/wiki\/company\/삼성전자\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/wiki\/tech\/삼성전자\.md/)
   })
 
   it('cwiki 커밋이 문서 2개를 추가하면 build fail 한다', () => {
@@ -128,7 +128,7 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     commit(vault, 'cwiki: 문서 두 개 생성')
 
     expect(() => buildContent({ out, vault })).toThrow(
-      /컨벤션 위반[\s\S]*cwiki:[\s\S]*vault\/wiki\/company\/a\.md[\s\S]*vault\/wiki\/company\/b\.md/,
+      /컨벤션 위반[\s\S]*cwiki:[\s\S]*wiki\/company\/a\.md[\s\S]*wiki\/company\/b\.md/,
     )
   })
 
@@ -136,7 +136,7 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     const { out, vault } = makeVault()
     writeDoc(vault, 'company/old', 'OLD')
     commit(vault, 'cwiki: OLD 문서 생성')
-    git(vault, ['rm', '-q', 'vault/wiki/company/old.md'])
+    git(vault, ['rm', '-q', 'wiki/company/old.md'])
     writeDoc(
       vault,
       'company/new',
@@ -146,8 +146,8 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     commit(vault, 'cwiki: NEW 문서 생성과 OLD 삭제')
 
     expect(() => buildContent({ out, vault })).toThrow(/컨벤션 위반/)
-    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/company\/new\.md/)
-    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/company\/old\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/wiki\/company\/new\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/wiki\/company\/old\.md/)
   })
 
   it('깨끗한 git mv 는 같은 id 를 유지하고 과거 feed 를 살린다', () => {
@@ -156,10 +156,10 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     commit(vault, 'cwiki: 이동문서 문서 생성')
     appendDoc(vault, 'company/이동문서', '신제품 라인업을 공개했다.')
     commit(vault, 'feed: 이동문서 신제품 공개\n\n본문.\n\nKeywords: 신제품')
-    mkdirSync(path.join(vault, 'vault', 'wiki', 'tech'), { recursive: true })
+    mkdirSync(path.join(vault, 'wiki', 'tech'), { recursive: true })
     renameSync(
-      path.join(vault, 'vault', 'wiki', 'company', '이동문서.md'),
-      path.join(vault, 'vault', 'wiki', 'tech', '이동문서.md'),
+      path.join(vault, 'wiki', 'company', '이동문서.md'),
+      path.join(vault, 'wiki', 'tech', '이동문서.md'),
     )
     commit(vault, 'uwiki: 이동문서를 tech 로 이동')
 
@@ -187,7 +187,7 @@ describe('buildContent — D26 접두어 없는 커밋의 vault A+D 동시 발�
     commit(vault, 'cwiki: SK하이닉스 문서 생성')
 
     // 접두어 없는 subject 로 한 문서 삭제 + 전혀 다른 새 문서 추가를 한 커밋에(rename 으로 안 붙게 무관한 장문).
-    git(vault, ['rm', '-q', 'vault/wiki/company/삼성전자.md'])
+    git(vault, ['rm', '-q', 'wiki/company/삼성전자.md'])
     writeDoc(
       vault,
       'tech/온디바이스AI',
@@ -197,8 +197,8 @@ describe('buildContent — D26 접두어 없는 커밋의 vault A+D 동시 발�
     commit(vault, '문서 대개편')
 
     expect(() => buildContent({ out, vault })).toThrow(/컨벤션 위반/)
-    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/company\/삼성전자\.md/)
-    expect(() => buildContent({ out, vault })).toThrow(/vault\/wiki\/tech\/온디바이스AI\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/wiki\/company\/삼성전자\.md/)
+    expect(() => buildContent({ out, vault })).toThrow(/wiki\/tech\/온디바이스AI\.md/)
   })
 
   it('[R-T4b 음성] 접두어 없는 커밋이 기존 문서만 수정하면 build fail 하지 않는다', () => {
@@ -217,10 +217,10 @@ describe('buildContent — D26 접두어 없는 커밋의 vault A+D 동시 발�
     const { out, vault } = makeVault()
     writeDoc(vault, 'company/삼성전자', '삼성전자')
     commit(vault, 'cwiki: 삼성전자 문서 생성')
-    mkdirSync(path.join(vault, 'vault', 'wiki', 'tech'), { recursive: true })
+    mkdirSync(path.join(vault, 'wiki', 'tech'), { recursive: true })
     renameSync(
-      path.join(vault, 'vault', 'wiki', 'company', '삼성전자.md'),
-      path.join(vault, 'vault', 'wiki', 'tech', '삼성전자.md'),
+      path.join(vault, 'wiki', 'company', '삼성전자.md'),
+      path.join(vault, 'wiki', 'tech', '삼성전자.md'),
     )
     commit(vault, '폴더 재배치') // 접두어 없음 — 그래도 정당한 이동이므로 통과해야 한다
 
@@ -235,7 +235,7 @@ describe('buildContent — feed 참조의 explained prune', () => {
     commit(vault, 'cwiki: 옛문서 생성')
     appendDoc(vault, 'company/x', '퇴역 전 마지막 소식을 남긴다.')
     commit(vault, 'feed: 옛문서 마지막 소식\n\n본문.\n\nKeywords: 퇴역')
-    git(vault, ['rm', '-q', 'vault/wiki/company/x.md'])
+    git(vault, ['rm', '-q', 'wiki/company/x.md'])
     commit(vault, 'uwiki: 옛문서 삭제')
     writeDoc(vault, 'company/x', '새문서')
     commit(vault, 'cwiki: 새문서 생성')

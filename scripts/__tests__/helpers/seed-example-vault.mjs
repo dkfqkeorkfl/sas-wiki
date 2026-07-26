@@ -41,7 +41,7 @@ const FIRST_TICK = 1_136_239_445
 const TICK_STEP = 60
 
 /** vault 문서 루트(리포 상대). 파일명이 곧 슬러그다 — 슬러그화가 없다(`parse.mjs:99-107`). */
-const WIKI_DIR = 'vault/wiki'
+const WIKI_DIR = 'wiki'
 
 const DOC_HBM = 'concept/HBM'
 const DOC_HBM_MOVED = 'tech/HBM'
@@ -456,7 +456,7 @@ function editDoc(repoDir, relDoc, from, to) {
 /**
  * git 실행기.
  *
- * `core.quotepath=false` — 한글 경로(`vault/wiki/company/삼성전자.md`)를 octal escape 없이 다룬다(`lib/git.mjs:45` 선례).
+ * `core.quotepath=false` — 한글 경로(`wiki/company/삼성전자.md`)를 octal escape 없이 다룬다(`lib/git.mjs:45` 선례).
  *
  * `core.autocrlf` 는 **덮어쓰지 않는다.** 파일을 항상 LF 로 쓰므로(`os.EOL` 금지) add 필터가
  * `true`든 `false`든 blob 은 LF 로 동일하다 = SHA 결정성 유지. 반대로 여기서 `false` 를 강제하면

@@ -35,7 +35,7 @@ const UUIDV7_DRAFT = '0192f0c0-8000-7000-9abc-0123456789ab'
 
 /** frontmatter 에 임의 스칼라(`draft: yes` 등)를 넣은 문서 — writeDoc 은 draft 를 지원하지 않는다. */
 function writeRawDoc(root, rel, contents) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
   writeFileSync(full, contents)
   return full
@@ -203,7 +203,7 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     try {
       writeDoc(vault, 'company/구문서', { id: UUIDV7_PUBLIC, title: '구문서' })
       commit(vault, 'cwiki: 구문서 생성')
-      git(vault, ['rm', '-q', 'vault/wiki/company/구문서.md'])
+      git(vault, ['rm', '-q', 'wiki/company/구문서.md'])
       commit(vault, 'uwiki: 구문서 삭제')
       writeDoc(vault, 'tech/새문서', { id: UUIDV7_PUBLIC, title: '새문서' }) // 같은 id 재사용
       commit(vault, 'cwiki: 새문서 생성')
@@ -229,7 +229,7 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
   })
 
   // rename 계보 면제는 `buildPathIndex` 로 판정하는데, 그 Map 의 키는 `${sha}:${경로}` 다.
-  //   삭제 경로(`vault/wiki/…md`)를 그대로 `has()` 에 넣으면 **절대 맞지 않아** 면제가 죽은 분기가 된다.
+  //   삭제 경로(`wiki/…md`)를 그대로 `has()` 에 넣으면 **절대 맞지 않아** 면제가 죽은 분기가 된다.
   //   git 기본 rename 감지가 켜져 있으면 이동이 R 로 잡혀 D 목록에 안 들어와 증상이 가려지므로,
   //   `diff.renames=false`(사용자가 설정 가능)로 감지를 끄고 그 아래를 드러낸다.
   it('rename 감지가 꺼져 있어도 정당한 문서 이동은 통과한다 (계보 면제가 실제로 동작한다)', () => {
@@ -238,7 +238,7 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
       git(vault, ['config', 'diff.renames', 'false'])
       writeDoc(vault, 'company/구경로', { id: UUIDV7_PUBLIC, title: '문서' })
       commit(vault, 'cwiki: 문서 생성')
-      git(vault, ['mv', 'vault/wiki/company/구경로.md', 'vault/wiki/company/새경로.md'])
+      git(vault, ['mv', 'wiki/company/구경로.md', 'wiki/company/새경로.md'])
       commit(vault, 'uwiki: 문서 이동')
 
       expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
@@ -257,7 +257,7 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     try {
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' })
       commit(vault, 'cwiki: 문서 생성')
-      git(vault, ['rm', '-q', 'vault/wiki/company/문서.md'])
+      git(vault, ['rm', '-q', 'wiki/company/문서.md'])
       commit(vault, 'uwiki: 문서 삭제')
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '전혀 다른 신규 문서' })
       commit(vault, 'cwiki: 같은 경로에 신규 문서 생성')
@@ -284,7 +284,7 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     try {
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' })
       commit(vault, 'cwiki: 문서 생성')
-      git(vault, ['rm', '-q', 'vault/wiki/company/문서.md'])
+      git(vault, ['rm', '-q', 'wiki/company/문서.md'])
       commit(vault, 'uwiki: 문서 삭제')
       writeDoc(vault, 'company/문서', { id: UUIDV7_DRAFT, title: '신규 문서' })
       commit(vault, 'cwiki: 같은 경로에 신규 문서 생성')
@@ -315,7 +315,7 @@ describe('H6 readIdAtCreation — git 실패를 삼키지 않는다', () => {
         return real(args)
       }
 
-      expect(() => readIdAtCreation(showFails, 'vault/wiki/tech/HBM.md')).toThrow(/bad object/u)
+      expect(() => readIdAtCreation(showFails, 'wiki/tech/HBM.md')).toThrow(/bad object/u)
     } finally {
       cleanup(vault)
     }
@@ -327,7 +327,7 @@ describe('H6 readIdAtCreation — git 실패를 삼키지 않는다', () => {
       writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // id 없이 생성
       commit(vault, 'cwiki: HBM 문서 생성')
 
-      expect(readIdAtCreation(makeGitRunner(vault), 'vault/wiki/tech/HBM.md')).toBeNull()
+      expect(readIdAtCreation(makeGitRunner(vault), 'wiki/tech/HBM.md')).toBeNull()
     } finally {
       cleanup(vault)
     }

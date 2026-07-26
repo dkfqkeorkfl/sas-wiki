@@ -10,14 +10,14 @@ import { describe, expect, it } from 'vitest'
 
 import { derivePathAndBreadcrumb, parseFrontmatterYaml, slugifyHeading } from '../parse.mjs'
 
-const WIKI_DIR = path.join('/repo', 'vault', 'wiki')
+const WIKI_DIR = path.join('/repo', 'wiki')
 
 describe('parseFrontmatterYaml', () => {
   it('스칼라 + flow list + 1단계 중첩(meta) 을 객체로 파싱한다', () => {
     const yaml =
       "title: 삼성전자\ntype: company\nstatus: active\ntags: [반도체]\nmeta:\n  ticker: '005930'"
 
-    const result = parseFrontmatterYaml(yaml, 'vault/wiki/company/samsung.md')
+    const result = parseFrontmatterYaml(yaml, 'wiki/company/samsung.md')
 
     expect(result).toEqual({
       meta: { ticker: '005930' },
@@ -29,7 +29,7 @@ describe('parseFrontmatterYaml', () => {
   })
 
   it('빈 frontmatter 문자열은 빈 객체를 반환한다', () => {
-    expect(parseFrontmatterYaml('', 'vault/wiki/x.md')).toEqual({})
+    expect(parseFrontmatterYaml('', 'wiki/x.md')).toEqual({})
   })
 
   it('meta 미기재 시 meta 키를 만들지 않는다(누락 보존)', () => {

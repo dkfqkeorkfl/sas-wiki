@@ -24,7 +24,7 @@ describe('R4 readIdAtCreation — 생성 blob frontmatter id', () => {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' })
       commit(vault, 'cwiki: HBM 문서 생성')
 
-      expect(readIdAtCreation(makeGitRunner(vault), 'vault/wiki/tech/HBM.md')).toBe(UUIDV7_A)
+      expect(readIdAtCreation(makeGitRunner(vault), 'wiki/tech/HBM.md')).toBe(UUIDV7_A)
     } finally {
       cleanup(vault)
     }
@@ -36,7 +36,7 @@ describe('R4 readIdAtCreation — 생성 blob frontmatter id', () => {
       writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // id 없이 생성
       commit(vault, 'cwiki: HBM 문서 생성')
 
-      expect(readIdAtCreation(makeGitRunner(vault), 'vault/wiki/tech/HBM.md')).toBeNull()
+      expect(readIdAtCreation(makeGitRunner(vault), 'wiki/tech/HBM.md')).toBeNull()
     } finally {
       cleanup(vault)
     }
@@ -48,9 +48,7 @@ describe('R4 readIdAtCreation — 생성 blob frontmatter id', () => {
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' })
       commit(vault, 'cwiki: 온디바이스 AI 문서 생성')
 
-      expect(readIdAtCreation(makeGitRunner(vault), 'vault/wiki/concept/온디바이스-AI.md')).toBe(
-        UUIDV7_B,
-      )
+      expect(readIdAtCreation(makeGitRunner(vault), 'wiki/concept/온디바이스-AI.md')).toBe(UUIDV7_B)
     } finally {
       cleanup(vault)
     }
@@ -65,7 +63,7 @@ describe('R4 readIdAtCreation — 생성 blob frontmatter id', () => {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' }) // 이후: id 추가
       commit(vault, 'uwiki: HBM id 추가')
 
-      expect(readIdAtCreation(makeGitRunner(vault), 'vault/wiki/tech/HBM.md')).toBeNull()
+      expect(readIdAtCreation(makeGitRunner(vault), 'wiki/tech/HBM.md')).toBeNull()
     } finally {
       cleanup(vault)
     }

@@ -17,7 +17,7 @@
 //       stats = { offConventionCommits: [{sha,subject}], prunedDocRefs, prunedFeeds,
 //                 unresolvedPaths: [{sha,path}], warnings: [{sha,reason}] }
 //       pathIndex   : Map<`${sha}:${당시경로}`, docId>   ← git.buildPathIndex (rename 역인덱스)
-//       deletedPaths: Set<'vault/wiki/….md'>            ← git.collectDeletedDocPaths
+//       deletedPaths: Set<'wiki/….md'>            ← git.collectDeletedDocPaths
 //       docsById    : Map<docId, { bodyLineOffset, status }>
 //       headingsById: Map<docId, [{ anchor, level, line, text }]>  ← HEAD 기준
 //
@@ -31,11 +31,11 @@ const HYNIX_ID = 'bbbbbbbbbbbb'
 const HBM_ID = 'cccccccccccc'
 const DISABLED_ID = 'dddddddddddd'
 
-const SAMSUNG_FILE = 'vault/wiki/company/삼성전자.md'
-const HYNIX_FILE = 'vault/wiki/company/SK하이닉스.md'
-const HBM_OLD_FILE = 'vault/wiki/concept/HBM.md' // 이동 전 경로(커밋 당시)
-const DISABLED_FILE = 'vault/wiki/concept/온디바이스-AI.md'
-const SCRAP_FILE = 'vault/wiki/concept/폐기예정-메모.md' // 이후 삭제됨
+const SAMSUNG_FILE = 'wiki/company/삼성전자.md'
+const HYNIX_FILE = 'wiki/company/SK하이닉스.md'
+const HBM_OLD_FILE = 'wiki/concept/HBM.md' // 이동 전 경로(커밋 당시)
+const DISABLED_FILE = 'wiki/concept/온디바이스-AI.md'
+const SCRAP_FILE = 'wiki/concept/폐기예정-메모.md' // 이후 삭제됨
 
 // 문서 본문 헤딩(HEAD) — frontmatter 8줄 뒤에 본문이 시작한다(bodyLineOffset=8).
 const SAMSUNG_HEADINGS = [
@@ -85,6 +85,7 @@ function aContext({ deletedPaths = new Set(), diffs = {}, pathIndex } = {}) {
     pathIndex: pathIndex ?? defaultPathIndex(),
     // getCommitDiffHunks(runGit, hash) → 마지막 인자가 hash 다.
     runGit: (args) => diffs[args.at(-1)] ?? '',
+    wikiPrefix: 'wiki/',
   }
 }
 
@@ -372,11 +373,12 @@ describe('buildFeedItems — prune (삭제 문서) vs disable (유지)', () => {
 describe('buildFeedItems — 조용한 유실 금지 (tdd §8)', () => {
   it('역인덱스로도 못 찾은 경로는 unresolvedPaths 에 집계된다', () => {
     // 현행 `feed.mjs:108-109` 는 `if (!targetDoc) continue` 로 **조용히 버린다**.
-    // 빈 pathIndex 를 주입해 "집계기가 실제로 센다"를 증명한다(§9 의 `unresolved === 0` 의 vacuous 짝).
+    // 같은 경로의 다른 좌표만 넣어 "문서 후보이지만 이 커밋에서는 못 푼다"를 증명한다
+    // (§9 의 `unresolved === 0` 의 vacuous 짝).
     const commits = [aCommit({ hash: 'c1' })]
     const ctx = aContext({
       diffs: { c1: aDiff([{ hunks: [{ count: 2, start: 20 }], path: SAMSUNG_FILE }]) },
-      pathIndex: new Map(),
+      pathIndex: new Map([[`c0:${SAMSUNG_FILE}`, SAMSUNG_ID]]),
     })
 
     const { stats } = buildFeedItems(commits, ctx)

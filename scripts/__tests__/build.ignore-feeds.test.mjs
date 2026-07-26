@@ -32,14 +32,14 @@ function nextValidId() {
 }
 
 function writeWikiDoc(root, rel, { title } = {}) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
   const fm = ['---', `id: "${nextValidId()}"`, `title: ${title ?? rel.split('/').at(-1)}`, 'type: concept', 'status: active', '---', '', '## 정의\n\n본문 문단이다.\n'] // prettier-ignore
   writeFileSync(full, fm.join('\n'))
 }
 
 function appendDoc(root, rel, paragraph) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
 }
 

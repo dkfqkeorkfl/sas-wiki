@@ -40,7 +40,7 @@ export const byRecencyThenId = (a, b) => {
  *   headingsById: Map<string, { anchor: string, line: number, text: string }[]>,
  *   pathIndex: Map<string, string>,
  *   runGit: (args: string[]) => string,
- *   wikiPrefix?: string,
+ *   wikiPrefix: string,
  * }} context
  */
 export function buildFeedItems(commits, context) {
@@ -52,8 +52,21 @@ export function buildFeedItems(commits, context) {
     headingsById,
     pathIndex,
     runGit,
-    wikiPrefix = 'vault/wiki/',
+    strayDocPaths = new Set(),
+    wikiPrefix,
   } = context
+  // 문서 후보 = git 이 아는 문서 경로 계보. prefix 리터럴이 아니라 pathIndex(=--follow 로 만든
+  // rename 계보)와 draft 배제 좌표에서 유도한다 → 이관 전 경로가 자동으로 포함되고,
+  // 위키 밖 .md(README·docs/*)는 애초에 들어오지 않는다.
+  //
+  // `strayDocPaths` 는 HEAD 상태 계층(parseVault)이 "지금 위키 루트에 있으나 파싱 실패" 로 판정해
+  // 넘겨준 것이다. 후보에 넣어야 피드가 깨진 문서를 가리킬 때 조용히 넘어가지 않고 unresolved 로
+  // 끊긴다. **판정은 저기서 끝났고 여기로는 결과만 온다** — 이 루프에 prefix 리터럴을 두지 않는 것이
+  // 이 phase 의 요점이다.
+  const everWikiPaths = new Set([
+    ...[...pathIndex.keys(), ...excludedFeedRefs].map((key) => key.slice(key.indexOf(':') + 1)),
+    ...strayDocPaths,
+  ])
   const stats = {
     offConventionCommits: [],
     prunedDocRefs: 0,
@@ -82,7 +95,11 @@ export function buildFeedItems(commits, context) {
 
     for (const [rawFile, hunks] of Object.entries(hunksByFile)) {
       const filePath = rawFile.split(path.sep).join('/')
-      if (!filePath.startsWith(wikiPrefix) || !filePath.endsWith('.md')) continue
+      if (!filePath.endsWith('.md')) continue
+      // 문서가 아니면 조용히 건너뛴다. **현재 prefix 로 예외를 파지 않는다** — 그렇게 하면 히스토리
+      //   계층에 현재 상태 개념이 다시 스며들어 이 phase 가 없애려는 결합이 부활한다. 파싱 실패한
+      //   위키 문서(pathIndex 부재)는 `checkStrayDocs` 가 별도로 잡으므로 여기서 이중으로 붙들 필요가 없다.
+      if (!everWikiPaths.has(filePath) && !everDeletedPaths.has(filePath)) continue
 
       // **역인덱스를 먼저 묻는다.** 순서가 뒤바뀌면 데이터가 조용히 사라진다.
       //
@@ -257,6 +274,8 @@ function deriveAnchor(hunks, docId, docsById, headingsById) {
 }
 
 function touchesVault(runGit, hash, wikiPrefix) {
+  // 계약 검사 계층은 예외적으로 히스토리 diff 에 현재 prefix 를 쓴다. 여기서 묻는 것은
+  // "지금 규약의 경로를 건드렸나"이지, rename 을 따라 문서 정체성을 해석하는 문제가 아니다.
   return Object.keys(getCommitDiffHunks(runGit, hash)).some((file) =>
     file.split(path.sep).join('/').startsWith(wikiPrefix),
   )

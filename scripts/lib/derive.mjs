@@ -28,7 +28,7 @@ export function checkAnchorExists(pathToDoc, targetPath, anchorRaw) {
  * - `tags`   : `Record<tag, docId[]>` — active 만
  * - `pathToDoc` : **disable 포함**(위키링크 데드링크 방지)
  */
-export function derive(parsedDocs, runGit, { wikiPrefix = 'vault/wiki/' } = {}) {
+export function derive(parsedDocs, runGit, { wikiPrefix }) {
   const enriched = parsedDocs.map((parsed) => {
     const relFilePath = `${wikiPrefix}${parsed.relPath}.md`
     const dates = getFileCommitDates(runGit, relFilePath)

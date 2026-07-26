@@ -79,7 +79,7 @@ function runCli(args) {
 }
 
 function writeDoc(root, rel, title) {
-  const full = path.join(root, 'vault', 'wiki', `${rel}.md`)
+  const full = path.join(root, 'wiki', `${rel}.md`)
   mkdirSync(path.dirname(full), { recursive: true })
   writeFileSync(
     full,
@@ -107,7 +107,7 @@ function writeDoc(root, rel, title) {
 function writeStray(root, text) {
   // frontmatter 가 **없는** vault md — 문서가 아니다(parseMarkdownFile → null). 이 파일을 건드린 feed
   // 커밋의 diff 경로는 역인덱스로도 삭제집합으로도 해석되지 않는다 → **unresolvedPaths 로 집계**돼야 한다.
-  const full = path.join(root, 'vault', 'wiki', 'concept', '메모장.md')
+  const full = path.join(root, 'wiki', 'concept', '메모장.md')
   mkdirSync(path.dirname(full), { recursive: true })
   writeFileSync(full, `${text}\n`)
 }
@@ -122,8 +122,8 @@ beforeAll(() => {
   commit(ctx.vault, 'cwiki: 삼성전자 문서 생성')
 
   writeFileSync(
-    path.join(ctx.vault, 'vault', 'wiki', 'concept', 'foo.md'),
-    `${readFileSync(path.join(ctx.vault, 'vault', 'wiki', 'concept', 'foo.md'), 'utf8')}\nHBM4 로드맵을 공개했다.\n`,
+    path.join(ctx.vault, 'wiki', 'concept', 'foo.md'),
+    `${readFileSync(path.join(ctx.vault, 'wiki', 'concept', 'foo.md'), 'utf8')}\nHBM4 로드맵을 공개했다.\n`,
   )
   commit(
     ctx.vault,
@@ -134,11 +134,11 @@ beforeAll(() => {
   writeDoc(ctx.vault, 'misc/del-me', '폐기문서')
   commit(ctx.vault, 'cwiki: 폐기문서 문서 생성')
   writeFileSync(
-    path.join(ctx.vault, 'vault', 'wiki', 'misc', 'del-me.md'),
-    `${readFileSync(path.join(ctx.vault, 'vault', 'wiki', 'misc', 'del-me.md'), 'utf8')}\n정리 대상이다.\n`,
+    path.join(ctx.vault, 'wiki', 'misc', 'del-me.md'),
+    `${readFileSync(path.join(ctx.vault, 'wiki', 'misc', 'del-me.md'), 'utf8')}\n정리 대상이다.\n`,
   )
   commit(ctx.vault, 'feed: 폐기문서 관련 소식\n\n본문.\n\nKeywords: 정리\nImportance: normal')
-  git(ctx.vault, ['rm', '-q', 'vault/wiki/misc/del-me.md'])
+  git(ctx.vault, ['rm', '-q', 'wiki/misc/del-me.md'])
   commit(ctx.vault, 'uwiki: 폐기문서 삭제')
 
   // 해석 불가(unresolved) 시나리오는 **별도 vault** 다 — 본 vault 에 섞으면 컨벤션 가드가 먼저 죽인다.
@@ -151,8 +151,8 @@ beforeAll(() => {
   commit(ctx.unresolvedVault, 'chore: 임시 메모 추가')
   writeStray(ctx.unresolvedVault, '# 메모\n\n갱신된 메모다.')
   writeFileSync(
-    path.join(ctx.unresolvedVault, 'vault', 'wiki', 'concept', 'foo.md'),
-    `${readFileSync(path.join(ctx.unresolvedVault, 'vault', 'wiki', 'concept', 'foo.md'), 'utf8')}\nHBM4 로드맵을 공개했다.\n`,
+    path.join(ctx.unresolvedVault, 'wiki', 'concept', 'foo.md'),
+    `${readFileSync(path.join(ctx.unresolvedVault, 'wiki', 'concept', 'foo.md'), 'utf8')}\nHBM4 로드맵을 공개했다.\n`,
   )
   ctx.strayFeedSha = commit(
     ctx.unresolvedVault,
@@ -253,7 +253,7 @@ describe('validate CLI — JSON 미생산 · vault 무오염', () => {
     // validate 는 검증 전용 — 산출 JSON 을 vault 어디에도 쓰지 않는다.
     for (const file of ['wiki_summary.json', 'wiki_feeds.json', 'wiki_body.json']) {
       expect(existsSync(path.join(ctx.vault, file)), file).toBe(false)
-      expect(existsSync(path.join(ctx.vault, 'vault', 'wiki', file)), file).toBe(false)
+      expect(existsSync(path.join(ctx.vault, 'wiki', file)), file).toBe(false)
     }
     expect(git(ctx.vault, ['status', '--porcelain'])).toBe('')
   })
@@ -288,7 +288,7 @@ describe('validate CLI — 통계 stdout (조용한 유실 종료)', () => {
 
     expect(result.status).toBe(1)
     const output = `${result.stderr}${result.stdout}`
-    expect(output).toContain('vault/wiki/concept/메모장.md')
+    expect(output).toContain('wiki/concept/메모장.md')
     expect(output).toContain(ctx.strayFeedSha.slice(0, 12))
   })
 

@@ -6,7 +6,12 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkAnchorExists } from './lib/derive.mjs'
-import { collectDeletedDocEvents, readIdAtCreation, readIdAtDeletion } from './lib/git.mjs'
+import {
+  anyMarkdown,
+  collectDeletedDocEvents,
+  readIdAtCreation,
+  readIdAtDeletion,
+} from './lib/git.mjs'
 import { applyIgnoreFeeds } from './lib/ignore.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
 import { collectMarkdownFilesRecursive, extractWikilinks, parseMarkdownFile } from './lib/parse.mjs'
@@ -199,7 +204,7 @@ function checkDeletedIdReuse({ derived, runGit }) {
   )
 
   const violations = []
-  for (const event of collectDeletedDocEvents(runGit, { wikiPrefix: WIKI_PREFIX })) {
+  for (const event of collectDeletedDocEvents(runGit, { isDocPath: anyMarkdown })) {
     const deletedId = readIdAtDeletion(runGit, event)
     if (deletedId === null) continue // pre-id era — 대조할 id 가 없다
     const livePath = livePathById.get(deletedId)
@@ -221,7 +226,7 @@ function checkDeletedIdReuse({ derived, runGit }) {
 }
 
 /**
- * vault/wiki 아래에 **문서로 해석되지 않는 .md** 가 있으면 중단한다.
+ * wiki 아래에 **문서로 해석되지 않는 .md** 가 있으면 중단한다.
  *
  * `parseVault` 는 서빙 경로(요청마다 실행)라 이런 파일을 건너뛴다 — 오타 하나로 위키 전체가 죽으면
  * 안 되기 때문이다. 그 대신 조용한 누락을 여기서 막는다: 저자는 올렸다고 믿는데 독자에겐 없는
@@ -231,7 +236,7 @@ function checkDeletedIdReuse({ derived, runGit }) {
  * 진단이 더 구체적이므로 먼저 나가야 하고, 여기서는 **아무도 안 건드린 stray** 를 담당한다.
  */
 function checkStrayDocs(vaultDir) {
-  const wikiDir = path.join(vaultDir, 'vault', 'wiki')
+  const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
   const stray = collectMarkdownFilesRecursive(wikiDir).filter(
     (filePath) => !parseMarkdownFile(filePath),
   )

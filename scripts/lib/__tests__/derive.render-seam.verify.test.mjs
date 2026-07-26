@@ -2,7 +2,7 @@
 //
 // P1 통합(hidden verify) · Task 4 (plan/tdd §Task 4) · 렌더 seam 교체 회귀 0 (합성 vault)
 //
-// derive() 산출 bodies[].html 이 렌더 교체 후에도 위키링크 계약·heading id 를 보존하고,
+// deriveForTest() 산출 bodies[].html 이 렌더 교체 후에도 위키링크 계약·heading id 를 보존하고,
 //   추출 파생물(headings=TOC · sources=footnote defs · excerpt)이 회귀 0 임을 합성 vault 로 고정한다.
 //   또한 footnote 렌더 드롭(§2)이 seam 을 통과하되 sources 추출은 존치함을 이중 단언한다.
 //
@@ -14,6 +14,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { derive } from '../derive.mjs'
+
+const deriveForTest = (parsedDocs, runGit) => derive(parsedDocs, runGit, { wikiPrefix: 'wiki/' })
 
 const NOTE_SHA = '1111111111110000000000000000000000001111'
 const HBM_SHA = '2222222222221111111111111111111111112222'
@@ -48,7 +50,7 @@ function aParsedDoc(patch) {
   return {
     body: '## 정의\n\n본문.\n',
     breadcrumb: relPath.split('/'),
-    filePath: `/tmp/vault/wiki/${relPath}.md`,
+    filePath: `/tmp/wiki/${relPath}.md`,
     frontmatter: { id: patch.id, status: 'active', tags: [], title: relPath, type: 'concept' },
     relPath,
     ...patch,
@@ -66,12 +68,12 @@ const WORLD = [
 ]
 
 const RUNNER = makeRunner({
-  HBM: aLog(HBM_SHA, 'vault/wiki/HBM.md'),
-  note: aLog(NOTE_SHA, 'vault/wiki/note.md'),
+  HBM: aLog(HBM_SHA, 'wiki/HBM.md'),
+  note: aLog(NOTE_SHA, 'wiki/note.md'),
 })
 
 function bodyOf(rel) {
-  const { bodies } = derive(WORLD, RUNNER)
+  const { bodies } = deriveForTest(WORLD, RUNNER)
   return bodies.find((body) => body.breadcrumb.join('/') === rel)
 }
 
@@ -92,7 +94,7 @@ describe('derive render seam — bodies[].html 계약 보존 (회귀 앵커)', (
   })
 
   it('headings(TOC)·excerpt 파생물이 렌더 교체와 무관하게 유지된다 (회귀 0)', () => {
-    const { bodies, docs } = derive(WORLD, RUNNER)
+    const { bodies, docs } = deriveForTest(WORLD, RUNNER)
     const body = bodies.find((b) => b.breadcrumb.join('/') === 'note')
     const doc = docs.find((d) => d.breadcrumb.join('/') === 'note')
 

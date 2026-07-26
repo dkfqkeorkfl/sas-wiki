@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process'
 
 /** vault 문서의 리포 상대 경로 접두사. 이 모듈 안에서만 쓴다(`isVaultDoc` 이 유일한 소비자). */
-const VAULT_PREFIX = 'vault/wiki/'
+const VAULT_PREFIX = 'wiki/'
 
 const FIELD = String.fromCodePoint(31) // unit separator — 커밋 필드 구분(본문 개행에 안전)
 const RECORD = String.fromCodePoint(30) // record separator — 커밋 구분
@@ -17,7 +17,7 @@ const RECORD = String.fromCodePoint(30) // record separator — 커밋 구분
  * `-C` 를 빼먹으면 서브모듈 디렉토리가 아니라 **슈퍼프로젝트의 답**이 나온다.
  * 슈퍼프로젝트는 항상 non-shallow 이므로 `--is-shallow-repository` 가 늘 'false' 가 되어
  * shallow 가드가 통째로 무력화된다 — 이 phase 의 최대 단일 실패점이다.
- * `core.quotepath=false` 는 한글 경로(`vault/wiki/company/삼성전자.md`)를 octal escape 없이 그대로 낸다
+ * `core.quotepath=false` 는 한글 경로(`wiki/company/삼성전자.md`)를 octal escape 없이 그대로 낸다
  * (`lib/git.mjs:45` 선례). 빠뜨리면 경로 비교가 전부 빗나가고 단언이 조용히 거짓이 된다.
  */
 export function git(repoDir, args) {
@@ -48,7 +48,7 @@ export function readVaultFacts(repoDir, { rootSha } = {}) {
     hasRootCommit: gitOk(repoDir, ['cat-file', '-e', `${rootSha}^{commit}`]),
     /** `rev-parse --is-shallow-repository` 원문('true' | 'false') */
     isShallow: git(repoDir, ['rev-parse', '--is-shallow-repository']),
-    /** HEAD 의 vault/wiki/**\/*.md (repo 상대 posix 경로, 정렬됨) */
+    /** HEAD 의 wiki/**\/*.md (repo 상대 posix 경로, 정렬됨) */
     mdFiles,
     /** partial clone 필터(`--filter=blob:none` 등). 없으면 '' */
     partialFilter: tryGit(repoDir, ['config', '--get', 'remote.origin.partialclonefilter']),

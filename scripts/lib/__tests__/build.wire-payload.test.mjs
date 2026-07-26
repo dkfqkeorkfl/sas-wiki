@@ -82,7 +82,9 @@ describe('buildWirePayload — build.mjs 산출 회귀 0 (WP3 🟡CARRIED)', () 
     try {
       seedVault(vault)
 
-      const wireIds = buildWirePayload(vault, 'dev').docs.map((doc) => doc.id).toSorted()
+      const wireIds = buildWirePayload(vault, 'dev')
+        .docs.map((doc) => doc.id)
+        .toSorted()
       const built = build.buildContent({ env: 'dev', out, vault })
       const summaryIds = built.summary.docs.map((doc) => doc.id).toSorted()
 

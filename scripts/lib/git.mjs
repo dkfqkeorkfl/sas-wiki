@@ -6,9 +6,16 @@ import { parseFrontmatterYaml } from './parse.mjs'
 // 커밋 헤더줄(`<hash>\t<date>`)은 소문자 hex 로 시작하므로 이 패턴에 걸리지 않는다.
 const STATUS_LINE_RE = /^([A-Z])(\d*)\t(.+)$/
 
-// 한글 경로가 octal escape(`"vault/wiki/company/\354\202\274…"`)로 나오면 역인덱스 키가 통째로
+// 한글 경로가 octal escape(`"wiki/company/\354\202\274…"`)로 나오면 역인덱스 키가 통째로
 // 어긋난다 — 모든 경로 조회 호출에 붙인다.
 const QUOTEPATH_OFF = ['-c', 'core.quotepath=false']
+
+/** 히스토리 계층 술어 — 경로 prefix 는 HEAD 상태 개념이라 과거 경로에 걸면 안 된다. */
+export const anyMarkdown = (filePath) => filePath.endsWith('.md')
+
+/** 계약 계층 술어 — "지금 규약의 경로" 안에 있는가. */
+export const underWikiPrefix = (wikiPrefix) => (filePath) =>
+  filePath.startsWith(wikiPrefix) && filePath.endsWith('.md')
 
 /**
  * (커밋, 당시경로) → 현재 문서 id 역인덱스.
@@ -65,7 +72,7 @@ export function checkHistoryIntegrity(runGit) {
  *
  * HEAD 대조가 필수다 — `D` 만 긁으면 **삭제 후 같은 경로에 재생성된** 살아 있는 문서까지 prune 된다.
  */
-export function collectDeletedDocPaths(runGit, { headPaths, wikiPrefix }) {
+export function collectDeletedDocPaths(runGit, { headPaths, isDocPath }) {
   const raw = tryGit(runGit, [
     ...QUOTEPATH_OFF,
     'log',
@@ -78,7 +85,7 @@ export function collectDeletedDocPaths(runGit, { headPaths, wikiPrefix }) {
     const match = line.match(STATUS_LINE_RE)
     if (!match || match[1] !== 'D') continue
     const filePath = match[3].split('\t').at(-1)
-    if (!filePath.startsWith(wikiPrefix) || !filePath.endsWith('.md')) continue
+    if (!isDocPath(filePath)) continue
     if (headPaths.has(filePath)) continue
     deleted.add(filePath)
   }
@@ -86,7 +93,7 @@ export function collectDeletedDocPaths(runGit, { headPaths, wikiPrefix }) {
 }
 
 /** 과거에 한 번이라도 삭제된 vault 문서 경로. HEAD 재생성 여부와 무관하게 feed prune 설명에 쓴다. */
-export function collectEverDeletedDocPaths(runGit, { wikiPrefix }) {
+export function collectEverDeletedDocPaths(runGit, { isDocPath }) {
   const raw = tryGit(runGit, [
     ...QUOTEPATH_OFF,
     'log',
@@ -99,7 +106,7 @@ export function collectEverDeletedDocPaths(runGit, { wikiPrefix }) {
     const match = line.match(STATUS_LINE_RE)
     if (!match || match[1] !== 'D') continue
     const filePath = match[3].split('\t').at(-1)
-    if (!isWikiDocPath(filePath, wikiPrefix)) continue
+    if (!isDocPath(filePath)) continue
     deleted.add(filePath)
   }
   return deleted
@@ -114,7 +121,7 @@ export function collectEverDeletedDocPaths(runGit, { wikiPrefix }) {
  * 그 사람 환경에 따라 달라진다(정당한 `git mv` 가 삭제로 보인다). 커맨드라인 플래그가 config 를
  * 이기므로 여기서 못박는다 — `getFileHistory` 가 이미 같은 이유로 같은 플래그를 쓴다.
  */
-export function collectDeletedDocEvents(runGit, { wikiPrefix }) {
+export function collectDeletedDocEvents(runGit, { isDocPath }) {
   const raw = tryGit(runGit, [
     ...QUOTEPATH_OFF,
     'log',
@@ -134,7 +141,7 @@ export function collectDeletedDocEvents(runGit, { wikiPrefix }) {
     }
     if (match[1] !== 'D' || sha === null) continue
     const filePath = match[3].split('\t').at(-1)
-    if (!isWikiDocPath(filePath, wikiPrefix)) continue
+    if (!isDocPath(filePath)) continue
     events.push({ path: filePath, sha })
   }
   return events
@@ -230,11 +237,12 @@ export function getCommitDiffHunks(runGit, hash) {
  *
  * @returns {{ oldPath?: string, path: string, status: string }[]}
  */
-export function getCommitDocStatuses(runGit, sha, wikiPrefix) {
+export function getCommitDocStatuses(runGit, sha, isDocPath, { diffMerges } = {}) {
   const raw = tryGit(runGit, [
     ...QUOTEPATH_OFF,
     'show',
     '--find-renames',
+    ...(diffMerges ? [`--diff-merges=${diffMerges}`] : []),
     '--name-status',
     '--format=',
     sha,
@@ -246,7 +254,7 @@ export function getCommitDocStatuses(runGit, sha, wikiPrefix) {
     const code = match[1]
     const paths = match[3].split('\t')
     const filePath = paths.at(-1)
-    if (!isWikiDocPath(filePath, wikiPrefix)) continue
+    if (!isDocPath(filePath)) continue
     const entry = { path: filePath, status: code }
     if ((code === 'R' || code === 'C') && paths.length > 1) entry.oldPath = paths[0]
     statuses.push(entry)
@@ -364,7 +372,7 @@ export function makeGitRunner(cwd) {
  * 여러 git object ref 를 `git cat-file --batch` 한 번으로 읽는다.
  *
  * @param {string} cwd git repository root
- * @param {string[]} refs object refs such as `${sha}:vault/wiki/a.md`
+ * @param {string[]} refs object refs such as `${sha}:wiki/a.md`
  * @returns {Map<string, string|null>} ref -> blob text, missing/non-blob -> null
  */
 export function catFileBatch(cwd, refs) {
@@ -422,10 +430,6 @@ export function catFileBatch(cwd, refs) {
  */
 function isCreation(entry) {
   return entry.status === 'A' || entry.status === 'C'
-}
-
-function isWikiDocPath(filePath, wikiPrefix) {
-  return filePath.startsWith(wikiPrefix) && filePath.endsWith('.md')
 }
 
 /** 값이 없으면 git 이 exit 1 로 끝나는 조회(`config --get` 등) → '' 로 정규화. */

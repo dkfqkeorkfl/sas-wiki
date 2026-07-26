@@ -13,6 +13,8 @@ import { describe, expect, it } from 'vitest'
 
 import { derive } from '../derive.mjs'
 
+const deriveForTest = (parsedDocs, runGit) => derive(parsedDocs, runGit, { wikiPrefix: 'wiki/' })
+
 const UUIDV7_A = '0192f0c0-8000-7000-8000-0123456789ab'
 const UUIDV7_B = '0192f0c0-8000-7000-9abc-0123456789ab'
 // 두 문서의 git 생성 해시는 **서로 다르다** → 현행(git-hash id) 에선 충돌하지 않는다.
@@ -40,7 +42,7 @@ function aParsedDoc(relPath, id) {
     body: '## 정의\n\n본문 문단.\n',
     bodyLineOffset: 6,
     breadcrumb: relPath.split('/'),
-    filePath: `/tmp/vault/wiki/${relPath}.md`,
+    filePath: `/tmp/wiki/${relPath}.md`,
     frontmatter: {
       id,
       status: 'active',
@@ -56,12 +58,12 @@ describe('R6 derive 유일 게이트 — frontmatter id 로도 성립', () => {
   it('두 문서의 frontmatter id 가 같으면 throw 한다(git 해시가 달라도)', () => {
     const twins = [aParsedDoc('concept/twin-A', UUIDV7_A), aParsedDoc('concept/twin-B', UUIDV7_A)]
     const runner = makeRunner({
-      'concept/twin-A': aLog(HASH_A, 'vault/wiki/concept/twin-A.md'),
-      'concept/twin-B': aLog(HASH_B, 'vault/wiki/concept/twin-B.md'),
+      'concept/twin-A': aLog(HASH_A, 'wiki/concept/twin-A.md'),
+      'concept/twin-B': aLog(HASH_B, 'wiki/concept/twin-B.md'),
     })
 
     // 현행: id=git-hash(A≠B) → 충돌 안 남 → throw 안 함 → 이 단언이 RED.
-    expect(() => derive(twins, runner)).toThrow()
+    expect(() => deriveForTest(twins, runner)).toThrow()
   })
 
   it('frontmatter id 가 서로 다르면 throw 하지 않는다(green-stay)', () => {
@@ -70,10 +72,10 @@ describe('R6 derive 유일 게이트 — frontmatter id 로도 성립', () => {
       aParsedDoc('concept/twin-B', UUIDV7_B),
     ]
     const runner = makeRunner({
-      'concept/twin-A': aLog(HASH_A, 'vault/wiki/concept/twin-A.md'),
-      'concept/twin-B': aLog(HASH_B, 'vault/wiki/concept/twin-B.md'),
+      'concept/twin-A': aLog(HASH_A, 'wiki/concept/twin-A.md'),
+      'concept/twin-B': aLog(HASH_B, 'wiki/concept/twin-B.md'),
     })
 
-    expect(() => derive(distinct, runner)).not.toThrow()
+    expect(() => deriveForTest(distinct, runner)).not.toThrow()
   })
 })

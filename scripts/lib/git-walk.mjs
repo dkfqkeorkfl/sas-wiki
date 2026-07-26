@@ -3,7 +3,13 @@ import path from 'node:path'
 
 import { isDraft } from './draft.mjs'
 import { byRecencyThenId, parseCommitForFeed } from './feed.mjs'
-import { buildPathIndex, catFileBatch, getCommitDocStatuses, makeGitRunner } from './git.mjs'
+import {
+  anyMarkdown,
+  buildPathIndex,
+  catFileBatch,
+  getCommitDocStatuses,
+  makeGitRunner,
+} from './git.mjs'
 import { applyIgnoreFeeds } from './ignore.mjs'
 import {
   collectMarkdownFilesRecursive,
@@ -11,10 +17,9 @@ import {
   parseFrontmatterYaml,
   parseMarkdownFile,
 } from './parse.mjs'
+import { WIKI_PREFIX } from './parse-vault.mjs'
 
-const WIKI_PREFIX = 'vault/wiki/'
 const DEFAULT_FEED_LIMIT = 50
-const OVERWALK_FACTOR = 3
 
 export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   const vaultDir = path.resolve(vault)
@@ -41,14 +46,9 @@ export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   //   바운디드 종료는 "임의 old 커밋이 임의 high author-date 를 가질 수 있다"라 author-date monotonic
   //   가정 없이는 불가능하므로, 피드 커밋을 **전량 수집**한 뒤 JS 재정렬(byRecencyThenId)을 권위로
   //   페이지를 확정한다(억제·from/to·after·상한은 pageItems 가 최종 1회 적용 — 전량이라 언더필 없음).
-  let tip = 'HEAD'
-  while (true) {
-    const commits = revListChunk(runGit, tip, Math.max(limit * OVERWALK_FACTOR, 1))
-    if (commits.length === 0) break
-    for (const item of resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex)) {
-      collected.set(item.id, item)
-    }
-    tip = `${commits.at(-1).hash}^`
+  const commits = revListFeedCandidates(runGit)
+  for (const item of resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex)) {
+    collected.set(item.id, item)
   }
 
   const visible = pageItems([...collected.values()], ignoreEntries, { after, from, limit, to })
@@ -108,18 +108,10 @@ function normalizeCursor(after) {
   return { id, ts: after.ts }
 }
 
-function revListChunk(runGit, tip, maxCount) {
+function revListFeedCandidates(runGit) {
   let raw
   try {
-    raw = runGit([
-      'rev-list',
-      '--author-date-order',
-      tip,
-      `--max-count=${maxCount}`,
-      '--format=%H%x09%aI%x09%s%x09%b%x1e',
-      '--',
-      WIKI_PREFIX.replace(/\/$/u, ''),
-    ])
+    raw = runGit(['rev-list', '--author-date-order', 'HEAD', '--format=%H%x09%aI%x09%s%x09%b%x1e'])
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (/does not have any commits yet|unknown revision|bad revision/i.test(message)) return []
@@ -156,7 +148,9 @@ function resolveFeedItems(vaultDir, runGit, commits, headIds, resolvePathIndex) 
   const refs = []
   const statusesByCommit = new Map()
   for (const { commit } of feedCommits) {
-    const statuses = getCommitDocStatuses(runGit, commit.hash, WIKI_PREFIX)
+    const statuses = getCommitDocStatuses(runGit, commit.hash, anyMarkdown, {
+      diffMerges: 'first-parent',
+    })
     statusesByCommit.set(commit.hash, statuses)
     for (const status of statuses) refs.push(...refsForStatus(commit.hash, status))
   }
@@ -234,7 +228,7 @@ function readBlobId(blob, filePath) {
  * 가리키는 피드가 resolve 실패로 prune 된다(F4 · build.mjs 의 excludedFeedRefs 와 같은 방향).
  */
 function loadHeadDocs(vaultDir, excludeDrafts) {
-  const wikiDir = path.join(vaultDir, 'vault', 'wiki')
+  const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
   return collectMarkdownFilesRecursive(wikiDir)
     .map((filePath) => {
       const parsed = parseMarkdownFile(filePath)

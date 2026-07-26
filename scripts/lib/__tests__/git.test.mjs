@@ -16,11 +16,12 @@
 //   getFileHistory(runGit, relFilePath)  → [{ oldPath?, pathAtCommit, sha, status, ts }] (최신순)
 //   getFileCommitDates(runGit, relPath)  → { created, hash, updated }  (getFileHistory 위의 얇은 래퍼)
 //   buildPathIndex(docs, runGit)         → Map<`${sha}:${당시경로}`, docId>   docs: [{ filePath, id }]
-//   collectDeletedDocPaths(runGit, { headPaths, wikiPrefix }) → Set<'vault/wiki/….md'>
+//   collectDeletedDocPaths(runGit, { headPaths, isDocPath }) → Set<'wiki/….md' | non-wiki .md>
 //   checkHistoryIntegrity(runGit)        → { partialFilter, shallow }
 import { describe, expect, it } from 'vitest'
 
 import {
+  anyMarkdown,
   buildPathIndex,
   checkHistoryIntegrity,
   collectDeletedDocPaths,
@@ -31,6 +32,7 @@ import {
   getFileCommitDates,
   getFileHistory,
   makeGitRunner,
+  underWikiPrefix,
 } from '../git.mjs'
 
 const US = String.fromCodePoint(31) // Unit Separator (필드)
@@ -46,9 +48,9 @@ function stubRunner({ filter = '', shallow = 'false' } = {}) {
   }
 }
 
-const HBM_NOW = 'vault/wiki/tech/HBM.md'
-const HBM_THEN = 'vault/wiki/concept/HBM.md'
-const SCRAP = 'vault/wiki/concept/폐기예정-메모.md'
+const HBM_NOW = 'wiki/tech/HBM.md'
+const HBM_THEN = 'wiki/concept/HBM.md'
+const SCRAP = 'wiki/concept/폐기예정-메모.md'
 
 // `git log --follow --name-status --format=%H%x09%aI -- <path>` 의 **실제** 출력.
 // 레코드 = 헤더줄 + 빈 줄 + 상태줄(들). rename 은 `R100\told\tnew`(탭 2개), A/M/D 는 탭 1개.
@@ -129,12 +131,12 @@ describe('getFileHistory (신설 — 당시 경로)', () => {
     getFileHistory((args) => {
       calls.push(args)
       return ''
-    }, 'vault/wiki/company/삼성전자.md')
+    }, 'wiki/company/삼성전자.md')
 
     expect(calls[0]).toContain('--follow')
     expect(calls[0]).toContain('--name-status')
     expect(calls[0].join(' ')).toContain('core.quotepath=false')
-    expect(calls[0].at(-1)).toBe('vault/wiki/company/삼성전자.md')
+    expect(calls[0].at(-1)).toBe('wiki/company/삼성전자.md')
   })
 
   it('빈 로그는 빈 배열이다', () => {
@@ -162,7 +164,7 @@ describe('getFileCommitDates — id 는 가장 최근 A(생성) 커밋', () => {
   })
 
   it('빈 로그(미커밋)는 hash/created/updated 모두 null 이다', () => {
-    expect(getFileCommitDates(() => '', 'vault/wiki/x.md')).toEqual({
+    expect(getFileCommitDates(() => '', 'wiki/x.md')).toEqual({
       created: null,
       hash: null,
       updated: null,
@@ -187,51 +189,56 @@ describe('buildPathIndex — (커밋, 당시경로) → 현재 문서 id', () =>
 })
 
 describe('collectDeletedDocPaths — 삭제되어 HEAD 에 없는 문서', () => {
-  const DELETED_LOG = [`D\t${SCRAP}`, `D\tvault/wiki/tech/HBM.md`, 'D\tREADME.md'].join('\n')
+  const DELETED_LOG = [`D\t${SCRAP}`, `D\twiki/tech/HBM.md`, 'D\tREADME.md'].join('\n')
 
-  it('삭제된 vault 문서 경로만 낸다', () => {
+  it('삭제된 markdown 경로를 낸다', () => {
     const deleted = collectDeletedDocPaths(() => DELETED_LOG, {
       headPaths: new Set([HBM_NOW]),
-      wikiPrefix: 'vault/wiki/',
+      isDocPath: anyMarkdown,
     })
 
     expect(deleted.has(SCRAP)).toBe(true)
-    expect(deleted.has('README.md')).toBe(false) // vault 문서가 아니다
+    // 삭제 수집은 **히스토리 계층**이라 prefix 를 걸 수 없다. "위키 문서인가"는 이후
+    // `everWikiPaths` 게이트가 판정한다.
+    expect(deleted.has('README.md')).toBe(true)
   })
 
   it('삭제 후 재생성된 경로는 포함하지 않는다(HEAD 에 있다)', () => {
     // 2번째 케이스: HEAD 대조 없이 D 만 긁으면 살아 있는 문서를 prune 해버린다.
     const deleted = collectDeletedDocPaths(() => DELETED_LOG, {
       headPaths: new Set([HBM_NOW]),
-      wikiPrefix: 'vault/wiki/',
+      isDocPath: anyMarkdown,
     })
 
     expect(deleted.has(HBM_NOW)).toBe(false)
-    expect(deleted.size).toBe(1)
+    expect(deleted.size).toBe(2)
   })
 })
 
 describe('collectEverDeletedDocPaths — HEAD 재생성 여부와 무관한 삭제 이력', () => {
-  const DELETED_LOG = [`D\t${SCRAP}`, `D\tvault/wiki/tech/HBM.md`, 'D\tREADME.md'].join('\n')
+  const DELETED_LOG = [`D\t${SCRAP}`, `D\twiki/tech/HBM.md`, 'D\tREADME.md'].join('\n')
 
-  it('삭제 후 같은 경로에 재생성된 vault 문서도 삭제 이력으로 남긴다', () => {
-    const deleted = collectEverDeletedDocPaths(() => DELETED_LOG, { wikiPrefix: 'vault/wiki/' })
+  it('삭제 후 같은 경로에 재생성된 markdown 문서도 삭제 이력으로 남긴다', () => {
+    const deleted = collectEverDeletedDocPaths(() => DELETED_LOG, { isDocPath: anyMarkdown })
 
     expect(deleted.has(SCRAP)).toBe(true)
     expect(deleted.has(HBM_NOW)).toBe(true)
-    expect(deleted.has('README.md')).toBe(false)
+    // 삭제 수집은 **히스토리 계층**이라 prefix 를 걸 수 없다. "위키 문서인가"는 이후
+    // `everWikiPaths` 게이트가 판정한다.
+    expect(deleted.has('README.md')).toBe(true)
   })
 })
 
-describe('getCommitDocStatuses — 커밋별 vault 문서 상태', () => {
-  it('A/M/D/R 상태를 vault md 경로만 골라 파싱한다', () => {
-    const stdout = [
-      `A\tvault/wiki/company/a.md`,
-      `M\tvault/wiki/company/b.md`,
-      `D\tvault/wiki/company/c.md`,
-      `R100\tvault/wiki/company/old.md\tvault/wiki/tech/new.md`,
-      `A\tREADME.md`,
-    ].join('\n')
+describe('getCommitDocStatuses — 커밋별 문서 상태', () => {
+  const stdout = [
+    `A\twiki/company/a.md`,
+    `M\twiki/company/b.md`,
+    `D\twiki/company/c.md`,
+    `R100\twiki/company/old.md\twiki/tech/new.md`,
+    `A\tREADME.md`,
+  ].join('\n')
+
+  it('계약 계층 술어는 현재 wiki prefix 의 md 경로만 골라 파싱한다', () => {
     const calls = []
 
     const statuses = getCommitDocStatuses(
@@ -240,14 +247,38 @@ describe('getCommitDocStatuses — 커밋별 vault 문서 상태', () => {
         return stdout
       },
       'abc123',
-      'vault/wiki/',
+      underWikiPrefix('wiki/'),
     )
 
     expect(statuses).toEqual([
-      { path: 'vault/wiki/company/a.md', status: 'A' },
-      { path: 'vault/wiki/company/b.md', status: 'M' },
-      { path: 'vault/wiki/company/c.md', status: 'D' },
-      { oldPath: 'vault/wiki/company/old.md', path: 'vault/wiki/tech/new.md', status: 'R' },
+      { path: 'wiki/company/a.md', status: 'A' },
+      { path: 'wiki/company/b.md', status: 'M' },
+      { path: 'wiki/company/c.md', status: 'D' },
+      { oldPath: 'wiki/company/old.md', path: 'wiki/tech/new.md', status: 'R' },
+    ])
+    expect(calls[0]).toContain('--name-status')
+    expect(calls[0]).toContain('--find-renames')
+    expect(calls[0].at(-1)).toBe('abc123')
+  })
+
+  it('히스토리 계층 술어는 prefix 없이 모든 markdown 상태를 파싱한다', () => {
+    const calls = []
+
+    const statuses = getCommitDocStatuses(
+      (args) => {
+        calls.push(args)
+        return stdout
+      },
+      'abc123',
+      anyMarkdown,
+    )
+
+    expect(statuses).toEqual([
+      { path: 'wiki/company/a.md', status: 'A' },
+      { path: 'wiki/company/b.md', status: 'M' },
+      { path: 'wiki/company/c.md', status: 'D' },
+      { oldPath: 'wiki/company/old.md', path: 'wiki/tech/new.md', status: 'R' },
+      { path: 'README.md', status: 'A' },
     ])
     expect(calls[0]).toContain('--name-status')
     expect(calls[0]).toContain('--find-renames')
@@ -280,10 +311,10 @@ describe('checkHistoryIntegrity — shallow · partial clone 판정', () => {
 describe('getCommitDiffHunks', () => {
   it('git show --unified=0 출력에서 파일별 hunk(startLine,lineCount)를 파싱한다', () => {
     const show = [
-      'diff --git a/vault/wiki/foo.md b/vault/wiki/foo.md',
+      'diff --git a/wiki/foo.md b/wiki/foo.md',
       'index 0000000..1111111 100644',
-      '--- a/vault/wiki/foo.md',
-      '+++ b/vault/wiki/foo.md',
+      '--- a/wiki/foo.md',
+      '+++ b/wiki/foo.md',
       '@@ -10,0 +11,2 @@ heading',
       '+added',
       '+more',
@@ -295,7 +326,7 @@ describe('getCommitDiffHunks', () => {
       return show
     }, 'abc123')
 
-    expect(hunks['vault/wiki/foo.md']).toEqual([{ lineCount: 2, startLine: 11 }])
+    expect(hunks['wiki/foo.md']).toEqual([{ lineCount: 2, startLine: 11 }])
     expect(calls[0]).toContain('show')
   })
 

@@ -6,7 +6,7 @@
 // 메시지 계약: **무엇이 무엇을 못 찾았는지**를 담는다. "invariant 1 violated" 류는 대량 실패 시
 // 원인 추적이 불가능하다.
 
-import { getCommitDocStatuses } from './git.mjs'
+import { getCommitDocStatuses, underWikiPrefix } from './git.mjs'
 
 const CONVENTION_RE = /^(cwiki|uwiki|feed):\s/
 
@@ -18,7 +18,11 @@ export function checkCommitConventions(commits, runGit, wikiPrefix) {
     // D26: 접두어 없는 커밋도 A+D(문서 id 소실 시그니처)를 검사해야 하므로 statuses 를 모든
     // 커밋에 대해 구한다(이전엔 접두어 커밋만). 마진 비용은 non-vault(툴링) 커밋 수에 한정된다 —
     // vault 커밋(cwiki/uwiki/feed)은 원래도 여기서 git show 됐다. sha 가 달라 커밋마다 1회 spawn.
-    const statuses = getCommitDocStatuses(runGit, commit.hash, wikiPrefix)
+    const statuses = getCommitDocStatuses(runGit, commit.hash, underWikiPrefix(wikiPrefix))
+    // 이관 이전 커밋은 statuses 가 비어 있다(그때 경로가 지금 계약 밖). 그것을 "cwiki 인데 신규 0개"
+    // 같은 위반으로 읽으면 옛 커밋 7건이 전부 빌드를 죽인다 — 히스토리 재작성이 금지된 이상 고칠 수도
+    // 없는 위반이다. 계약 검사는 현행 계약이 보이는 커밋만 심사한다.
+    if (statuses.length === 0) continue
     const added = statuses.filter((entry) => entry.status === 'A')
     const deleted = statuses.filter((entry) => entry.status === 'D')
 

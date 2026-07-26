@@ -22,7 +22,7 @@ const HEX12_RE = /^[0-9a-f]{12}$/u
 const HEX40_RE = /^[0-9a-f]{40}$/u
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const VAULT = path.resolve(HERE, '..', '..') // sas-wiki 리포 루트(vault/wiki/ 를 품는다)
+const VAULT = path.resolve(HERE, '..', '..') // sas-wiki 리포 루트(wiki/ 를 품는다)
 
 // 이 스펙만 **실 vault**(tmp 시딩이 아닌 서브모듈 자체)를 빌드한다. vitest.config.js 가 결정성용으로
 // GIT_CONFIG_GLOBAL=/dev/null 을 걸어 전역 safe.directory 예외가 사라지므로, 컨테이너에서 vault 가

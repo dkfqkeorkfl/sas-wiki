@@ -102,10 +102,8 @@ export function cleanup(...dirs) {
  * (자기참조 공허성 금지 · tdd §2.3 규범 A). 드리프트 감지는 트립와이어 스펙
  * `scripts/lib/__tests__/git.doc-predicates.test.mjs` 의 PR5 가 담당한다.
  *
- * **RED 단계 기본값은 이관 전 루트(`'vault/wiki'`)** 다. GREEN(P1 Task 8)이 `'wiki'` 로 뒤집는다 —
- * RED 커밋 시점에 뒤집으면 기존 스펙 다수가 함께 깨져 RED 신호가 흐려지기 때문이다(메인 세션 결정).
- * 그래서 **루트 이관을 다루는 신규 스펙은 새 루트든 옛 루트든 `wikiRoot` 를 항상 명시**한다 —
- * 기본값이 뒤집혀도 그 스펙들은 영향받지 않는다.
+ * **GREEN 단계 기본값은 현행 루트(`'wiki'`)** 다.
+ * 루트 이관을 다루는 신규 스펙은 새 루트든 옛 루트든 `wikiRoot` 를 항상 명시한다.
  */
 export function writeDoc(
   root,
@@ -116,7 +114,7 @@ export function writeDoc(
     status = 'active',
     title,
     type = 'concept',
-    wikiRoot = 'vault/wiki',
+    wikiRoot = 'wiki',
   } = {},
 ) {
   const full = path.join(root, ...wikiRoot.split('/'), `${rel}.md`)
@@ -133,7 +131,7 @@ export function writeDoc(
   return full
 }
 
-/** `<wikiRoot>/<rel>.md` 를 읽는다. `wikiRoot` 계약은 `writeDoc` 과 동일(리터럴 기본값·RED 단계 옛 루트). */
-export function readDoc(root, rel, { wikiRoot = 'vault/wiki' } = {}) {
+/** `<wikiRoot>/<rel>.md` 를 읽는다. `wikiRoot` 계약은 `writeDoc` 과 동일(리터럴 기본값). */
+export function readDoc(root, rel, { wikiRoot = 'wiki' } = {}) {
   return readFileSync(path.join(root, ...wikiRoot.split('/'), `${rel}.md`), 'utf8')
 }

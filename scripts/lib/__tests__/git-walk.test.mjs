@@ -7,7 +7,7 @@
 //   커밋 단계에서 파일을 죽이므로 해석을 런타임으로 미룬다(전례: git.read-id-at-creation.test.mjs).
 //
 // 계약(GREEN 이 구현 — **순서가 계약**): walkFeeds(vault, { from, to, count, after }) 파이프라인
-//   ① git rev-list --author-date-order <tip> -- vault/wiki --max-count=count*K 청크
+//   ① git rev-list --author-date-order <tip> -- wiki --max-count=count*K 청크
 //   ② parseCommitForFeed 필터(`feed:` 만) → ③ `<sha>:<당시경로>` blob frontmatter UUIDv7 id resolve
 //   (현재 summary id 대조·미스 prune) → ④ applyIgnoreFeeds 억제(P4 SSOT **재사용**) → ⑤ docs[] id dedupe
 //   → ⑥ JS byRecencyThenId 재정렬(**권위** — git 워크순서 ≠ author-date) → ⑦ from/to = author-date 값
@@ -85,10 +85,10 @@ describe('walkFeeds — 모듈·subject 필터 (GW1·GW2 🔴RED)', () => {
       // 비-feed 커밋들 — vault 를 건드려도 피드가 아니다.
       writeDoc(vault, 'company/삼성', { body: '## 정의\n\n일반 갱신.\n', id: ID_A })
       commit(vault, 'uwiki: 삼성 본문 보강')
-      // vault/wiki 밖 파일만 바꾸는 관리용 커밋 — 실제 변경이 있어야 git 이 커밋을 만든다(빈 커밋 거부
-      // 회피). vault/wiki 는 그대로라 "feed: 만 피드가 된다" 단언 의미는 불변이다.
+      // wiki 밖 파일만 바꾸는 관리용 커밋 — 실제 변경이 있어야 git 이 커밋을 만든다(빈 커밋 거부
+      // 회피). wiki 는 그대로라 "feed: 만 피드가 된다" 단언 의미는 불변이다.
       writeFileSync(path.join(vault, 'notes.txt'), '잡무 메모\n', 'utf8')
-      commit(vault, 'chore: 잡무') // vault/wiki 무변경 커밋
+      commit(vault, 'chore: 잡무') // wiki 무변경 커밋
       seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: '진짜 소식' })
 
       const items = walkFeeds(vault, { count: 10 })
@@ -150,7 +150,7 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
       seedDoc(vault, 'company/옛경로', ID_A)
       seedFeed(vault, 'company/옛경로', ID_A, { date: T2, subject: '과거 소식' }) // 당시경로 company/옛경로
       // 문서를 새 경로로 이동(rename) — HEAD 는 company/새경로.
-      git(vault, ['mv', 'vault/wiki/company/옛경로.md', 'vault/wiki/company/새경로.md'])
+      git(vault, ['mv', 'wiki/company/옛경로.md', 'wiki/company/새경로.md'])
       commit(vault, 'uwiki: 문서 이동 옛경로→새경로')
 
       const items = walkFeeds(vault, { count: 10 })
@@ -170,7 +170,7 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
       seedFeed(vault, 'company/생존', ID_A, { date: T3, subject: '생존 소식' })
       seedDoc(vault, 'company/삭제될', ID_B)
       seedFeed(vault, 'company/삭제될', ID_B, { date: T2, subject: '삭제될 소식' })
-      git(vault, ['rm', 'vault/wiki/company/삭제될.md'])
+      git(vault, ['rm', 'wiki/company/삭제될.md'])
       commit(vault, 'cwiki: 삭제될 문서 제거')
 
       const items = walkFeeds(vault, { count: 10 })
@@ -187,7 +187,7 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
     try {
       seedDoc(vault, 'company/before', ID_C)
       // 한 feed: 커밋이 문서를 개명(old→new)하며 내용도 바꾼다 — old·new 경로가 같은 id 로 해석돼도 1건.
-      git(vault, ['mv', 'vault/wiki/company/before.md', 'vault/wiki/company/after.md'])
+      git(vault, ['mv', 'wiki/company/before.md', 'wiki/company/after.md'])
       writeDoc(vault, 'company/after', { body: '## 정의\n\n개명하며 갱신.\n', id: ID_C })
       feedCommit(vault, { date: T2, subject: '개명+소식' })
 

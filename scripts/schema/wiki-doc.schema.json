@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/wiki-doc.schema.json",
   "title": "wiki-doc",
-  "description": "vault/wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층(path/breadcrumb)은 폴더 위치에서 빌드가 산출한다. id는 frontmatter에 저작된 불변 UUIDv7 내부 키다.",
+  "description": "wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층(path/breadcrumb)은 폴더 위치에서 빌드가 산출한다. id는 frontmatter에 저작된 불변 UUIDv7 내부 키다.",
   "type": "object",
   "required": ["id", "title", "type", "status"],
   "properties": {

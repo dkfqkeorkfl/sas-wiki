@@ -8,7 +8,7 @@
 //   tags 는 `{docs:[], feed:[]}`(신 계약은 `Record<tag, docId[]>`), `excerpt` 가 아예 없다.
 //
 // 계약(GREEN 이 구현할 seam):
-//   derive(parsedDocs, runGit) → { bodies, docs, pathToDoc, resolveTargetPath, tags, tree }
+//   deriveForTest(parsedDocs, runGit) → { bodies, docs, pathToDoc, resolveTargetPath, tags, tree }
 //     docs   : active = 10키 / disable = **4키 스텁**(id·breadcrumb·title·status)
 //     bodies : buildBody 입력 — { breadcrumb, status, html, headings, meta, sources } (active 만)
 //     tree   : [{ path, docs: id[], children }] — **루트 래퍼 없음**(최상위가 배열)
@@ -18,6 +18,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { derive } from '../derive.mjs'
+
+const deriveForTest = (parsedDocs, runGit) => derive(parsedDocs, runGit, { wikiPrefix: 'wiki/' })
 
 // git 생성 해시 — created/updated 파생용(이제 id 출처가 아니다).
 const SAMSUNG_SHA = 'aaaaaaaaaaaa000000000000000000000000aaaa'
@@ -43,7 +45,7 @@ function aParsedDoc(patch) {
     body: '## 정의\n\n본문 문단.\n',
     bodyLineOffset: 6,
     breadcrumb: relPath.split('/'), // 신 계약: 문서 슬러그 포함
-    filePath: `/tmp/vault/wiki/${relPath}.md`,
+    filePath: `/tmp/wiki/${relPath}.md`,
     frontmatter: { id: DEFAULT_ID, status: 'active', tags: [], title: relPath.split('/').at(-1), type: 'concept' }, // prettier-ignore
     relPath,
     ...patch,
@@ -99,10 +101,10 @@ const WORLD = [
 ]
 
 const WORLD_RUNNER = makeRunner({
-  'company/삼성전자': aLog(SAMSUNG_SHA, { file: 'vault/wiki/company/삼성전자.md' }),
-  'company/자회사/세메스': aLog(SUB_SHA, { file: 'vault/wiki/company/자회사/세메스.md' }),
-  'legacy/폐문서': aLog(DIS_SHA, { file: 'vault/wiki/legacy/폐문서.md' }),
-  'tech/HBM': aLog(HBM_SHA, { file: 'vault/wiki/tech/HBM.md' }),
+  'company/삼성전자': aLog(SAMSUNG_SHA, { file: 'wiki/company/삼성전자.md' }),
+  'company/자회사/세메스': aLog(SUB_SHA, { file: 'wiki/company/자회사/세메스.md' }),
+  'legacy/폐문서': aLog(DIS_SHA, { file: 'wiki/legacy/폐문서.md' }),
+  'tech/HBM': aLog(HBM_SHA, { file: 'wiki/tech/HBM.md' }),
 })
 
 function docOf(docs, relPath) {
@@ -111,16 +113,16 @@ function docOf(docs, relPath) {
 
 /** 본문 하나짜리 문서를 파생해 excerpt 만 뽑는다. */
 function excerptOf(body) {
-  const { docs } = derive(
+  const { docs } = deriveForTest(
     [aParsedDoc({ body, relPath: 'tech/HBM' })],
-    makeRunner({ 'tech/HBM': aLog(HBM_SHA, { file: 'vault/wiki/tech/HBM.md' }) }),
+    makeRunner({ 'tech/HBM': aLog(HBM_SHA, { file: 'wiki/tech/HBM.md' }) }),
   )
   return docs[0].excerpt
 }
 
 describe('derive — summary docs 필드 집합', () => {
   it('active doc 은 정확히 10키다(md·html·backlinks·links·footnotes·path 부재)', () => {
-    const { docs } = derive(WORLD, WORLD_RUNNER)
+    const { docs } = deriveForTest(WORLD, WORLD_RUNNER)
 
     expect(Object.keys(docOf(docs, 'company/삼성전자')).toSorted()).toEqual([
       'aliases',
@@ -137,7 +139,7 @@ describe('derive — summary docs 필드 집합', () => {
   })
 
   it('disable 은 4키 스텁이다(path 문자열 필드 없음 — breadcrumb 만)', () => {
-    const { docs } = derive(WORLD, WORLD_RUNNER)
+    const { docs } = deriveForTest(WORLD, WORLD_RUNNER)
 
     expect(Object.keys(docOf(docs, 'legacy/폐문서')).toSorted()).toEqual([
       'breadcrumb',
@@ -148,7 +150,7 @@ describe('derive — summary docs 필드 집합', () => {
   })
 
   it('id 는 frontmatter UUIDv7 이고 created/updated 는 git 에서 파생된다', () => {
-    const { docs } = derive(WORLD, WORLD_RUNNER)
+    const { docs } = deriveForTest(WORLD, WORLD_RUNNER)
     const samsung = docOf(docs, 'company/삼성전자')
 
     expect(samsung.id).toBe(SAMSUNG_ID)
@@ -157,7 +159,7 @@ describe('derive — summary docs 필드 집합', () => {
   })
 
   it('bodies 는 active 문서의 본문 레코드다(buildBody 입력 · disable 부재)', () => {
-    const { bodies } = derive(WORLD, WORLD_RUNNER)
+    const { bodies } = deriveForTest(WORLD, WORLD_RUNNER)
     const samsung = bodies.find((body) => body.breadcrumb.join('/') === 'company/삼성전자')
 
     expect(Object.keys(samsung).toSorted()).toEqual([
@@ -176,7 +178,7 @@ describe('derive — summary docs 필드 집합', () => {
 
 describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서는 id)', () => {
   it('최상위가 배열이고 노드는 { path, docs: id[], children } 이다', () => {
-    const { tree } = derive(WORLD, WORLD_RUNNER)
+    const { tree } = deriveForTest(WORLD, WORLD_RUNNER)
     const company = tree.find((node) => node.path === 'company')
 
     expect(Object.keys(company).toSorted()).toEqual(['children', 'docs', 'path'])
@@ -187,7 +189,7 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
 
   it('disable 만 있는 폴더는 노드 자체가 생기지 않는다', () => {
     // 2번째 케이스: disable 을 걸러내되 **빈 노드를 남기면** 사이드바에 빈 행이 생긴다.
-    const { tree } = derive(WORLD, WORLD_RUNNER)
+    const { tree } = deriveForTest(WORLD, WORLD_RUNNER)
 
     expect(tree.map((node) => node.path).toSorted()).toEqual(['company', 'tech'])
   })
@@ -195,7 +197,7 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
 
 describe('derive — tags (Record<tag, docId[]>)', () => {
   it('active 문서만 역색인하고 feed 배열은 없다', () => {
-    const { tags } = derive(WORLD, WORLD_RUNNER)
+    const { tags } = deriveForTest(WORLD, WORLD_RUNNER)
 
     expect(tags['반도체'].toSorted()).toEqual([SAMSUNG_ID, SUB_ID].toSorted())
     expect(tags['메모리']).toEqual([HBM_ID])
@@ -204,7 +206,7 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
 
   it('__proto__·constructor 태그도 실제 키로 직렬화한다(JSON payload 계약)', () => {
     const relPath = 'tech/prototype-safe'
-    const { tags } = derive(
+    const { tags } = deriveForTest(
       [
         aParsedDoc({
           frontmatter: {
@@ -217,7 +219,7 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
           relPath,
         }),
       ],
-      makeRunner({ [relPath]: aLog(HBM_SHA, { file: `vault/wiki/${relPath}.md` }) }),
+      makeRunner({ [relPath]: aLog(HBM_SHA, { file: `wiki/${relPath}.md` }) }),
     )
 
     // eslint-disable-next-line unicorn/prefer-structured-clone -- JSON 직렬화 경계에서 배송되는 키를 검증한다.
@@ -260,7 +262,7 @@ describe('derive — excerpt (본문 첫 문단 평문 160자)', () => {
 
 describe('derive — 무결성 가드', () => {
   it('disable 문서도 pathToDoc 에는 남는다(위키링크 데드링크 방지)', () => {
-    const { pathToDoc } = derive(WORLD, WORLD_RUNNER)
+    const { pathToDoc } = deriveForTest(WORLD, WORLD_RUNNER)
 
     expect(pathToDoc.has('legacy/폐문서')).toBe(true)
   })
@@ -271,14 +273,14 @@ describe('derive — 무결성 가드', () => {
       aParsedDoc({ relPath: 'concept/쌍둥이-B' }),
     ]
     const sameSha = makeRunner({
-      'concept/쌍둥이-A': aLog(SAMSUNG_SHA, { file: 'vault/wiki/concept/쌍둥이-A.md' }),
-      'concept/쌍둥이-B': aLog(SAMSUNG_SHA, { file: 'vault/wiki/concept/쌍둥이-B.md' }),
+      'concept/쌍둥이-A': aLog(SAMSUNG_SHA, { file: 'wiki/concept/쌍둥이-A.md' }),
+      'concept/쌍둥이-B': aLog(SAMSUNG_SHA, { file: 'wiki/concept/쌍둥이-B.md' }),
     })
 
-    expect(() => derive(twins, sameSha)).toThrow(/쌍둥이-A|쌍둥이-B|중복/)
+    expect(() => deriveForTest(twins, sameSha)).toThrow(/쌍둥이-A|쌍둥이-B|중복/)
   })
 
   it('미커밋 문서(빈 로그)는 명시적으로 실패한다', () => {
-    expect(() => derive([aParsedDoc({ relPath: 'concept/new' })], () => '')).toThrow()
+    expect(() => deriveForTest([aParsedDoc({ relPath: 'concept/new' })], () => '')).toThrow()
   })
 })
