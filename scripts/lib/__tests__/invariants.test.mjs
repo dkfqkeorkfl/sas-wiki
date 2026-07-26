@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// P2 RED-7 · scripts/wiki/lib/invariants.mjs (불변식 8종) — data-contract §10 / tdd §7
+// P2 RED-7 · scripts/wiki/lib/invariants.mjs (불변식 8종) — README · 불변식 8종 / tdd §7
 // RED 사유: `lib/invariants.mjs` 미구현(모듈 부재) → import 실패.
 //
 // 계약: checkInvariants(summary, feeds, body) — 위반 시 **구체 메시지와 함께 throw**, 정상이면 void.

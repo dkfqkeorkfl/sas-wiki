@@ -7,7 +7,7 @@
 //      (export 부재) → import 링크 실패(파일 전체 RED).
 //   ② `getFileCommitDates` 는 현행이 `%H%x09%aI` 만 뽑아 **당시 경로를 내지 않고**,
 //      hash 를 "가장 오래된 커밋"으로 잡는다 → 삭제 후 재생성 문서의 **죽은 id 를 부활**시킨다.
-//      신 계약은 **가장 최근 `A`(생성) 커밋**이다(data-contract §10).
+//      신 계약은 **가장 최근 `A`(생성) 커밋**이다(README · 문서 id).
 //
 // DI 계약(기존 유지): 파싱 래퍼는 runGit(args)=>string 러너를 주입받는다.
 //   stub 러너로 (1) 파싱 정확성 (2) 기대 args 를 고정한다.
@@ -64,7 +64,7 @@ const HBM_LOG = [
   `A\t${HBM_THEN}`,
 ].join('\n')
 
-// 삭제 후 **같은 경로**에 새 문서를 만든 히스토리(최신순) — 새 문서다(data-contract §10).
+// 삭제 후 **같은 경로**에 새 문서를 만든 히스토리(최신순) — 새 문서다(README · 문서 id).
 const REBORN_LOG = [
   'shaNew\t2026-03-01T00:00:00Z',
   '',
@@ -154,7 +154,7 @@ describe('getFileCommitDates — id 는 가장 최근 A(생성) 커밋', () => {
 
   it('삭제 후 같은 경로에 재생성된 문서는 **새 id** 를 갖는다(옛 생성 해시 부활 금지)', () => {
     // 2번째 케이스 의도: "가장 오래된 커밋" 구현(현행)이면 shaOld 를 내어 **죽은 문서의 id 가 부활**한다.
-    // 그러면 과거 피드가 엉뚱한 새 문서를 가리킨다(data-contract §10).
+    // 그러면 과거 피드가 엉뚱한 새 문서를 가리킨다(README · 문서 id).
     const dates = getFileCommitDates(() => REBORN_LOG, SCRAP)
 
     expect(dates.hash).toBe('shaNew')

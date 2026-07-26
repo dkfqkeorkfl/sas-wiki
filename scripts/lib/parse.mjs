@@ -97,7 +97,7 @@ export function collectMarkdownFilesRecursive(dir) {
 }
 
 /**
- * 문서의 위치 — `breadcrumb` 는 **폴더들 + 문서 슬러그**다(data-contract §2).
+ * 문서의 위치 — `breadcrumb` 는 **폴더들 + 문서 슬러그**다(README · 계층).
  *
  * 마지막 원소가 문서 슬러그이므로 `breadcrumb.join('/') === path` 가 성립한다(불변식 5 의 전제).
  * 계약에 문자열 `path` 필드는 없다 — 경로가 필요하면 이 유도식을 쓴다.

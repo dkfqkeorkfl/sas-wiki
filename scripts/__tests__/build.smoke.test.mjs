@@ -142,7 +142,7 @@ beforeAll(() => {
   git(vault, ['rm', '-q', 'vault/wiki/misc/del-me.md'])
   commit(vault, 'uwiki: 폐기문서 삭제')
 
-  // 8 · cwiki — **같은 경로에 재생성 → 새 문서(새 id)**  (data-contract §10)
+  // 8 · cwiki — **같은 경로에 재생성 → 새 문서(새 id)**  (README · 문서 id)
   ctx.ids.rebornNew = writeDoc(vault, 'concept/reborn', '부활문서')
   commit(vault, 'cwiki: 부활문서 재생성')
 
@@ -271,7 +271,7 @@ describe('build.smoke — 삭제·prune·재생성', () => {
   })
 
   it('삭제 후 같은 경로에 재생성된 문서는 **새 id** 를 갖는다', () => {
-    // 옛 생성 해시가 부활하면 과거 피드가 엉뚱한 새 문서를 가리킨다(data-contract §10).
+    // 옛 생성 해시가 부활하면 과거 피드가 엉뚱한 새 문서를 가리킨다(README · 문서 id).
     const reborn = ctx.result.summary.docs.find(
       (doc) => doc.breadcrumb.join('/') === 'concept/reborn',
     )

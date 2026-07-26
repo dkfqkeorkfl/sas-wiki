@@ -258,7 +258,7 @@ export function getCommitDocStatuses(runGit, sha, wikiPrefix) {
  * 문서의 생성 커밋·최신 커밋. `getFileHistory` 위의 얇은 래퍼다(중복 `git log` 호출 금지).
  *
  * **id = 가장 최근 `A`(추가) 커밋** — "가장 오래된 커밋"이 아니다. 삭제 후 같은 경로에 새 문서를
- * 만들면 그것은 **새 문서**이고(data-contract §10), 옛 생성 해시를 부활시키면 과거 피드가 엉뚱한
+ * 만들면 그것은 **새 문서**이고(README · 문서 id), 옛 생성 해시를 부활시키면 과거 피드가 엉뚱한
  * 새 문서를 가리킨다.
  */
 export function getFileCommitDates(runGit, relFilePath) {
@@ -309,7 +309,7 @@ export function getFileHistory(runGit, relFilePath) {
       // `--follow` 는 내부적으로 copy 탐지(find_copies_harder)를 켜므로, 비슷한 문서를 새로 만들면
       // 그 add 를 기존 문서로부터의 `C`(copy)로 보고 **남의 히스토리를 계속 따라간다**.
       // 자르지 않으면 (a) 새 문서가 남의 생성 해시(=id)를 물려받고 (b) 역인덱스가 남의 커밋을
-      // 이 문서로 매핑한다. 삭제 후 재생성도 같은 규칙으로 **새 문서**가 된다(data-contract §10).
+      // 이 문서로 매핑한다. 삭제 후 재생성도 같은 규칙으로 **새 문서**가 된다(README · 문서 id).
       if (isCreation(entry)) break
       continue
     }

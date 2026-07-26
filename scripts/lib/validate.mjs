@@ -113,7 +113,7 @@ function validateAgainstSchema(data, rawSchema, errors, fieldPath = '$', root = 
       }
     }
 
-    // strict 쓰기(data-contract §10): 모르는 필드 = 빌드 버그. 제거된 필드가 산출물에 남아 있으면
+    // strict 쓰기(README · 불변식 8종): 모르는 필드 = 빌드 버그. 제거된 필드가 산출물에 남아 있으면
     // 여기서 죽는다 — 그것이 스키마 3종의 존재 이유다. `additionalProperties` 가 스키마 객체면
     // `Record<K, V>`(wiki_body.json 의 docs) 로 취급해 잉여 키의 **값**을 그 스키마로 검증한다.
     const extra = schema.additionalProperties

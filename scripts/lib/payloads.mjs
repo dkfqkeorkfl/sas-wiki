@@ -27,7 +27,7 @@ const BODY_DOC_KEYS = ['headings', 'html', 'meta', 'sources']
 /** disable 스텁 — 4키. 링크를 살려두는 최소 정보만. */
 const DISABLE_STUB_KEYS = ['breadcrumb', 'id', 'status', 'title']
 
-/** `wiki_body.json` — 봉투에 **`generatedAt` 이 없다**(data-contract §4). 키는 active 문서의 path. */
+/** `wiki_body.json` — 봉투에 **`generatedAt` 이 없다**(schema/body.schema.json). 키는 active 문서의 path. */
 export function buildBody({ docs, sourceCommit }) {
   const projected = {}
   for (const record of docs) {

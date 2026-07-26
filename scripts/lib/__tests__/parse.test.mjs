@@ -43,7 +43,7 @@ describe('parseFrontmatterYaml', () => {
 
 // P2 RED-3 (tdd §6.3) — breadcrumb 의미 반전: **문서 슬러그를 포함**한다.
 //   현행은 폴더만 낸다(`['company']`) → 신 계약은 `['company','삼성전자']`.
-//   경로는 `breadcrumb.join('/')` 로 **유도**한다 — 계약에 문자열 path 필드는 없다(data-contract §5).
+//   경로는 `breadcrumb.join('/')` 로 **유도**한다 — 계약에 문자열 path 필드는 없다(README · 계층).
 describe('derivePathAndBreadcrumb (breadcrumb = 폴더들 + 문서 슬러그)', () => {
   it('중첩 문서의 breadcrumb 마지막 원소가 문서 슬러그다', () => {
     const derived = derivePathAndBreadcrumb(path.join(WIKI_DIR, 'company', '삼성전자.md'), WIKI_DIR)

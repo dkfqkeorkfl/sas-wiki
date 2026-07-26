@@ -80,7 +80,7 @@ export async function main(argv = process.argv.slice(2)) {
 }
 
 /**
- * `--vault`(필수) · `--env dev|prod` · `--schema` · `--allow-deadlinks`.
+ * `--vault`(선택, 기본 REPO_ROOT) · `--env dev|prod` · `--schema` · `--allow-deadlinks`.
  *
  * **`--out`/`--root` 은 거부한다** — validate.mjs 는 JSON 을 생산하지 않으므로 출력 인자가 없다(호환
  * 별칭·마이그레이션 금지). 옛 스크립트가 넘기면 시끄럽게 끊어 오배선을 드러낸다.
@@ -184,8 +184,8 @@ function checkDeadlinks(parsedDocs, derived, allowDeadlinks, vaultDir) {
  * 예외를 두지 않는 이유 —
  *  - *이동* 은 삭제가 아니다. `collectDeletedDocEvents` 가 `--find-renames` 를 못박아 rename 을
  *    `R` 로 잡으므로 애초에 이 목록에 들어오지 않는다(로컬 `diff.renames=false` 도 무력화).
- *  - *같은 경로 재생성* 은 복원이 아니다. 데이터 계약(`docs/data-contract.md` · Document id)이
- *    "If a deleted path is later recreated, that is a new document with a newly authored id" 라고
+ *  - *같은 경로 재생성* 은 복원이 아니다. 데이터 계약(`README` · 문서 id)이 "지운 경로에 다시 문서를
+ *    만들면 그건 복원이 아니라 새 문서다" 라고
  *    못박는다. 경로는 정체성이 아니며, 삭제는 그 문서의 피드를 prune 한다 — 같은 경로에 옛 id 를
  *    다시 쓰면 prune 된 이력이 새 내용 위로 되살아나 오귀속된다.
  *
@@ -215,7 +215,7 @@ function checkDeletedIdReuse({ derived, runGit }) {
   throw new Error(
     `삭제된 문서의 id 재사용 ${violations.length}건 — 과거 피드가 다른 문서로 연결된다:\n${detail}\n` +
       `  해결: 새 문서에 새 UUIDv7 을 부여한다 — 삭제된 경로의 재생성은 계약상 새 문서다\n` +
-      `        (docs/data-contract.md · Document id). 문서를 *이동* 한 것이라면 삭제·재생성이 아니라\n` +
+      `        (README · 문서 id). 문서를 *이동* 한 것이라면 삭제·재생성이 아니라\n` +
       `        rename 으로 커밋해야 계보가 이어진다.`,
   )
 }
@@ -264,7 +264,7 @@ function reportStats({ body, feeds, stats, summary }) {
 }
 
 function usage() {
-  return 'Usage: node scripts/validate.mjs --vault <vault repo> [--env dev|prod] [--schema <dir>] [--allow-deadlinks]'
+  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--allow-deadlinks]'
 }
 
 function validateParsedDocs(parsedDocs, runGit, vaultDir, wikiSchema) {

@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// P2 RED-5 · scripts/wiki/lib/payloads.mjs (3 페이로드 조립) — data-contract §2·§3·§4 / tdd §6.5
+// P2 RED-5 · scripts/wiki/lib/payloads.mjs (3 페이로드 조립) — README · 반환 데이터형 / tdd §6.5
 // RED 사유: `lib/payloads.mjs` 미구현(모듈 부재) → import 실패.
 //
 // 계약(GREEN 이 구현할 seam):

@@ -160,7 +160,7 @@ describe('parseCommitForFeed — 신 컨벤션 subject 3종 분기', () => {
 
     expect(post.keywords).toEqual(['HBM', '양산'])
     expect(post.importance).toBe('breaking')
-    expect('tags' in post).toBe(false) // 태그 SSOT = 문서 프론트매터 (data-contract §3)
+    expect('tags' in post).toBe(false) // 태그 SSOT = 문서 프론트매터 (README · summary 반환값)
   })
 
   it('Importance enum 위반은 normal 로 대체하고 warning 을 남긴다', () => {
@@ -355,7 +355,7 @@ describe('buildFeedItems — prune (삭제 문서) vs disable (유지)', () => {
   })
 
   it('disable 문서는 prune 하지 않는다 — 피드는 살고 anchor 만 null 로 강등된다', () => {
-    // 스텁 4키가 링크를 살려두는 이유가 이것이다(data-contract §10).
+    // 스텁 4키가 링크를 살려두는 이유가 이것이다(README · summary 반환값).
     const commits = [aCommit({ hash: 'c1', subject: 'feed: 온디바이스 AI, 스마트폰 탑재 확대' })]
     const ctx = aContext({
       diffs: { c1: aDiff([{ hunks: [{ count: 2, start: 20 }], path: DISABLED_FILE }]) },
