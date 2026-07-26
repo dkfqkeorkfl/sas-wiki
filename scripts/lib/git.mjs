@@ -205,7 +205,7 @@ export function getCommitDiffHunks(runGit, hash) {
   try {
     raw = runGit([...QUOTEPATH_OFF, 'show', '--unified=0', '--format=', hash])
   } catch {
-    // diff 조회 실패 시 빈 결과 → 호출부(deriveAnchorsForFile)가 앵커 null 로 폴백.
+    // diff 조회 실패 시 빈 결과 → 피드 참조 해석 호출부가 변경 파일 없음으로 취급한다.
     return {}
   }
 

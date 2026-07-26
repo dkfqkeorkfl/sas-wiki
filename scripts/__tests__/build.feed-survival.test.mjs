@@ -26,11 +26,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildContent } from '../validate.mjs'
+import { ID_A, T1, T2, seedSurvivalVault } from './helpers/survival-vault.mjs'
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const ID_A = '0192a000-0000-7000-8000-0000000000aa' // 공개 — 정상
-const ID_B = '0192b000-0000-7000-8000-0000000000bb' // 실험 — draft(dev/ 폴더)
-const ID_C = '0192c000-0000-7000-8000-0000000000cc' // 폐기 — 삭제됨
 const ID_D = '0192d000-0000-7000-8000-0000000000dd' // fix 피드가 가리키는 문서(삭제됨)
 const ID_E = '0192e000-0000-7000-8000-0000000000ee' // normal 피드가 가리키는 문서(삭제됨)
 
@@ -40,10 +38,6 @@ const ID_E = '0192e000-0000-7000-8000-0000000000ee' // normal 피드가 가리�
  * 바꿔치면 PS3 이 조용히 공허해진다.
  */
 const NBSP = '\u00A0'
-
-const T1 = '2026-01-01T00:00:00Z'
-const T2 = '2026-01-02T00:00:00Z'
-const T3 = '2026-01-03T00:00:00Z'
 
 const titlesOf = (items) => items.map((item) => item.title)
 const docIdsOf = (items, title) =>
@@ -61,32 +55,6 @@ const tuplesOf = (items) =>
         .join(','),
     ])
     .toSorted((a, b) => a[0].localeCompare(b[0]))
-
-/**
- * RR-BASE — 사유 3종이 동시에 존재하는 최소 vault(git-walk.survival-reason.test.mjs 와 동일 세계관).
- *   공개(ID_A)=정상 · 실험(ID_B)=draft(`dev/`) · 폐기(ID_C)=삭제됨. 각각을 1건씩 가리키는 feed 3건.
- *
- * 중복은 의도적이다 — 3파일이 같은 픽스처를 쓰지만 **헬퍼로 접는 것은 REFACTOR 단계**의 일이고
- *   (tdd §10.3-5), 지금 접으면 RED 파일이 서로에게 의존해 실패 격리가 무너진다.
- */
-function seedSurvivalVault() {
-  const vault = initVault()
-  writeDoc(vault, 'company/공개', { id: ID_A, wikiRoot: 'wiki' })
-  writeDoc(vault, 'dev/실험', { id: ID_B, wikiRoot: 'wiki' })
-  writeDoc(vault, 'concept/폐기', { id: ID_C, wikiRoot: 'wiki' })
-  commit(vault, 'chore: 초기 문서 3건')
-
-  writeDoc(vault, 'company/공개', { body: '## 정의\n\n공개 갱신.\n', id: ID_A, wikiRoot: 'wiki' })
-  feedCommit(vault, { date: T1, subject: '공개 소식' })
-  writeDoc(vault, 'dev/실험', { body: '## 정의\n\n실험 갱신.\n', id: ID_B, wikiRoot: 'wiki' })
-  feedCommit(vault, { date: T2, subject: '실험 소식' })
-  writeDoc(vault, 'concept/폐기', { body: '## 정의\n\n폐기 갱신.\n', id: ID_C, wikiRoot: 'wiki' })
-  feedCommit(vault, { date: T3, subject: '폐기 소식' })
-
-  git(vault, ['rm', '-q', 'wiki/concept/폐기.md'])
-  commit(vault, 'chore: 폐기 문서 삭제')
-  return vault
-}
 
 /**
  * `-m` 이 아니라 **`-F <파일>`** 로 커밋한다 — NBSP(0xC2 0xA0) 같은 바이트가 셸 인용을 거치며

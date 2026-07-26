@@ -183,13 +183,11 @@ function formatConventionViolation({ added, commit, deleted }) {
   )
   for (const entry of added) lines.push(`      신규 파일 추가: ${entry.path}`)
   for (const entry of deleted) lines.push(`      동시 삭제:     ${entry.path}`)
-  if (added.length > 0 && deleted.length > 0) {
-    lines.push(
-      '      → 이동을 git 이 rename 으로 못 봤다(유사도 미달). 이동과 내용 재작성을 같은 커밋에',
-      '        넣지 마라 — 문서 id 가 바뀌고 과거 피드가 전부 사라진다. 이동 커밋과 내용 수정 커밋으로',
-      '        분리하라.',
-    )
-  }
+  lines.push(
+    '      → 이동을 git 이 rename 으로 못 봤다(유사도 미달). 이동과 내용 재작성을 같은 커밋에',
+    '        넣지 마라 — 문서 id 가 바뀌고 과거 피드가 전부 사라진다. 이동 커밋과 내용 수정 커밋으로',
+    '        분리하라.',
+  )
   return lines.join('\n')
 }
 

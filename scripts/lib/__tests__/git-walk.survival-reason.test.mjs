@@ -19,73 +19,16 @@
 //   `writeDoc(..., { wikiRoot: 'wiki' })` 를 항상 명시한다(P1 §3.8(E) 규약 계승).
 // 위험 실재 앵커(규범 B): "prod 에 없다" 단언 앞에 **dev 에는 있다**가 먼저 온다 — 픽스처가 그 피드를
 //   만들긴 했는지를 증명하지 않으면 부재 단언은 공허하다(P1 FP4 전례).
-import { mkdirSync, writeFileSync } from 'node:fs'
-import path from 'node:path'
-
 import { describe, expect, it } from 'vitest'
 
-import { cleanup, commit, feedCommit, git, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
+import { ID_A, ID_B, T2, seedSurvivalVault } from '../../__tests__/helpers/survival-vault.mjs'
+import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
 
 const { walkFeeds } = await import(new URL('../git-walk.mjs', import.meta.url).href)
-
-// 유효 UUIDv7 리터럴.
-const ID_A = '0192a000-0000-7000-8000-0000000000aa' // 공개 — HEAD 에 살아 있는 비-draft
-const ID_B = '0192b000-0000-7000-8000-0000000000bb' // 실험 — draft(dev/ 폴더 또는 frontmatter 플래그)
-const ID_C = '0192c000-0000-7000-8000-0000000000cc' // 폐기 — 나중에 삭제된다
-
-const T1 = '2026-01-01T00:00:00Z'
-const T2 = '2026-01-02T00:00:00Z'
-const T3 = '2026-01-03T00:00:00Z'
 
 const titlesOf = (items) => items.map((item) => item.title)
 const docIdsOf = (items, title) =>
   items.find((item) => item.title === title)?.docs.map((doc) => doc.id)
-
-/**
- * RR-BASE — 사유 3종이 **동시에** 존재하는 최소 vault.
- *   공개(ID_A) = 정상 · 실험(ID_B) = draft · 폐기(ID_C) = 삭제됨.
- * 각 문서를 정확히 1건씩 가리키는 `feed:` 커밋 3건(T1·T2·T3) 뒤에 폐기 문서를 지운다.
- *
- * `draftBy: 'folder'` → `wiki/dev/실험.md`(폴더 신호) · `'frontmatter'` → `wiki/lab/실험.md` + `draft: true`.
- *   두 신호가 같은 결과를 내야 한다(RR6 · `draft.mjs` SSOT 재사용 — 재구현 금지).
- */
-function seedSurvivalVault({ draftBy = 'folder' } = {}) {
-  const vault = initVault()
-  writeDoc(vault, 'company/공개', { id: ID_A, wikiRoot: 'wiki' })
-  const draftRel = draftBy === 'folder' ? 'dev/실험' : 'lab/실험'
-  if (draftBy === 'folder') writeDoc(vault, draftRel, { id: ID_B, wikiRoot: 'wiki' })
-  else writeDraftDoc(vault, draftRel, ID_B)
-  writeDoc(vault, 'concept/폐기', { id: ID_C, wikiRoot: 'wiki' })
-  commit(vault, 'chore: 초기 문서 3건')
-
-  writeDoc(vault, 'company/공개', { body: '## 정의\n\n공개 갱신.\n', id: ID_A, wikiRoot: 'wiki' })
-  feedCommit(vault, { date: T1, subject: '공개 소식' })
-
-  if (draftBy === 'folder') {
-    writeDoc(vault, draftRel, { body: '## 정의\n\n실험 갱신.\n', id: ID_B, wikiRoot: 'wiki' })
-  } else {
-    writeDraftDoc(vault, draftRel, ID_B, '## 정의\n\n실험 갱신.\n')
-  }
-  feedCommit(vault, { date: T2, subject: '실험 소식' })
-
-  writeDoc(vault, 'concept/폐기', { body: '## 정의\n\n폐기 갱신.\n', id: ID_C, wikiRoot: 'wiki' })
-  feedCommit(vault, { date: T3, subject: '폐기 소식' })
-
-  git(vault, ['rm', '-q', 'wiki/concept/폐기.md'])
-  commit(vault, 'chore: 폐기 문서 삭제')
-  return vault
-}
-
-/**
- * frontmatter `draft: true` 문서 — `tmp-git-vault.writeDoc` 은 draft 플래그를 모른다(원자 확장 대신
- * 여기서만 쓴다: 헬퍼 수정은 §4 원장 밖이다). 형식은 writeDoc 과 동형이고 `draft: true` 한 줄만 더 있다.
- */
-function writeDraftDoc(root, rel, id, body = '## 정의\n\n본문 문단이다.\n') {
-  const full = path.join(root, 'wiki', `${rel}.md`)
-  mkdirSync(path.dirname(full), { recursive: true })
-  const front = ['---', `title: ${rel.split('/').at(-1)}`, 'type: concept', 'status: active', 'draft: true', `id: "${id}"`, '---', '', body] // prettier-ignore
-  writeFileSync(full, front.join('\n'))
-}
 
 describe('walkFeeds — 삭제 사유는 연결만 끊고 피드는 남긴다 (RR1 🔴RED(flip) · 원장 ①)', () => {
   it('RR1: dev 는 3건이고 폐기 소식의 docs 가 []다(제목만 살고 연결이 전멸하는 것도 아니다)', () => {

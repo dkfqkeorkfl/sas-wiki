@@ -19,7 +19,7 @@
 //   AN1  RED(flip) — 현행 산출 docRef 는 `{anchor, anchorText, id}` 3키다(원장 ⑬·⑭).
 //   AN2  RED(flip) — 현행 `feeds.schema.json` docRef 는 그 2필드를 **required** 로 요구한다(원장 ⑫).
 //   AN3  RED(flip) — 현행 불변식 6(`checkAnchors`)이 anchorText 정합을 검사해 throw 한다(원장 ⑤).
-//   AN4  RED(flip) — 현행 `deriveAnchor` 가 `headingsById` 를 읽는다(인자를 빼면 TypeError).
+//   AN4  RED(flip) — GREEN 전에는 `deriveAnchor` 가 `headingsById` 를 읽어 인자 제거 시 TypeError.
 //   IM1  RED        — 현행 `IMPORTANCE` 에 `fix` 가 없어 normal 로 강등 + warning.
 //   IM2  RED        — 현행 스키마 enum 3값.
 //   IM3  RED        — 코드·스키마 양쪽 3값. **`feed.mjs` 가 `IMPORTANCE` 를 export 해야 한다**(신설 seam).
@@ -140,7 +140,7 @@ describe('불변식 6 은 계약에서 사라지되 게이트는 남는다 (AN3 
 
 describe('죽은 배선 금지 — headingsById 는 인자에서 사라진다 (AN4 🔴RED(flip))', () => {
   it('AN4: headingsById 를 넘기지 않아도 buildFeedItems 결과가 동일하다', () => {
-    // 현행은 `deriveAnchor` 가 `headingsById.get(...)` 을 부르므로 인자를 빼면 TypeError 다.
+    // GREEN 전에는 `deriveAnchor` 가 `headingsById.get(...)` 을 불렀다. P2 이후 이 인자는 죽은 배선이다.
     // 앵커가 사라지면 이 인자는 **쓸모를 잃는다** — 남긴 채 무시하는 구현도 통과시키지만, 그 잔재는
     // §10.3-1 REFACTOR 가 걷는다(Task 4 GOTCHA: 인자 제거는 전 호출부 grep 선행).
     const SAMSUNG_FILE = 'wiki/company/삼성전자.md'

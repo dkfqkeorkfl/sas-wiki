@@ -22,8 +22,8 @@
 // 계약(GREEN 이 구현할 seam):
 //   buildContent({ vault, out, schema?, allowDeadlinks? })
 //     → { summary, feeds, body, stats } · <out>/wiki_{summary,feeds,body}.json 3파일 write
-//   stats = { offConventionCommits: [{sha,subject}], prunedDocRefs: number,
-//             prunedFeeds: number, unresolvedPaths: [{sha,path}], warnings: [{sha,reason}] }
+//   stats = { prunedDocRefs: number, prunedFeeds: number, unpublishedFeedCommits: [{sha,subject}],
+//             unresolvedPaths: [{sha,path}], warnings: [{sha,reason}] }
 //   checkInvariants(summary, feeds, body) → 위반 시 throw, 정상이면 void
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'

@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { ID_A, ID_B, ID_C, T1, T2, T3 } from './helpers/survival-vault.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const { walkFeeds } = await import(new URL('../lib/git-walk.mjs', import.meta.url).href)
@@ -32,14 +33,6 @@ const { walkFeeds } = await import(new URL('../lib/git-walk.mjs', import.meta.ur
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** sas-wiki 리포 루트 — `scripts/__tests__` 의 두 단계 위. cwd 무관(import.meta.url 파생). */
 const REPO_ROOT = path.resolve(HERE, '..', '..')
-
-const ID_A = '0192a000-0000-7000-8000-0000000000aa'
-const ID_B = '0192b000-0000-7000-8000-0000000000bb'
-const ID_C = '0192c000-0000-7000-8000-0000000000cc'
-
-const T1 = '2026-01-01T00:00:00Z'
-const T2 = '2026-01-02T00:00:00Z'
-const T3 = '2026-01-03T00:00:00Z'
 
 const titlesOf = (items) => items.map((item) => item.title)
 

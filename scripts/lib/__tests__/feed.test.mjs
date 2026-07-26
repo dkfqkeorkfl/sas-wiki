@@ -10,16 +10,15 @@
 // 계약(GREEN 이 구현할 seam):
 //   parseCommitForFeed(commit, stats)   // 이름 유지 — build.entry-guard.test.mjs:26 이 의존한다
 //     `feed: <헤드라인>` → { articleBody, authorDate, hash, headline, importance, keywords }
-//     `cwiki: ` / `uwiki: ` → null (**warning 아님** — 정상 컨벤션)
+//     그 외 subject → null (**warning 아님** — 정상 저작 커밋)
 //   extractTrailers(body)               // 그대로 재사용 — vault.contract.test.mjs:24 가 import 한다(삭제 금지)
-//   buildFeedItems(commits, { runGit, pathIndex, deletedPaths, docsById, headingsById })
+//   buildFeedItems(commits, { runGit, pathIndex, deletedPaths, docsById })
 //     → { items, stats }
-//       stats = { offConventionCommits: [{sha,subject}], prunedDocRefs, prunedFeeds,
+//       stats = { prunedDocRefs, prunedFeeds, unpublishedFeedCommits,
 //                 unresolvedPaths: [{sha,path}], warnings: [{sha,reason}] }
 //       pathIndex   : Map<`${sha}:${당시경로}`, docId>   ← git.buildPathIndex (rename 역인덱스)
 //       deletedPaths: Set<'wiki/….md'>            ← git.collectDeletedDocPaths
 //       docsById    : Map<docId, { bodyLineOffset, status }>
-//       headingsById: Map<docId, [{ anchor, level, line, text }]>  ← HEAD 기준
 //
 // **`continue` 로 버리지 마라**(현행 `feed.mjs:108-109`). 해석 실패는 집계 → stdout 이다(tdd §8).
 import { describe, expect, it } from 'vitest'
@@ -36,21 +35,6 @@ const HYNIX_FILE = 'wiki/company/SK하이닉스.md'
 const HBM_OLD_FILE = 'wiki/concept/HBM.md' // 이동 전 경로(커밋 당시)
 const DISABLED_FILE = 'wiki/concept/온디바이스-AI.md'
 const SCRAP_FILE = 'wiki/concept/폐기예정-메모.md' // 이후 삭제됨
-
-// 문서 본문 헤딩(HEAD) — frontmatter 8줄 뒤에 본문이 시작한다(bodyLineOffset=8).
-const SAMSUNG_HEADINGS = [
-  { anchor: '개요', level: 2, line: 1, text: '개요' },
-  { anchor: '사업-부문', level: 2, line: 5, text: '사업 부문' },
-  { anchor: '메모리-로드맵', level: 2, line: 9, text: '메모리 로드맵' },
-]
-const HYNIX_HEADINGS = [
-  { anchor: '개요', level: 2, line: 1, text: '개요' },
-  { anchor: '메모리-사업', level: 2, line: 5, text: '메모리 사업' },
-]
-const HBM_HEADINGS = [
-  { anchor: '정의', level: 2, line: 1, text: '정의' },
-  { anchor: '공급망', level: 2, line: 9, text: '공급망' },
-]
 
 function aCommit(patch) {
   return {
@@ -75,12 +59,6 @@ function aContext({ deletedPaths = new Set(), diffs = {}, pathIndex } = {}) {
       [HBM_ID, { bodyLineOffset: 8, status: 'active' }],
       [HYNIX_ID, { bodyLineOffset: 8, status: 'active' }],
       [SAMSUNG_ID, { bodyLineOffset: 8, status: 'active' }],
-    ]),
-    headingsById: new Map([
-      [HBM_ID, HBM_HEADINGS],
-      [HYNIX_ID, HYNIX_HEADINGS],
-      [SAMSUNG_ID, SAMSUNG_HEADINGS],
-      // disable 문서는 body·headings 가 없다 → anchor 는 null 로 강등돼야 한다(불변식 6).
     ]),
     pathIndex: pathIndex ?? defaultPathIndex(),
     // getCommitDiffHunks(runGit, hash) → 마지막 인자가 hash 다.
@@ -121,9 +99,9 @@ function defaultPathIndex() {
 
 function emptyStats() {
   return {
-    offConventionCommits: [],
     prunedDocRefs: 0,
     prunedFeeds: 0,
+    unpublishedFeedCommits: [],
     unresolvedPaths: [],
     warnings: [],
   }

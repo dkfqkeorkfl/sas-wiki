@@ -48,7 +48,8 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', schema, vault }
   const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
   validateParsedDocs(gate.visibleDocs, gate.runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
-  stats.deadlinks = checkDeadlinks(gate.visibleDocs, gate.derived, deadlinks, vaultDir)
+  const deadlinkReport = collectDeadlinks(gate.visibleDocs, gate.derived)
+  stats.deadlinks = gateDeadlinks(deadlinkReport, deadlinks, vaultDir)
   checkFeedResolution(stats)
   checkStrayDocs(vaultDir)
   checkDeletedIdReuse(gate)
@@ -146,7 +147,7 @@ export function parseArgs(argv) {
   return options
 }
 
-function checkDeadlinks(parsedDocs, derived, severity, vaultDir) {
+function collectDeadlinks(parsedDocs, derived) {
   const { pathToDoc, resolveTargetPath } = derived
   const deadlinks = []
   const ambiguous = []
@@ -172,6 +173,10 @@ function checkDeadlinks(parsedDocs, derived, severity, vaultDir) {
       }
     }
   }
+  return { ambiguous, deadlinks }
+}
+
+function gateDeadlinks({ ambiguous, deadlinks }, severity, vaultDir) {
   if (ambiguous.length > 0) {
     throw new Error(formatDeadlinks(ambiguous, vaultDir, '동명 문서 충돌'))
   }
