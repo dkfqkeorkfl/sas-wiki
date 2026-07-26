@@ -143,14 +143,19 @@ describe('parseCommitForFeed — 신 컨벤션 subject 3종 분기', () => {
     expect(stats.warnings).toEqual([])
   })
 
-  it('`cwiki:` / `uwiki:` 는 미발행(null)이며 warning 을 남기지 않는다', () => {
-    // 정상 컨벤션을 warning 으로 오염시키면 진짜 신호(규약 위반)가 묻힌다.
+  // P2(contract-simplify) 계약 반전 — tdd §4 원장 ③(입력 교체) / §3.6 PS1.
+  // **왜 바뀌었나(D6 · D-D)**: 컨벤션이 `feed:` 하나가 된다. 접두사는 더 이상 분기가 아니므로
+  //   "`cwiki`/`uwiki` 는 정상이라 조용하다" 가 아니라 **`feed:` 가 아닌 전부가 조용하다**가 계약이다
+  //   (저작/발행 분리 = 정상 워크플로). 입력을 임의 비-`feed:` 접두사로 교체한다(LG1 · P6 grep 스윕).
+  //   `offConventionCommits` 집계는 D-D 가 제거하므로 여기서 단언하지 않는다 — 그 키의 **부재**는
+  //   `scripts/__tests__/build.feed-survival.test.mjs` 의 PS1 이 문다.
+  it('`feed:` 가 아닌 subject 는 미발행(null)이며 warning 을 남기지 않는다', () => {
+    // 정상 저작을 warning 으로 오염시키면 진짜 신호(발행 실패)가 묻힌다.
     const stats = emptyStats()
 
-    expect(parseCommitForFeed(aCommit({ subject: 'cwiki: HBM 문서 생성' }), stats)).toBeNull()
-    expect(parseCommitForFeed(aCommit({ subject: 'uwiki: HBM 문서 이동' }), stats)).toBeNull()
+    expect(parseCommitForFeed(aCommit({ subject: 'chore: HBM 문서 생성' }), stats)).toBeNull()
+    expect(parseCommitForFeed(aCommit({ subject: 'docs: HBM 문서 이동' }), stats)).toBeNull()
     expect(stats.warnings).toEqual([])
-    expect(stats.offConventionCommits).toEqual([])
   })
 
   it('trailer 를 keywords(콤마 split)·importance(enum)로 파싱한다 — `Tags:` 는 사라졌다', () => {
@@ -323,7 +328,12 @@ describe('buildFeedItems — prune (삭제 문서) vs disable (유지)', () => {
     expect(stats.prunedFeeds).toBe(0)
   })
 
-  it('docs[] 가 비면 피드 자체를 뺀다(도달할 곳이 없다)', () => {
+  // P2(contract-simplify) 계약 반전 — tdd §4 원장 ② / §3.1 SV3 · §3.3 BE1.
+  // **왜 바뀌었나(D9 · D-A)**: "docs 가 비면 뺀다" 는 사유를 보지 않는 규칙이었다. P2 는 참조가 사라진
+  //   **사유**로 판정한다 — 삭제(`deleted`)면 생존, prod 의 draft 배제(`draft-excluded`)면 미노출,
+  //   `importance: fix` + 0건이면 드랍. 여기 픽스처의 사유는 `deleted` 이므로 **생존**이다.
+  //   `prunedFeeds` 를 0 으로 **정확히** 못박는다 — prune 으로 세면서 통과하는 절반 구현을 막는다.
+  it('docs[] 가 비어도 사유가 삭제면 피드는 산다(연결만 끊긴다)', () => {
     const commits = [aCommit({ hash: 'c1', subject: 'feed: 폐기예정 메모 관련 소식' })]
     const ctx = aContext({
       deletedPaths: new Set([SCRAP_FILE]),
@@ -332,9 +342,11 @@ describe('buildFeedItems — prune (삭제 문서) vs disable (유지)', () => {
 
     const { items, stats } = buildFeedItems(commits, ctx)
 
-    expect(items).toEqual([])
+    expect(items).toHaveLength(1)
+    expect(items[0].title).toBe('폐기예정 메모 관련 소식')
+    expect(items[0].docs).toEqual([])
     expect(stats.prunedDocRefs).toBe(1)
-    expect(stats.prunedFeeds).toBe(1)
+    expect(stats.prunedFeeds).toBe(0)
   })
 
   it('역인덱스가 푸는 경로는 deletedPaths 에 있어도 prune 하지 않는다(경로 재사용)', () => {

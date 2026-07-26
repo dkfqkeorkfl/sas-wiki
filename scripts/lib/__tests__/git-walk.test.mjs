@@ -163,7 +163,11 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
     }
   })
 
-  it('GW6: 참조 문서가 HEAD 에서 삭제되면 그 피드는 prune(부재)·에러 없음', () => {
+  // P2(contract-simplify) 계약 반전 — tdd §4 원장 ① / §3.2 RR1·RR3.
+  // **왜 바뀌었나(D9)**: 뉴스는 문서의 부속물이 아니라 그 자체로 기록이다. 문서가 지워지면 **그 연결만**
+  //   끊고 피드는 남긴다. 사유가 `deleted` 인 참조는 **env 와 무관하게** 이 판정을 받는다(D-A 표 2행).
+  //   `draft-excluded`(prod 미노출)와 헷갈리면 안 된다 — 그쪽은 D2 fail-closed 로 계속 막는다.
+  it('GW6: 참조 문서가 HEAD 에서 삭제돼도 피드는 살고 연결만 끊긴다(docs: []) · 에러 없음', () => {
     const vault = initVault()
     try {
       seedDoc(vault, 'company/생존', ID_A)
@@ -174,9 +178,12 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
       commit(vault, 'cwiki: 삭제될 문서 제거')
 
       const items = walkFeeds(vault, { count: 10 })
+      const orphan = items.find((item) => item.title === '삭제될 소식')
 
       expect(titlesOf(items)).toContain('생존 소식')
-      expect(titlesOf(items)).not.toContain('삭제될 소식') // 참조 전멸 → prune
+      expect(orphan).toBeDefined() // 피드 생존 — 카드가 통째로 사라지지 않는다
+      expect(orphan.docs).toEqual([]) // 연결만 끊긴다("살아 있는 연결" 이 남으면 죽은 링크가 된다)
+      expect(items.find((item) => item.title === '생존 소식').docs.map((doc) => doc.id)).toEqual([ID_A]) // prettier-ignore
     } finally {
       cleanup(vault)
     }

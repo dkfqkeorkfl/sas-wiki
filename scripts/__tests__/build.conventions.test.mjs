@@ -121,15 +121,21 @@ describe('buildContent — vault 커밋 컨벤션 강제', () => {
     expect(() => buildContent({ out, vault })).toThrow(/wiki\/tech\/삼성전자\.md/)
   })
 
-  it('cwiki 커밋이 문서 2개를 추가하면 build fail 한다', () => {
+  // P2(contract-simplify) 계약 반전 — tdd §4 원장 ⑥·⑩ / §3.5 FO1·FO3.
+  // **왜 바뀌었나(D6)**: 컨벤션이 `feed:` 하나로 줄면서 "1커밋 1파일" 규칙 자체가 사라진다. 옛 접두어
+  //   커밋은 **일반 커밋으로 자연 소화**된다(히스토리 재작성이 금지되므로 이것이 유일한 길이다).
+  // **⑩ 특기**: 이 스펙은 P1 tdd §9.1 이 「무수정 pin」(TP2)으로 지정했던 자리다. P2 가 **의도적으로
+  //   해제**한다 — 계약 반전이지 pin 위반이 아니다. 다만 보호가 순감소하면 안 되므로,
+  //   "한 커밋이 문서 2개를 만들 때의 진짜 위험 = **id 중복**" 은 그대로 빌드를 죽인다:
+  //   `scripts/lib/__tests__/invariants.feed-only.test.mjs` 의 FO3 이 그 자리를 승계한다.
+  //   TP1(A+D 동시 발생)은 **여전히 무수정 pin** 이다(바로 위 스펙 · 아래 :135 스펙).
+  it('옛 접두어 커밋이 문서 2개를 추가해도 build fail 하지 않는다(1파일 규칙 소멸)', () => {
     const { out, vault } = makeVault()
     writeDoc(vault, 'company/a', 'A')
     writeDoc(vault, 'company/b', 'B')
     commit(vault, 'cwiki: 문서 두 개 생성')
 
-    expect(() => buildContent({ out, vault })).toThrow(
-      /컨벤션 위반[\s\S]*cwiki:[\s\S]*wiki\/company\/a\.md[\s\S]*wiki\/company\/b\.md/,
-    )
+    expect(() => buildContent({ out, vault })).not.toThrow()
   })
 
   it('cwiki 커밋이 문서 1개를 추가하면서 다른 문서를 삭제하면 build fail 한다', () => {

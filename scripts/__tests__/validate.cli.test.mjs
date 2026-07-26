@@ -192,11 +192,17 @@ afterAll(() => {
 })
 
 describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
-  it('--vault·--schema·--allow-deadlinks 를 절대경로로 파싱한다', () => {
-    const options = parseArgs(['--vault', 'sas-wiki', '--allow-deadlinks'])
+  // P2(contract-simplify) 계약 반전 — tdd §4 원장 ⑨ / §3.8 DK5·DK6·DK7.
+  // **왜 바뀌었나(R3 + PRD D11)**: 불리언 `--allow-deadlinks` 는 심각도를 표현하지 못한다. 조사한 모든
+  //   도구가 심각도를 **설정 가능**하게 뒀고(수렴점), 기본을 `warn` 으로 내리는 것은 리서치가 아니라
+  //   **PRD D11**(빌드실패 → 런타임 UX)의 제품 결정이다. 옛 플래그는 실호출자가 0이므로 **호환 별칭으로
+  //   남기지 않는다**(호환 분기는 이 PRD 가 금지한다). 별칭 부재·enum fail-loud·기본값은
+  //   `scripts/__tests__/validate.deadlinks.test.mjs` 의 DK5·DK6·DK7 이 문다.
+  it('--vault·--schema·--deadlinks 를 절대경로/enum 으로 파싱한다', () => {
+    const options = parseArgs(['--vault', 'sas-wiki', '--deadlinks', 'error'])
 
     expect(options.vault).toBe(path.resolve('sas-wiki'))
-    expect(options.allowDeadlinks).toBe(true)
+    expect(options.deadlinks).toBe('error')
     // 서브모듈에는 schema/ 가 없다(실측) → 기본값은 **스크립트 옆** schema/ 다.
     expect(options.schema).toBe(REAL_SCHEMA_DIR)
   })
@@ -217,8 +223,9 @@ describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
 
   it('--vault 누락 시 스크립트 자기 리포 루트로 기본값 파생한다(cwd 조용한 폴백 아님 — D3)', () => {
     // D3: --vault 필수→선택. 기본값은 cwd 가 아니라 import.meta.url 로 파생한 스크립트 자기 리포 루트.
+    // 원장 ⑨: 옛 `--allow-deadlinks` 는 P2 에서 제거된다 → 인자 없이 기본값 파생을 확인한다.
     const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
-    expect(parseArgs(['--allow-deadlinks']).vault).toBe(REPO_ROOT)
+    expect(parseArgs([]).vault).toBe(REPO_ROOT)
   })
 })
 
