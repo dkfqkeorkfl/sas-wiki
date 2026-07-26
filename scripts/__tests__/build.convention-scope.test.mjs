@@ -31,6 +31,28 @@ const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
 const ID_C = '0192c000-0000-7000-8000-0000000000cc'
 
+// FP4 전용 본문 — 서로 겹치는 줄이 없어야 `--find-renames` 가 A+D 를 rename 으로 합치지 않는다.
+const BODY_B = [
+  '## 정의',
+  '',
+  '고대역폭 메모리 적층 공정의 열 관리 지표를 다룬다.',
+  '접합부 온도, 열저항, 냉각 유로 설계가 핵심 변수다.',
+  '',
+  '## 배경',
+  '',
+  '적층 단수가 늘수록 중간층 방열 경로가 길어진다.',
+].join('\n')
+const BODY_C = [
+  '## 개요',
+  '',
+  '파운드리 선단 노드의 수율 곡선과 학습률을 정리한 문서.',
+  '초기 램프업 구간에서 결함 밀도가 지수적으로 감소한다.',
+  '',
+  '## 지표',
+  '',
+  '웨이퍼당 다이 수, 결함 밀도, 파라메트릭 수율을 함께 본다.',
+].join('\n')
+
 /** author-date 를 명시 주입하는 일반 커밋. */
 function commitAt(vault, message, date) {
   git(vault, ['add', '-A'])
@@ -231,12 +253,15 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
     try {
       writeDoc(vault, 'company/a', { id: ID_A, wikiRoot: 'wiki' })
       commitAt(vault, 'cwiki: a 생성', '2026-01-01T00:00:00Z')
-      writeDoc(vault, 'company/c', { id: ID_C, wikiRoot: 'wiki' })
+      writeDoc(vault, 'company/c', { body: BODY_C, id: ID_C, title: 'c', wikiRoot: 'wiki' })
       commitAt(vault, 'cwiki: c 생성', '2026-01-02T00:00:00Z')
       const mainBranch = git(vault, ['rev-parse', '--abbrev-ref', 'HEAD'])
 
       git(vault, ['checkout', '-q', '-b', 'topic'])
-      writeDoc(vault, 'company/b', { id: ID_B, wikiRoot: 'wiki' })
+      // b·c 의 본문을 **rename 유사도 임계 밖으로** 벌린다. 기본 본문을 그대로 쓰면 둘이 57% 유사해
+      //   `--find-renames` 가 A+D 를 단일 `R057` 로 합쳐버리고, 그러면 added=0·deleted=0 이라 이 스펙이
+      //   겨냥한 A+D 오탐 조건에 **애초에 도달하지 못한다**(공허 통과). CF10 이 이 함정을 잡아냈다.
+      writeDoc(vault, 'company/b', { body: BODY_B, id: ID_B, title: 'b', wikiRoot: 'wiki' })
       commitAt(vault, 'cwiki: b 생성', '2026-01-03T00:00:00Z')
       git(vault, ['rm', '-q', 'wiki/company/c.md'])
       commitAt(vault, 'uwiki: c 삭제', '2026-01-04T00:00:00Z')
@@ -249,6 +274,13 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
         GIT_AUTHOR_DATE: '2026-01-06T00:00:00Z',
         GIT_COMMITTER_DATE: '2026-01-06T00:00:00Z',
       })
+
+      // **위험 실재 앵커(규범 B)** — "throw 하지 않는다"는 부재 단언이라, 픽스처가 실제로 A+D 를
+      //   만들지 못하면 조용히 공허해진다. git 수준에서 first-parent diff 가 A 와 D 를 **둘 다**
+      //   내는지 먼저 확인한다. rename 이 둘을 합치면 여기서 시끄럽게 죽는다.
+      const mergeDiff = git(vault, ['show', '--find-renames', '--diff-merges=first-parent', '--name-status', '--format=', 'HEAD']) // prettier-ignore
+      expect(mergeDiff).toMatch(/^A\s+wiki\/company\/b\.md$/mu)
+      expect(mergeDiff).toMatch(/^D\s+wiki\/company\/c\.md$/mu)
 
       const result = buildContent({ env: 'dev', vault })
 
