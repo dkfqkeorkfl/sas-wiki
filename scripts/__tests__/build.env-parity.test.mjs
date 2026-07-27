@@ -13,7 +13,9 @@
 //     문서가 0건이고 피드 경로도 옛 prefix 와 매칭되지 않는다 → items 0 · warnings 2.
 //   · EP3 는 옛 루트 시딩 + `git mv` 라 피드 경로는 옛 prefix 와 매칭되지만 HEAD 문서가 0건 →
 //     역인덱스가 비어 unresolved → `checkFeedResolution` 이 throw.
-//   케이스 고유의 물림은 GREEN 이후 §5 **CF6**(`everWikiPaths` 에서 `excludedFeedRefs` 만 제거)이 증명한다.
+//   케이스 고유의 물림은 GREEN 이후 §5 **CF6** 가 증명했다(당시 좌표: `buildFeedItems` 의 `everWikiPaths`
+//   에서 `excludedFeedRefs` 만 제거). P3 Task 9 로 그 구현이 사라졌고, 지금 같은 자리를 지키는 것은
+//   `collectFeedItems` 의 `allHeadIds`(draft 포함 rename 계보)다 — 거기서 draft 문서를 빼면 여기가 red 다.
 //
 // 규범 A(자기참조 금지): 경로는 리터럴이고 `wikiRoot` 를 매 호출 명시한다.
 import { describe, expect, it } from 'vitest'
@@ -91,7 +93,7 @@ describe('env parity — dev·prod 가 실제로 갈린다 (EP1·EP2)', () => {
 
 describe('env parity × 루트 이관의 교차 (EP3)', () => {
   it('EP3: 이관한 vault 의 prod 수치가 미이관 vault(EP2)와 동일하다', () => {
-    // draft 배제 좌표(`excludedFeedRefs`)가 rename 계보를 포함하지 않으면 **여기서만** red 가 난다:
+    // draft 문서의 좌표가 rename 계보(`buildPathIndex(headDocs)`)를 포함하지 않으면 **여기서만** red 다:
     // 이관 전 경로로 기록된 draft 피드가 "설명되지 않은 참조"가 되어 빌드를 죽인다.
     const vault = seedEnvVault('vault/wiki')
     try {

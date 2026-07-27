@@ -20,7 +20,7 @@
 //   한 곳만 묶고 나머지를 전부 리터럴로 두는 것이 드리프트 동반(=자기참조 공허성)을 막는 구조다.
 import { describe, expect, it } from 'vitest'
 
-import { WIKI_PREFIX } from '../parse-vault.mjs'
+import { WIKI_PREFIX } from '../head-state.mjs'
 // 술어 export 부재를 **케이스별** red 로 만들기 위한 namespace 수입(위 주석 참조).
 import * as gitModule from '../git.mjs'
 

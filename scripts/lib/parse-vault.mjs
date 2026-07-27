@@ -3,29 +3,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { derive } from './derive.mjs'
-import { judgeDocs } from './doc-gate.mjs'
-import { isDraft } from './draft.mjs'
-import { buildFeedItems, parseCommitForFeed } from './feed.mjs'
-import {
-  anyMarkdown,
-  buildPathIndex,
-  checkGitAvailable,
-  checkHistoryIntegrity,
-  collectDeletedDocPaths,
-  collectEverDeletedDocPaths,
-  collectGitLog,
-  makeGitRunner,
-} from './git.mjs'
+import { parseCommitForFeed } from './feed.mjs'
+import { collectFeedItems } from './git-walk.mjs'
+import { checkGitAvailable, checkHistoryIntegrity, collectGitLog, makeGitRunner } from './git.mjs'
+import { WIKI_PREFIX, loadHeadDocState } from './head-state.mjs'
 import { reportIgnoreHygiene } from './ignore.mjs'
-import {
-  collectMarkdownFilesRecursive,
-  derivePathAndBreadcrumb,
-  parseMarkdownFile,
-} from './parse.mjs'
 import { loadSchema, validateItem } from './validate.mjs'
-
-/** vault 문서의 리포 상대 경로 접두사 — lib 하위에 하드코딩하지 않고 이 한 곳에서 주입한다(이관 가능성). */
-export const WIKI_PREFIX = 'wiki/'
 
 /** 생산 JSON Schema 디렉토리 — 이 모듈은 scripts/lib/ 이므로 상위 scripts/schema. */
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
@@ -46,8 +29,6 @@ export function parseVault(
   schemaDir,
   { deepDocGate = false, runGit: injectedRunGit } = {},
 ) {
-  const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
-
   // 한 파싱 안에서 같은 git 질의는 같은 답을 낸다(리포는 그동안 변하지 않는다). 문서별
   // `git log --follow` 는 검증·파생·역인덱스 3곳이 각각 부르므로 캐시 없이는 프로세스 스폰이 3배다.
   const runGit = memoize(injectedRunGit ?? makeGitRunner(vaultDir))
@@ -56,83 +37,10 @@ export function parseVault(
   const commits = collectGitLog(runGit)
   const sourceCommit = commits.length > 0 ? commits[0].hash : null
 
-  // 위키 루트에 있으나 파싱에 실패한 `.md`(frontmatter 부재 등). **문서 후보이되 문서는 아니다** —
-  //   피드가 이런 파일을 가리키면 조용히 넘기지 않고 unresolved 로 시끄럽게 끊어야 어느 커밋이
-  //   깨진 문서를 참조하는지 알 수 있다(validate.cli 계약: sha + 경로). 이 판정은 "지금 위키 루트
-  //   안에 있는가"를 묻는 **HEAD 상태 계층**이므로 여기서 prefix 를 쓰는 것이 정당하다 — 커밋별 diff
-  //   루프(히스토리 계층)에 prefix 리터럴을 되돌려 넣으면 이 phase 가 없앤 결합이 부활한다.
-  const strayDocPaths = new Set()
-
-  const parsedDocs = collectMarkdownFilesRecursive(wikiDir)
-    .map((filePath) => {
-      const parsed = parseMarkdownFile(filePath)
-      if (!parsed) {
-        strayDocPaths.add(`${WIKI_PREFIX}${path.relative(wikiDir, filePath).split(path.sep).join('/')}`) // prettier-ignore
-        return null
-      }
-      const derived = derivePathAndBreadcrumb(filePath, wikiDir)
-      return { ...parsed, breadcrumb: derived.breadcrumb, relPath: derived.path }
-    })
-    .filter(Boolean)
-
-  const visibleCandidates = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
-  const draftExcludedDocs = env === 'dev' ? [] : parsedDocs.filter((doc) => isDraft(doc))
-  const judged = judgeDocs(visibleCandidates, {
-    runGit: deepDocGate ? runGit : undefined,
-    strayPaths: strayDocPaths,
-    wikiPrefix: WIKI_PREFIX,
-    wikiSchema: loadSchema(path.join(schemaDir, 'wiki-doc.schema.json')),
-  })
-  const visibleDocs = judged.visible
-  const excludedPaths = new Set(judged.excluded.map((entry) => entry.path))
-  const invalidDocs = visibleCandidates.filter((doc) =>
-    excludedPaths.has(`${WIKI_PREFIX}${doc.relPath}.md`),
-  )
-  const invalidIds = new Set(invalidDocs.map((doc) => doc.frontmatter.id))
-
-  const derived = derive(visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
-
-  const allHeadDocs = parsedDocs
-    .filter((doc) => !invalidDocs.includes(doc))
-    .map((doc) => ({
-      filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
-      id: doc.frontmatter.id,
-    }))
-  const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
-    filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
-    id: doc.id,
-  }))
-  const pathIndex = buildPathIndex(allHeadDocs, runGit)
-  const invalidFeedRefs = new Set(
-    buildPathIndex(
-      invalidDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
-      runGit,
-    ).keys(),
-  )
-  for (const strayPath of strayDocPaths) invalidFeedRefs.add(`HEAD:${strayPath}`)
-  const deletedPaths = collectDeletedDocPaths(runGit, {
-    headPaths: new Set(allHeadDocs.map((doc) => doc.filePath)),
-    isDocPath: anyMarkdown,
-  })
-  const everDeletedPaths = collectEverDeletedDocPaths(runGit, { isDocPath: anyMarkdown })
-  const excludedFeedRefs = new Set(
-    buildPathIndex(
-      draftExcludedDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
-      runGit,
-    ).keys(),
-  )
-  const { items, stats } = buildFeedItems(commits, {
-    deletedPaths,
-    everDeletedPaths,
-    excludedIds: new Set(draftExcludedDocs.map((doc) => doc.frontmatter.id)),
-    excludedFeedRefs,
-    invalidFeedRefs,
-    invalidIds,
-    pathIndex,
-    runGit,
-    strayDocPaths,
-  })
-  stats.excluded = judged.excluded
+  const headState = loadHeadDocState(vaultDir, env, { deepDocGate, runGit, schemaDir })
+  const derived = derive(headState.visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
+  const { items, stats } = collectFeedItems(vaultDir, { env, headState, runGit })
+  stats.excluded = headState.excluded
   stats.invalidExcludedRefs ??= []
 
   const ignore = loadIgnoreFeeds(vaultDir, schemaDir)
@@ -147,7 +55,7 @@ export function parseVault(
 
   return {
     // 게이트 원자재 — validate.mjs 가 여기서 검증 throw-게이트를 얹는다(파싱 자신은 검증하지 않는다).
-    gate: { commits, derived, runGit, visibleDocs },
+    gate: { commits, derived, runGit, visibleDocs: headState.visibleDocs },
     stats,
     wire: {
       bodies: derived.bodies,

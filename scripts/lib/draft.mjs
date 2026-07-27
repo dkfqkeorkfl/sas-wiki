@@ -6,8 +6,9 @@
  * 플래그 판정은 **fail-closed** 다: 미지정·`false` 만 공개이고, 불리언이 아닌 값은 전부 draft 로 본다
  * (초판은 `=== true` 라 `draft: yes` 가 공개로 샜다 — 감사 H4).
  *
- * build.mjs(visibleDocs·excludedFeedRefs)와 git-walk.mjs(walkFeeds prod feed 제외)가 **동일 정의**를
- * 공유한다 — draft 판정을 두 곳에서 재구현하면 한쪽만 바뀌어 prod 누출/과잉숨김이 조용히 갈린다.
+ * 호출자는 `head-state.mjs` **한 곳**이다(가시 후보 필터 · `headDocs[].draft` 플래그). 서빙 경로와
+ * 검증 경로가 같은 HEAD 상태 계층을 공유하므로 draft 판정도 하나다 — 예전에는 검증(구 build.mjs)과
+ * 서빙(git-walk)이 각자 판정해 한쪽만 바뀌면 prod 누출/과잉숨김이 조용히 갈렸다(P3 Task 9 가 통합).
  *
  * @param {{ frontmatter: { draft?: unknown }, relPath: string }} parsed
  */

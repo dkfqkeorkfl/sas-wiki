@@ -5,10 +5,10 @@
 // 이 파일이 무는 것: `vault/wiki/` → `wiki/` 이관이 **과거 피드를 파괴하지 않는다**는 것.
 //   PRD Success Metric("이관 전후 피드 생존 · docs 연결 동일")의 헤르메틱 표현이다.
 //
-// **이중 빌더 양쪽을 다 문다**(tdd §3.0): 이 리포에는 피드 빌더가 둘이다 —
-//   `git-walk.mjs walkFeeds`(서빙 경로)와 `feed.mjs buildFeedItems`(검증 경로, `buildContent` 경유).
-//   이 이관의 위험은 "아무도 못 잡는다"가 아니라 "**서빙 경로와 검증 경로가 서로 다른 답을 낸다**"이므로
-//   한쪽만 테스트하면 그 격차를 그대로 남긴다. MV1=walkFeeds · MV2=buildContent 가 짝이다.
+// **두 진입점을 다 문다**(tdd §3.0): `git-walk.mjs walkFeeds`(서빙)와 `buildContent`(검증) 두 경로가
+//   같은 이관 vault 에 같은 답을 내는지 본다. 작성 당시엔 두 경로가 **서로 다른 빌더**였고(P3 Task 9 가
+//   `buildFeedItems` 를 제거해 `collectFeedItems` 하나로 통합), 지금은 같은 빌더를 다른 배선으로 부른다.
+//   짝(MV1=walkFeeds · MV2=buildContent)을 유지하는 이유는 배선 자체가 어긋날 수 있기 때문이다.
 //
 // RED 사유 — 라벨별로 다르다(tdd §2.2):
 //   · MV1·MV2·MV3·DL1 = **RED(root)**: `loadHeadDocs`·`parseVault` 가 `<vault>/vault/wiki` 를 스캔하므로

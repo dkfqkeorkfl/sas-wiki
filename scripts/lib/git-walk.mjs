@@ -1,9 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-import { judgeDocs } from './doc-gate.mjs'
-import { isDraft } from './draft.mjs'
 import { byRecencyThenId, parseCommitForFeed } from './feed.mjs'
 import {
   anyMarkdown,
@@ -13,50 +10,44 @@ import {
   makeGitRunner,
 } from './git.mjs'
 import { judgeFeedSurvival } from './feed-survival.mjs'
+import { loadHeadDocState } from './head-state.mjs'
 import { applyIgnoreFeeds } from './ignore.mjs'
-import {
-  collectMarkdownFilesRecursive,
-  derivePathAndBreadcrumb,
-  parseFrontmatterYaml,
-  parseMarkdownFile,
-} from './parse.mjs'
-import { loadSchema } from './validate.mjs'
-import { WIKI_PREFIX } from './parse-vault.mjs'
+import { parseFrontmatterYaml } from './parse.mjs'
 
 const DEFAULT_FEED_LIMIT = 50
-const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
 
-export function walkFeeds(vault, { after, count, env, from, to } = {}) {
+export function walkFeeds(vault, { after, count, env, from, headState, runGit, to } = {}) {
   const vaultDir = path.resolve(vault)
   const limit = typeof count === 'number' && count > 0 ? count : DEFAULT_FEED_LIMIT
+  const ignoreEntries = loadIgnoreFeeds(vaultDir)
+  const collected = collectFeedItems(vaultDir, { env, headState, runGit })
+  const paged = pageFeeds(collected.items, ignoreEntries, { after, from, limit, to })
+
+  return withMeta(paged.items, paged.nextCursor, collected.stats)
+}
+
+export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, runGit } = {}) {
+  const resolvedRunGit = runGit ?? makeGitRunner(vaultDir)
   // 판정은 **`dev` 만 전량, 그 외는 전부 prod**(fail-closed) — parse-vault.mjs 의 visibleDocs 와
   // 같은 극성이어야 한다. `pathIndex` 는 draft 포함 전 문서로 만들어야 삭제와 draft 배제 사유를 가른다.
   const excludeDrafts = env !== 'dev'
-  const headState = loadHeadDocState(vaultDir, env)
+  const headState = injectedHeadState ?? loadHeadDocState(vaultDir, env, { runGit: resolvedRunGit })
   const headDocs = headState.headDocs
   const visibleHeadDocs = excludeDrafts ? headDocs.filter((doc) => !doc.draft) : headDocs
   const headIds = new Set(visibleHeadDocs.map((doc) => doc.id))
   const allHeadIds = new Set(headDocs.map((doc) => doc.id))
   const invalidIds = new Set(headState.invalidDocs.map((doc) => doc.frontmatter.id))
-  const ignoreEntries = loadIgnoreFeeds(vaultDir)
-  const runGit = makeGitRunner(vaultDir)
   // pre-D1 폴백용 경로 역인덱스(경로→현재 doc-id · rename 추적) — build.mjs:buildContent 와 **동일 입력·
   // 동일 함수**(buildPathIndex)로 1회만 구성한다. **지연**: 고속경로(post-D1 blob id)가 전부 풀면 절대
   // 만들지 않아 비용 0. 실 vault(pre-D1: 피드가 id 부여 이전 커밋)에서만 트리거된다.
   let pathIndex = null
-  const resolvePathIndex = () => (pathIndex ??= buildPathIndex(headDocs, runGit))
+  const resolvePathIndex = () => (pathIndex ??= buildPathIndex(headDocs, resolvedRunGit))
   let invalidPathIndex = null
   const resolveInvalidPathIndex = () =>
-    (invalidPathIndex ??= buildPathIndex(
-      headState.invalidDocs.map((doc) => ({
-        filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
-        id: doc.frontmatter.id,
-      })),
-      runGit,
-    ))
+    (invalidPathIndex ??= buildPathIndex(headState.invalidRefs, resolvedRunGit))
   let everDeletedPaths = null
   const resolveEverDeletedPaths = () =>
-    (everDeletedPaths ??= collectEverDeletedDocPaths(runGit, { isDocPath: anyMarkdown }))
+    (everDeletedPaths ??= collectEverDeletedDocPaths(resolvedRunGit, { isDocPath: anyMarkdown }))
   const collected = new Map()
   const stats = {
     invalidExcludedRefs: [],
@@ -73,27 +64,32 @@ export function walkFeeds(vault, { after, count, env, from, to } = {}) {
   //   바운디드 종료는 "임의 old 커밋이 임의 high author-date 를 가질 수 있다"라 author-date monotonic
   //   가정 없이는 불가능하므로, 피드 커밋을 **전량 수집**한 뒤 JS 재정렬(byRecencyThenId)을 권위로
   //   페이지를 확정한다(억제·from/to·after·상한은 pageItems 가 최종 1회 적용 — 전량이라 언더필 없음).
-  const commits = revListFeedCandidates(runGit)
-  for (const item of resolveFeedItems(vaultDir, runGit, commits, {
+  const commits = revListFeedCandidates(resolvedRunGit)
+  for (const item of resolveFeedItems(vaultDir, resolvedRunGit, commits, {
     allHeadIds,
     headIds,
     invalidIds,
     resolveInvalidPathIndex,
     resolveEverDeletedPaths,
     resolvePathIndex,
-    runGit,
+    runGit: resolvedRunGit,
     stats,
     strayDocPaths: headState.strayDocPaths,
   })) {
     collected.set(item.id, item)
   }
 
-  const visible = pageItems([...collected.values()], ignoreEntries, { after, from, limit, to })
-  return withMeta(
-    visible.slice(0, limit),
-    visible.length > limit ? visible[limit - 1] : null,
-    stats,
-  )
+  return { items: [...collected.values()], stats }
+}
+
+export function pageFeeds(items, ignoreEntries, { after, from, limit, to } = {}) {
+  const resolvedLimit = typeof limit === 'number' && limit > 0 ? limit : DEFAULT_FEED_LIMIT
+  const paged = pageItems(items, ignoreEntries, { after, from, limit: resolvedLimit, to })
+  return {
+    items: paged.slice(0, resolvedLimit),
+    nextCursor:
+      paged.length > resolvedLimit ? { feedId: paged[resolvedLimit - 1].id, ts: paged[resolvedLimit - 1].ts } : null, // prettier-ignore
+  }
 }
 
 function pageItems(items, ignoreEntries, { after, from, limit, to }) {
@@ -123,11 +119,7 @@ function parseBoundary(value, name) {
   return ms
 }
 
-function withMeta(items, cursorItem, stats) {
-  const cursor =
-    cursorItem === null || cursorItem === undefined
-      ? null
-      : { feedId: cursorItem.id, ts: cursorItem.ts }
+function withMeta(items, cursor, stats) {
   Object.defineProperty(items, 'nextCursor', {
     configurable: true,
     enumerable: false,
@@ -316,53 +308,6 @@ function refsForStatus(sha, status) {
     refs.push(`${sha}:${status.oldPath}`, `${sha}^:${status.oldPath}`)
   }
   return refs
-}
-
-/**
- * HEAD 문서 목록 — `{ filePath(리포 상대 posix), id(현재 doc-id), draft }`. `buildPathIndex` 는 draft 포함
- * 전 문서로 만들고, 노출 가능 id 집합만 env 별로 좁힌다.
- */
-function loadHeadDocState(vaultDir, env) {
-  const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
-  const strayDocPaths = new Set()
-  const parsedDocs = collectMarkdownFilesRecursive(wikiDir)
-    .map((filePath) => {
-      const parsed = parseMarkdownFile(filePath)
-      if (!parsed) {
-        strayDocPaths.add(
-          `${WIKI_PREFIX}${path.relative(wikiDir, filePath).split(path.sep).join('/')}`,
-        )
-        return null
-      }
-      const derived = derivePathAndBreadcrumb(filePath, wikiDir)
-      return { ...parsed, breadcrumb: derived.breadcrumb, relPath: derived.path }
-    })
-    .filter((doc) => doc !== null)
-  const candidates = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
-  const judged = judgeDocs(candidates, {
-    strayPaths: strayDocPaths,
-    wikiPrefix: WIKI_PREFIX,
-    wikiSchema: loadSchema(path.join(SCHEMA_DIR, 'wiki-doc.schema.json')),
-  })
-  const excludedPaths = new Set(judged.excluded.map((entry) => entry.path))
-  const invalidDocs = candidates.filter((doc) =>
-    excludedPaths.has(`${WIKI_PREFIX}${doc.relPath}.md`),
-  )
-  const invalidSet = new Set(invalidDocs)
-  const headDocs = parsedDocs
-    .filter((doc) => !invalidSet.has(doc))
-    .map((doc) => {
-      const id = doc.frontmatter.id ?? doc.relPath
-      return typeof id === 'string'
-        ? {
-            draft: isDraft({ frontmatter: doc.frontmatter, relPath: doc.relPath }),
-            filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
-            id,
-          }
-        : null
-    })
-    .filter((doc) => doc !== null)
-  return { headDocs, invalidDocs, strayDocPaths }
 }
 
 function loadIgnoreFeeds(vaultDir) {

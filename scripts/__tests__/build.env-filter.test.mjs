@@ -23,7 +23,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { deriveGeneratedAt } from '../lib/parse-vault.mjs'
 import { buildContent, parseArgs } from '../validate.mjs'
-import { buildFeedItems } from '../lib/feed.mjs'
 import { cleanup, commit, git, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
 
 // ── 합성 시딩 원자 (helpers/tmp-git-vault.writeDoc 는 draft·비유효 id 를 못 넣으므로 로컬 확장) ──
@@ -333,10 +332,10 @@ describe('disable + draft 동시 — prod 완전 배제(제외 우선순위)', (
 
 // ────────────────────────────────────────────────────────────────────────────
 // F. draft 문서를 가리킨 feed: 커밋 — prod 는 prune(unresolved 아님) / dev 는 노출
-//    build.mjs 의 excludedFeedRefs 통합: draft 배제 문서의 과거 feed 는 삭제와 동급으로 prune 돼
+//    통합 feed 해석 경로: draft 배제 문서의 과거 feed 는 삭제와 동급으로 prune 돼
 //    checkFeedResolution 을 통과해야 한다(빈/부분 prod 빌드가 중단되지 않음).
 // ────────────────────────────────────────────────────────────────────────────
-describe('draft feed 필터 — prod prune / dev 노출 (excludedFeedRefs 통합)', () => {
+describe('draft feed 필터 — prod prune / dev 노출 (통합 feed 해석)', () => {
   const ctx = { devResult: null, ids: {}, prodResult: null, vault: '' }
 
   beforeAll(() => {
@@ -369,9 +368,9 @@ describe('draft feed 필터 — prod prune / dev 노출 (excludedFeedRefs 통합
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// G. 이동한 draft 의 **과거경로** feed — excludedFeedRefs 의 rename 좌표로 prune
+// G. 이동한 draft 의 **과거경로** feed — rename-aware 역인덱스 좌표로 prune
 //    순수 git mv(R)라 concept/movable 은 삭제(D)가 아니다 → everDeletedPaths 에 없다.
-//    excludedFeedRefs 가 buildPathIndex(--follow) 로 rename 좌표를 담기에 이 과거경로 feed 를
+//    buildPathIndex(--follow) 가 rename 좌표를 담기에 이 과거경로 feed 를
 //    정상 배제로 분류할 수 있다(좌표 누락이면 unresolved → build 중단 = RED 회귀 감지).
 // ────────────────────────────────────────────────────────────────────────────
 describe('이동한 draft feed — 과거경로도 prune (rename 좌표)', () => {
@@ -445,53 +444,5 @@ describe('draft+public 혼합 feed — per-ref prune', () => {
     const ids = feedDocIds(ctx.devResult)
     expect(ids).toContain(ctx.ids.pub)
     expect(ids).toContain(ctx.ids.secret)
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────────────
-// I. 게이트 보존 대조 (buildFeedItems 단위) — excludedFeedRefs 가 checkFeedResolution 을 낮추지 않는다.
-//    실 git 으로는 '정상 unresolved'를 만들 수 없다(rename=R→해석 / 삭제=D→prune / 이동+재작성=D+A→
-//    커밋 컨벤션 가드가 차단). 그래서 buildFeedItems 를 직접 호출해 미해결 참조를 주입한다:
-//      · excludedFeedRefs 밖 → unresolvedPaths 로 집계(게이트 발화 = build 중단 신호) — 안 낮춤 실증.
-//      · excludedFeedRefs 안 → prune(삭제 동급, unresolved 아님).
-// ────────────────────────────────────────────────────────────────────────────
-describe('excludedFeedRefs — 게이트 보존 대조 (buildFeedItems 단위)', () => {
-  const GHOST_FILE = 'wiki/concept/ghost.md'
-  const commits = [
-    { authorDate: '2026-01-06T00:00:00Z', body: '본문.\n\nKeywords: k\nImportance: normal', hash: 'c1', subject: 'feed: 헤드라인' }, // prettier-ignore
-  ]
-
-  /** getCommitDiffHunks 가 파싱하는 `git show --unified=0` 포맷(한 파일·한 hunk). */
-  function feedDiff(filePath) {
-    return [`diff --git a/${filePath} b/${filePath}`, `--- a/${filePath}`, `+++ b/${filePath}`, '@@ -1,0 +1,2 @@'].join('\n') // prettier-ignore
-  }
-
-  /** pathIndex 가 현재 커밋 좌표를 못 풀어 docId 가 없는 최소 컨텍스트. */
-  function ctxWith(excludedFeedRefs) {
-    return {
-      deletedPaths: new Set(),
-      docsById: new Map(),
-      everDeletedPaths: new Set(),
-      excludedFeedRefs,
-      pathIndex: new Map([[`c0:${GHOST_FILE}`, 'ghost-doc-id']]),
-      runGit: (args) => (args.at(-1) === 'c1' ? feedDiff(GHOST_FILE) : ''),
-      wikiPrefix: 'wiki/',
-    }
-  }
-
-  it('excludedFeedRefs 밖의 미해결 참조는 unresolvedPaths 로 집계된다 (게이트 안 낮춤)', () => {
-    const { stats } = buildFeedItems(commits, ctxWith(new Set()))
-
-    expect(stats.unresolvedPaths).toEqual([{ path: GHOST_FILE, sha: 'c1' }])
-    expect(stats.prunedDocRefs).toBe(0)
-  })
-
-  it('같은 미해결 참조라도 excludedFeedRefs 에 있으면 prune 된다 (삭제 동급, unresolved 아님)', () => {
-    const { items, stats } = buildFeedItems(commits, ctxWith(new Set([`c1:${GHOST_FILE}`])))
-
-    expect(stats.unresolvedPaths).toEqual([])
-    expect(stats.prunedDocRefs).toBe(1)
-    expect(stats.prunedFeeds).toBe(1)
-    expect(items).toEqual([])
   })
 })

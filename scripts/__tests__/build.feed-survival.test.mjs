@@ -3,8 +3,10 @@
 // P2 · Task 3·6·7 — 검증 경로(`buildContent`)의 생존 판정 · off-convention 제거 · 발행 실패의 침묵 제거
 //   tdd §3.3(BE1~BE3) · §3.6(PS1~PS5) · §3.7(IM4)
 //
-// 이 리포에는 피드 빌더가 **둘**이다(`walkFeeds`=서빙 · `buildFeedItems`=검증). D-E 가 생존 규칙만
-//   순수 함수로 뽑는 이상 "두 호출부가 같은 답을 내는가"는 별도로 물어야 한다 → BE2 가 튜플 동치로 문다.
+// **P3 Task 9 로 빌더가 하나가 됐다**(`buildFeedItems` 제거 · 검증 경로도 `collectFeedItems` 를 쓴다).
+//   작성 당시엔 서빙(`walkFeeds`)·검증(`buildFeedItems`) 두 벌이라 BE2 가 그 격차를 물었고, 지금은
+//   같은 코드를 **두 진입점**(`walkFeeds` / `buildContent`)에서 부르는 것이 같은 답을 내는지를 문다.
+//   단언은 그대로 두는 것이 맞다 — 배선이 어긋나면(env·headState 주입 실수) 여전히 갈릴 수 있다.
 //
 // RED 사유(라벨별):
 //   BE1·BE2  RED(flip) — 현행 `feed.mjs:140-141` 이 `docs 0` 이면 드랍 + `prunedFeeds++`.

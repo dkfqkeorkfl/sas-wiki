@@ -12,7 +12,7 @@
 //   제목(안정 좌표)으로 찾아 유도한다. vault 는 임시 git repo 를 스스로 시딩하므로 결정적이다.
 //
 // 계약(GREEN 이 배선): buildContent 가 vaultDir 루트의 ignore-feeds.json 을 로드 → 스키마 검증
-//   (위반=throw, fail-loud) → buildFeedItems 직후·buildFeeds 이전 단일 지점에서 applyIgnoreFeeds
+//   (위반=throw, fail-loud) → 피드 수집 직후·buildFeeds 이전 단일 지점에서 applyIgnoreFeeds
 //   1회 적용 → reportIgnoreHygiene(stale) 를 경고로 출력. 파일 부재=[](fail-open).
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
