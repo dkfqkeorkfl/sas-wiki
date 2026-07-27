@@ -56,6 +56,7 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0
   })
   const summary = buildSummary({
     docs: wire.docs,
+    env,
     generatedAt: wire.generatedAt,
     inputsFingerprint,
     sourceCommit: wire.sourceCommit,

@@ -103,14 +103,22 @@ export function aFeeds() {
   )
 }
 
-/** wiki_summary.json 봉투. */
+/**
+ * wiki_summary.json 봉투 — P4 부터 **발행 아티팩트**라 `producer`·`env` 헤더를 함께 싣는다.
+ *
+ * 스키마가 `additionalProperties: false` + required 9키라, 이 둘이 빠지면 "정상 페이로드" 를
+ * 자처하는 이 픽스처가 자기 스키마를 통과하지 못한다. 값은 **리터럴**이다(규범 A — 프로덕션
+ * 상수에서 만들면 둘이 함께 틀려도 통과하는 자기참조가 된다).
+ */
 export function aSummary() {
   return builder(
     {
       docs: [],
+      env: 'dev',
       generatedAt: GENERATED_AT,
       inputsFingerprint: INPUTS_FINGERPRINT,
-      schemaVersion: 1,
+      producer: 'sas-wiki/summary',
+      schemaVersion: 2,
       sourceCommit: SOURCE_COMMIT,
       tags: {},
       tree: [],

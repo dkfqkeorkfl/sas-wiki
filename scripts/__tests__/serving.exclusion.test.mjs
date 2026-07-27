@@ -16,7 +16,7 @@
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { feeds } from '../feeds.mjs'
-import { summary } from '../summary.mjs'
+import { summary } from '../lib/summary-endpoint.mjs'
 import { wiki } from '../wiki.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import {

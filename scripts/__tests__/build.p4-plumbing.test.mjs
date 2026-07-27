@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
+import { loadSchema, validateItem } from '../lib/validate.mjs'
+
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
 
@@ -34,11 +36,6 @@ describe('P4 배관 — 발행 아티팩트 스키마', () => {
     expect(schema.required).toContain('producer')
     expect(schema.required).toContain('env')
 
-    // **존재만으로는 부족하다** — `properties` 에 domain 이 없으면 `producer: ''` 도 통과하고,
-    //   그러면 소비자의 producer 층(RD3·RD4)이 무엇을 대조할지 계약이 없다.
-    expect(schema.properties.producer).toEqual({ const: 'sas-wiki/summary', type: 'string' })
-    expect(schema.properties.env).toEqual({ enum: ['dev', 'prod'], type: 'string' })
-
     // 앵커 ②: 기존 7키를 밀어내지 않았다(strict 스키마라 누락은 산출물 전체를 죽인다).
     for (const key of [
       'schemaVersion',
@@ -51,5 +48,33 @@ describe('P4 배관 — 발행 아티팩트 스키마', () => {
     ]) {
       expect(schema.required).toContain(key)
     }
+  })
+
+  // **선언이 아니라 거동을 문다.** 초판 PL8 은 `properties.producer` 가
+  //   `{ const: 'sas-wiki/summary' }` 인지를 **모양으로** 단언했다. 그런데 이 리포의
+  //   `validateItem` 은 top-level property 의 `const` 를 **해석하지 않는다**(`enum` 만 본다) —
+  //   실측: `producer: 'evil'` 이 오류 0건으로 통과했다. 즉 스키마에 선언은 됐는데 **강제되지
+  //   않는 상태**를 테스트가 고정하고 있었다(장식을 핀으로 박은 꼴). 어떤 키워드를 쓰든
+  //   **검증기가 실제로 거부하는가**를 물으면 그 실패 양식이 원천적으로 불가능해진다.
+  it('PL8b: 검증기가 위조된 `producer` 와 알 수 없는 `env` 를 **실제로 거부한다**', () => {
+    const schema = loadSchema(path.join(SCHEMA_DIR, 'summary.schema.json'))
+    // 리터럴 봉투 — 프로덕션 상수에서 만들지 않는다(규범 A).
+    const valid = {
+      docs: [],
+      env: 'dev',
+      generatedAt: '2026-01-01T00:00:00Z',
+      inputsFingerprint: '0123456789abcdef',
+      producer: 'sas-wiki/summary',
+      schemaVersion: 2,
+      sourceCommit: 'a'.repeat(40),
+      tags: {},
+      tree: [],
+    }
+
+    // 앵커: 정상 봉투는 통과한다 — 아래 거부가 **다른 이유**로 난 것이 아님을 못박는다.
+    expect(validateItem(valid, schema, '$')).toEqual([])
+
+    expect(validateItem({ ...valid, producer: 'evil/forged' }, schema, '$')).not.toEqual([])
+    expect(validateItem({ ...valid, env: 'staging' }, schema, '$')).not.toEqual([])
   })
 })

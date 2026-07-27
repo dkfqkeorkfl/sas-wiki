@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest'
 
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const { summary } = await import(new URL('../summary.mjs', import.meta.url).href)
+const { summary } = await import(new URL('../lib/summary-endpoint.mjs', import.meta.url).href)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
 const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft

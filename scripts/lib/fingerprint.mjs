@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { WIKI_PREFIX } from './head-state.mjs'
+import { IGNORE_FEEDS_FILE } from './ignore.mjs'
 
 const DEFAULT_SCRIPTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -22,9 +23,22 @@ export function computeInputsFingerprint({
   }
   // 위키 루트는 `head-state.mjs` 가 소유한다 — 여기서 `'wiki'` 를 다시 적으면 루트가 또 이관될 때
   //   `listInputs` 가 **조용히 빈 배열**을 돌려주고(부재 = []) 문서 변경을 감지 못 하는 지문이 된다.
-  const wikiDir = path.join(path.resolve(vaultDir), ...WIKI_PREFIX.split('/').filter(Boolean))
+  const vaultRoot = path.resolve(vaultDir)
+  const wikiDir = path.join(vaultRoot, ...WIKI_PREFIX.split('/').filter(Boolean))
   for (const file of listInputs(wikiDir, (filePath) => filePath.endsWith('.md'))) {
-    updateFile(hash, 'wiki', path.resolve(vaultDir), file)
+    updateFile(hash, 'wiki', vaultRoot, file)
+  }
+
+  // 억제 목록은 **출력이 달라지는 입력**이다(feeds 에서 항목이 사라진다). 지문 밖에 두면 목록을
+  //   저장해도 아무것도 stale 이 되지 않아 "커밋 없이 저장만 하면 반영된다"(D12)가 성립하지 않는다.
+  //
+  // **바이트 그대로 먹고 파싱하지 않는다.** 스키마 검증은 `loadIgnoreFeeds` 소관이고, 지문이 파싱에
+  //   결합되면 억제 목록의 오타 하나가 "안 바뀌었나?" 라는 질문 자체를 죽인다(= 서빙 전면 5xx).
+  //   그래서 **부재 = 빈 입력**이다 — 부재와 `[]` 는 다른 지문이고, 그 대가(파일 최초 생성 시 재생성
+  //   1회)를 치르는 대신 바이트 해시의 단순함을 지킨다. 정규화로 둘을 같게 만들려면 파싱이 필요하다.
+  const ignoreFile = path.join(vaultRoot, IGNORE_FEEDS_FILE)
+  if (fs.statSync(ignoreFile, { throwIfNoEntry: false })?.isFile()) {
+    updateFile(hash, 'ignore', vaultRoot, ignoreFile)
   }
 
   return hash.digest('hex').slice(0, 16)

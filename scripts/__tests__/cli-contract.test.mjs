@@ -26,7 +26,9 @@ import { afterAll, describe, expect, it } from 'vitest'
 
 // 순수 함수는 직접 import 로 격리 단언한다(C5) — vault 기본값이 없음을(= undefined 흡수 안 함) 확인.
 import { feeds } from '../feeds.mjs'
-import { summary } from '../summary.mjs'
+// summary 는 P4 에서 `lib/summary-endpoint.mjs` 로 옮겼다 — `summary.mjs` 는 생성기 CLI 전용이 되고
+//   판정 경로가 렌더 툴체인을 정적 import 하지 않게 하려면 이 export 가 그 파일에 있으면 안 된다(D-A).
+import { summary } from '../lib/summary-endpoint.mjs'
 import { wiki } from '../wiki.mjs'
 
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
@@ -184,6 +186,17 @@ describe('C4b — 에러는 stderr, stdout 무오염 (🟢 회귀)', () => {
 //    무엇을 깨면 red: GREEN 이 순수 summary/feeds/wiki 에 `vault = vault ?? REPO_ROOT` 를 부여하면
 //    undefined 가 흡수돼 throw 안 함 → red. (기본값은 오직 main()/validate parseArgs 의 imperative shell.)
 describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격리 불변) (🟢 대조)', () => {
+  // **seam 가드 — 이 케이스는 실제로 한 번 조용히 공허해졌다.** P4 가 `summary` 를
+  //   `lib/summary-endpoint.mjs` 로 옮겼을 때 여기 import 경로가 낡은 채였고, Vite SSR 은 미존재
+  //   named export 를 link error 가 아니라 **`undefined`** 로 준다. 그래서 `summary(...)` 가
+  //   "undefined 를 호출해서" TypeError 를 냈고 `toThrow()` 는 **통과**했다 — collection error 조차
+  //   나지 않아 red 로 드러나지도 않았다. 아래 세 줄이 그 상태를 다시 만들 수 없게 한다.
+  it('세 순수 함수가 실제로 함수로 로드됐다 (import 드리프트 방지)', () => {
+    expect(typeof summary).toBe('function')
+    expect(typeof feeds).toBe('function')
+    expect(typeof wiki).toBe('function')
+  })
+
   it('summary(undefined, "dev") → throw', () => {
     expect(() => summary(undefined, 'dev')).toThrow()
   })

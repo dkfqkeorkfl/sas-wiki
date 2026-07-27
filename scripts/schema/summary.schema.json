@@ -2,11 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/summary.schema.json",
   "title": "wiki_summary",
-  "description": "부팅 1회 페이로드 — 사이드바 트리·태그·검색·필터. 본문은 담지 않는다(wiki_body.json). strict: 제거된 필드가 산출물에 있으면 fail 한다.",
+  "description": "부팅 1회 페이로드 — 사이드바 트리·태그·검색·필터. 본문은 담지 않는다(wiki_body.json). strict: 제거된 필드가 산출물에 있으면 fail 한다. producer·env 는 발행 헤더다 — 이 파일을 CLI 없이 직접 읽는 소비자가 '무엇이며 어느 env 의 것인가'를 파일 자체에서 확인한다.",
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "producer",
     "schemaVersion",
+    "env",
     "generatedAt",
     "inputsFingerprint",
     "sourceCommit",
@@ -15,6 +17,8 @@
     "tags"
   ],
   "properties": {
+    "producer": { "enum": ["sas-wiki/summary"], "type": "string" },
+    "env": { "enum": ["dev", "prod"], "type": "string" },
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "generatedAt": { "type": "string", "minLength": 1 },
     "inputsFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },

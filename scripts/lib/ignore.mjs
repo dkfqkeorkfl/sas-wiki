@@ -17,6 +17,16 @@ import { loadSchema, validateItem } from './validate.mjs'
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
 
 /**
+ * vault 루트의 억제 목록 파일명 — **이 리터럴의 유일한 거처**다.
+ *
+ * 억제는 `feeds` 출력을 바꾸는 입력이므로 `fingerprint.mjs` 도 이 파일을 읽어야 한다(D-C). 그런데
+ * 파일명을 그쪽에 **다시 적으면** 이름이 바뀔 때 한쪽만 따라가고, 지문은 **조용히** 억제를 못 보게
+ * 된다 — 저장해도 반영되지 않는 상태로 되돌아가는데 아무 테스트도 죽지 않는다. `WIKI_PREFIX` 를
+ * `head-state.mjs` 가 소유하는 것과 같은 이유다(`fingerprint.mjs` 의 그 자리 경고 주석 참조).
+ */
+export const IGNORE_FEEDS_FILE = 'ignore-feeds.json'
+
+/**
  * vault 리포 루트의 `ignore-feeds.json`(억제 tombstone 목록)을 로드·검증한다.
  *
  * **부재 = `[]`(fail-open)** — 목록 부재는 "억제 없음"이지 "전량 억제" 가 아니다. **존재하되 스키마
@@ -28,7 +38,7 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
  * 모듈 헤더가 금지하는 "두 번째 필터 경로" 가 바로 그것이라 로드까지 여기로 모은다.
  */
 export function loadIgnoreFeeds(vaultDir, schemaDir = SCHEMA_DIR) {
-  const ignorePath = path.join(vaultDir, 'ignore-feeds.json')
+  const ignorePath = path.join(vaultDir, IGNORE_FEEDS_FILE)
   if (!fs.existsSync(ignorePath)) return []
   const entries = JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
   const errors = validateItem(

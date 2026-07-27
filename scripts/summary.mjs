@@ -1,38 +1,28 @@
 #!/usr/bin/env node
-// summary 엔드포인트 + 생성기 CLI. 순수 export 는 유지하고, CLI 는 cache/summary.json 을 발행한다.
+// summary **생성기 CLI** — 발행 아티팩트가 신선한지 판정하고, 어긋날 때만 다시 만든다.
+//
+// ★ 이 파일의 **정적** import 그래프에 파싱·렌더 툴체인이 들어오면 안 된다.
+//   판정에 실제로 필요한 일은 지문 계산 + git HEAD 조회 + 파일 한 개 읽기뿐인데, 마크다운 렌더러를
+//   정적으로 물면 "안 바뀌었나?" 한 번을 묻는 데도 그 로드 비용(수 초)을 전부 낸다 — 렌더 결과를
+//   한 줄도 쓰지 않으면서. 그래서 파싱은 **재생성 분기에서만** 동적으로 연다. 순수 엔드포인트
+//   `summary(vault, env)` 는 같은 이유로 `lib/summary-endpoint.mjs` 로 나갔다(여기서 재export 하면
+//   정적 import 와 같은 비용이라 분리가 무효가 된다).
+//   이 규칙은 산문이 아니라 정적 import 그래프 테스트가 지킨다.
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { ARTIFACT_PRODUCER, SCHEMA_VERSION, artifactPath, readArtifact } from './lib/artifact.mjs'
 import { writeFileAtomic } from './lib/atomic.mjs'
 import { computeInputsFingerprint } from './lib/fingerprint.mjs'
 import { makeGitRunner } from './lib/git.mjs'
-import { buildWirePayload, parseVault } from './lib/parse-vault.mjs'
 import { buildSummary } from './lib/payloads.mjs'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 
-export function summary(vault, env = 'prod') {
-  const vaultDir = path.resolve(vault)
-  const payload = buildWirePayload(vaultDir, env)
-  const inputsFingerprint = computeInputsFingerprint({
-    env,
-    sourceCommit: payload.sourceCommit,
-    vaultDir,
-  })
-  return buildSummary({
-    docs: payload.docs,
-    generatedAt: payload.generatedAt,
-    inputsFingerprint,
-    sourceCommit: payload.sourceCommit,
-    tags: payload.tags,
-    tree: payload.tree,
-  })
-}
-
-export function runSummaryGenerator({
+export async function runSummaryGenerator({
   cachePath,
   env = 'prod',
   force = false,
@@ -43,13 +33,16 @@ export function runSummaryGenerator({
   writeSideEffects = true,
 }) {
   const vaultDir = path.resolve(vault)
-  const effectiveCachePath = cachePath ?? path.join(vaultDir, 'cache', 'summary.json')
+  // 반환 키는 `cachePath` 로 남는다(호출 계약) — 가리키는 파일은 캐시가 아니라 발행 아티팩트다.
+  const effectiveCachePath = cachePath ?? artifactPath(vaultDir, env)
   const effectiveReportDir = reportDir ?? path.join(vaultDir, 'logs')
+  const reportJsonPath = path.join(effectiveReportDir, 'summary.report.json')
+  const reportTxtPath = path.join(effectiveReportDir, 'summary.report.txt')
   const git = runGit ?? makeGitRunner(vaultDir)
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
   const inputsFingerprint = computeInputsFingerprint({ env, sourceCommit, vaultDir })
 
-  // 스킵은 **캐시와 리포트가 둘 다** 이 지문의 것일 때만 한다.
+  // 스킵은 **아티팩트와 리포트가 둘 다** 이 지문의 것일 때만 한다.
   //
   // 리포트가 없거나 지문이 어긋나면 제외 건수를 알 방법이 없는데, 예전에는 그것을 `?? 0` 으로 메워
   // `status: 'clean'` 을 돌려줬다 — 문서 2건이 제외된 vault 가 "깨끗함" 으로 보고되고 `--max-excluded 0`
@@ -58,31 +51,51 @@ export function runSummaryGenerator({
   //
   // 그래서 "모르면 다시 만든다". 관측을 잃은 대가는 재생성 비용이지 거짓 보고가 아니다.
   if (writeSideEffects && !force) {
-    const cached = readFreshCache(effectiveCachePath, inputsFingerprint)
-    const report = cached ? readMatchingReport(effectiveReportDir, inputsFingerprint) : null
-    if (cached && report) {
+    const artifact = readArtifact({
+      expect: {
+        env,
+        inputsFingerprint,
+        producer: ARTIFACT_PRODUCER,
+        schemaVersion: SCHEMA_VERSION,
+      },
+      path: effectiveCachePath,
+    })
+    // 리포트에는 발행 봉투가 없다 — 관측 채널이라 `producer`·`env` 를 싣지 않는다. 그래서
+    //   `readArtifact` 의 검증 대상이 아니고, 여기서 지문 한 축만 대조한다. **못 읽으면 "모른다"**
+    //   이고, 모르면 위 원칙대로 다시 만든다(부재·쓰레기·구세대를 구분할 이유가 없다).
+    let report = null
+    if (artifact.fresh) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(reportJsonPath, 'utf8'))
+        if (parsed.inputsFingerprint === inputsFingerprint) report = parsed
+      } catch {
+        report = null
+      }
+    }
+
+    if (artifact.fresh && report) {
       const excludedCount = report.summary?.excluded ?? 0
       return {
         cachePath: effectiveCachePath,
         excluded: report.excluded ?? [],
         excludedCount,
         inputsFingerprint,
-        payload: cached,
+        payload: artifact.payload,
         regenerated: false,
-        report: {
-          error: null,
-          jsonPath: path.join(effectiveReportDir, 'summary.report.json'),
-          txtPath: path.join(effectiveReportDir, 'summary.report.txt'),
-        },
+        report: { error: null, jsonPath: reportJsonPath, txtPath: reportTxtPath },
         sourceCommit,
         status: excludedCount > 0 ? 'partial' : 'clean',
       }
     }
   }
 
+  // ★ 여기서 비로소 파싱·렌더 툴체인을 연다(위 헤더 주석 참조). 판정만 하고 끝나는 실행은 이 줄에
+  //   도달하지 않으므로 그 비용을 내지 않는다.
+  const { parseVault } = await import('./lib/parse-vault.mjs')
   const parsed = parseVault(vaultDir, env, SCHEMA_DIR, { deepDocGate: true, runGit: git })
   const payload = buildSummary({
     docs: parsed.wire.docs,
+    env,
     generatedAt: parsed.wire.generatedAt,
     inputsFingerprint,
     sourceCommit: parsed.wire.sourceCommit,
@@ -115,11 +128,9 @@ export function runSummaryGenerator({
   })
   try {
     fs.mkdirSync(effectiveReportDir, { recursive: true })
-    const jsonPath = path.join(effectiveReportDir, 'summary.report.json')
-    const txtPath = path.join(effectiveReportDir, 'summary.report.txt')
-    writeFileAtomic(jsonPath, `${JSON.stringify(report, null, 2)}\n`)
-    writeFileAtomic(txtPath, formatReportText(report))
-    result.report = { error: null, jsonPath, txtPath }
+    writeFileAtomic(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`)
+    writeFileAtomic(reportTxtPath, formatReportText(report))
+    result.report = { error: null, jsonPath: reportJsonPath, txtPath: reportTxtPath }
   } catch (error) {
     result.report = {
       error: error instanceof Error ? error.message : String(error),
@@ -141,25 +152,25 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   try {
-    const result = runSummaryGenerator(options)
+    const result = await runSummaryGenerator(options)
     if (options.status) {
-      process.stdout.write(`${JSON.stringify(statusPayload(result))}\n`)
+      process.stdout.write(`${JSON.stringify(statusPayload(result, options.env))}\n`)
     } else {
       process.stdout.write(`${JSON.stringify(result.payload)}\n`)
     }
-    // `--stdout` 은 **아무것도 쓰지 않는다**(side-effect-free 질의). 그런데도 `cache=<경로>` 를 찍으면
+    // `--stdout` 은 **아무것도 쓰지 않는다**(side-effect-free 질의). 그런데도 산출물 경로를 찍으면
     //   "저 파일이 갱신됐다" 는 거짓을 말하게 된다 — 실제로는 그 경로가 옛 세대 그대로다.
     if (!options.writeSideEffects) {
       console.error(
-        `[wiki] summary computed status=${result.status} excluded=${result.excludedCount} (--stdout: 캐시·리포트 미기록)`,
+        `[wiki] summary computed status=${result.status} excluded=${result.excludedCount} (--stdout: 아티팩트·리포트 미기록)`,
       )
     } else if (result.regenerated) {
       console.error(
-        `[wiki] summary regenerated status=${result.status} excluded=${result.excludedCount} cache=${result.cachePath}`,
+        `[wiki] summary regenerated status=${result.status} excluded=${result.excludedCount} artifact=${result.cachePath}`,
       )
     } else {
       console.error(
-        `[wiki] summary cache hit excluded=${result.excludedCount} cache=${result.cachePath}`,
+        `[wiki] summary artifact hit excluded=${result.excludedCount} artifact=${result.cachePath}`,
       )
     }
     if (result.report.error) console.error(`[wiki] report error: ${result.report.error}`)
@@ -223,24 +234,6 @@ function parseCliArgs(argv) {
   return options
 }
 
-function readFreshCache(cachePath, inputsFingerprint) {
-  try {
-    const payload = JSON.parse(fs.readFileSync(cachePath, 'utf8'))
-    return payload.inputsFingerprint === inputsFingerprint ? payload : null
-  } catch {
-    return null
-  }
-}
-
-function readMatchingReport(reportDir, inputsFingerprint) {
-  try {
-    const report = JSON.parse(fs.readFileSync(path.join(reportDir, 'summary.report.json'), 'utf8'))
-    return report.inputsFingerprint === inputsFingerprint ? report : null
-  } catch {
-    return null
-  }
-}
-
 function buildReport({ env, excluded, inputsFingerprint, regenerated, sourceCommit, total }) {
   return {
     schemaVersion: 1,
@@ -269,9 +262,17 @@ function formatReportText(report) {
   return `${lines.join('\n')}\n`
 }
 
-function statusPayload(result) {
+/**
+ * `--status` 출력 — **소비자 계약**이다.
+ *
+ * `artifactPath` 와 `env` 를 실어 보내는 이유: 소비자가 그 둘을 **직접 만들지 않게** 하기 위해서다.
+ * 경로를 소비자가 조립하면 파일명 리터럴이 두 리포에 중복되고, env 를 소비자가 재기입하면 독자의
+ * 기대값이 생성기의 실제 발행과 조용히 어긋난다.
+ */
+function statusPayload(result, env) {
   return {
-    cachePath: result.cachePath,
+    artifactPath: result.cachePath,
+    env,
     excludedCount: result.excludedCount,
     inputsFingerprint: result.inputsFingerprint,
     regenerated: result.regenerated,
