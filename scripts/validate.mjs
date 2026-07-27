@@ -5,6 +5,7 @@
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { envEnumError } from './lib/cli-env.mjs'
 import { checkAnchorExists } from './lib/derive.mjs'
 import { computeInputsFingerprint } from './lib/fingerprint.mjs'
 import { applyIgnoreFeeds } from './lib/ignore.mjs'
@@ -108,10 +109,12 @@ export function parseArgs(argv) {
     }
     if (arg === '--env') {
       const value = argv[i + 1]
+      // 이 CLI 만 값 **부재**를 따로 거른다(`--env` 뒤가 비면 다음 인자를 먹지 않게) — 그래서 아래
+      //   열거 문구만 공용이고 이 줄은 여기 남는다. 미지정(플래그 자체가 없음)은 또 다른 규칙이라
+      //   아래쪽 fail-closed 경고가 맡는다.
       if (!value) throw new Error('--env 에는 dev 또는 prod 값이 필요합니다')
-      if (value !== 'dev' && value !== 'prod') {
-        throw new Error(`알 수 없는 --env 값: "${value}" — dev|prod 만 허용합니다`)
-      }
+      const envError = envEnumError(value)
+      if (envError !== null) throw new Error(envError)
       options.env = value
       i += 1
       continue

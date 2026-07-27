@@ -6,15 +6,24 @@
 //   **없다**. 파일 자체는 존재하므로 collection error 는 나지 않지만, 케이스별 명시 실패로 바꿔
 //   "어느 축이 미구현인가" 가 실패 메시지에 드러나게 한다(tdd §2.4).
 //
-// 이 파일이 확정하는 seam (tdd §3.0):
-//   runSummaryGenerator({ cachePath, env, force, maxExcluded, reportDir, runGit, vault,
-//                         writeSideEffects = true })
-//     → { cachePath, excluded, excludedCount, inputsFingerprint, payload, regenerated,
+// 이 파일이 확정하는 seam (tdd §3.0 · **P4 갱신분 반영**):
+//   await runSummaryGenerator({ artifactPath, env, force, maxExcluded, reportDir, runGit, vault,
+//                               writeSideEffects = true })
+//     → { artifactPath, excluded, excludedCount, inputsFingerprint, payload, regenerated,
 //         report: { error, jsonPath, txtPath }, sourceCommit, status }
 //        status: 'clean' | 'partial'
 //        runGit 기본값 = makeGitRunner(vault) — **테스트가 주입해 호출을 계수한다**(FR7)
-//   순수 export `summary(vault, env)` 는 **유지**한다(cli-contract C5 · summary.test.mjs E-S1~3 ·
-//   webfront `dev-api.contract.test.ts` 가 직접 import 해서 문다).
+//   순수 export `summary(vault, env)` 는 **시그니처·동기성 그대로 `lib/summary-endpoint.mjs` 로
+//   이동**했다(OQ-P4-1 = A · §4 원장 ⑮) — cli-contract C5 · summary.test.mjs E-S1~3 · webfront
+//   `dev-api.contract.test.ts` 는 **import 경로만** 바뀌고 단언은 무변경이다.
+//
+// P4 가 이 파일에 남긴 계약 변경 3건(**약화가 아니라 반전** — §4 원장에 1:1 지목이 있다):
+//   · **D-A** — 생성기가 `async` 다(파싱 툴체인을 재생성 분기에서만 동적으로 연다) → 호출부에
+//     `await`, `toThrow` 는 `rejects.toThrow`(⑫). 단언 **내용**은 한 글자도 안 바뀌었다.
+//   · **D-D** — 봉투가 7키 → **9키**(`producer`·`env` 스탬프 · ⑤) · `schemaVersion` 1 → **2**.
+//     옵션·반환 키가 `cachePath` → `artifactPath`(plan 「후속」 F-28) — 그 파일은 생산자의 사적
+//     캐시가 아니라 소비자가 직접 읽는 **발행 아티팩트**이고 `--status` 는 이미 그 이름이었다.
+//   · **D-G ②** — 아티팩트 경로가 `cache/summary.json` → `cache/summary.<env>.json`(㉖).
 //
 // 관측 층 분리(tdd §7.4): 여기서는 **반환 객체와 파일**만 본다. exit code·stdout·stderr 는
 //   `summary.cli-exit.test.mjs`(XC·PC)가 별도로 문다 — 두 층을 한 케이스에 섞으면 실패 원인이
@@ -131,6 +140,10 @@ describe('runSummaryGenerator — 캐시 발행 (GN1~GN3 · 🔴RED 미구현)',
   })
 
   it('GN3: 클린 vault → status "clean" · excludedCount 0 · regenerated true', async () => {
+    // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②). `summary.import-graph.test.mjs`(IG1·IG6)는
+    //   "판정 경로가 렌더 툴체인을 정적으로 물지 않는다" 만 문으므로, **아예 재생성을 못 하는**
+    //   구현도 거기서는 통과한다. 그 구멍을 이 케이스(재생성이 실제로 일어난다)와 FR1(2회차는
+    //   안 일어난다)이 막는다 — "IG 와 무관" 이라며 지우면 IG1 이 장식이 된다.
     const vault = freshClean()
 
     const result = await generate({ env: 'dev', vault })
@@ -156,15 +169,19 @@ describe('runSummaryGenerator — 부분 성공과 경로 (GN4·GN5 · 🔴RED �
     expect(readJson(artifactFile(vault)).docs.map((doc) => doc.id)).toContain(ID_A)
   })
 
-  it('GN5: `cachePath` 를 주면 그 경로에 쓰고 `<vault>/cache/` 는 만들지 않는다', async () => {
+  it('GN5: `artifactPath` 를 주면 그 경로에 쓰고 `<vault>/cache/` 는 만들지 않는다', async () => {
+    // 옵션·반환 키가 P3 의 `cachePath` 에서 `artifactPath` 로 바뀌었다(plan 「후속」 F-28). 계약이
+    //   바뀐 이유는 **D-D** 다 — 이 phase 가 그 파일을 생산자의 사적 캐시가 아니라 소비자가 직접 읽는
+    //   **발행 아티팩트**로 재규정했고, `--status` 출력은 이미 `artifactPath` 였다. 한 파일이 두 이름을
+    //   갖는 상태를 없앤 것이지 **단언을 완화한 것이 아니다**(대상·강도·개수 무변경).
     const vault = freshClean()
     const out = path.join(mkdtempSync(path.join(tmpdir(), 'wiki-gen-out-')), 'other.json')
     tmps.push(path.dirname(out))
 
-    const result = await generate({ cachePath: out, env: 'dev', vault })
+    const result = await generate({ artifactPath: out, env: 'dev', vault })
 
     expect(existsSync(out)).toBe(true) // 앵커: 지정 경로에는 **실제로** 썼다
-    expect(result.cachePath).toBe(out)
+    expect(result.artifactPath).toBe(out)
     // 부재 단언의 대조군은 GN1 이다 — 기본 실행에서는 같은 픽스처에 `cache/` 가 생긴다.
     expect(existsSync(path.join(vault, 'cache'))).toBe(false)
   })
@@ -314,6 +331,9 @@ describe('리포트 실패는 산출물 실패가 아니다 (RP4 · 🔴RED 미�
 
 describe('신선도 스킵 (FR1~FR6 · 🔴RED 미구현)', () => {
   it('FR1: 1회차 regenerated true → 2회차 false', async () => {
+    // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②) — GN3 과 한 쌍이다. GN3 이 "재생성이 일어난다" 를,
+    //   여기가 "두 번째는 안 일어난다" 를 문다. 둘이 없으면 `summary.import-graph.test.mjs` 의
+    //   구조 단언만으로는 판정·재생성이 통째로 죽은 구현을 구분하지 못한다.
     const vault = freshClean()
 
     const first = await generate({ env: 'dev', vault })

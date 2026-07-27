@@ -155,6 +155,8 @@ describe('readArtifact — 부재·읽기 실패 (RD1·RD8·RD8b · 🔴RED 미�
     //   공허 가드 형태다. `readFileSync(<디렉토리>)` 는 uid 와 무관하게 EISDIR 이라 root 도 뚫지 못한다.
     //   실제로도 도달 가능한 상태다: `cache/summary.dev.json` 자리에 디렉토리가 만들어지면(도구 오조작·
     //   부분 복원) 독자는 그것을 stale 로 접고 재생성해야지 dev 를 죽이면 안 된다.
+    //   ☞ **짝은 아래 RD8(EACCES)** 이고 그쪽은 root 에서 skip 되는 **Deprioritize** 다(§10.3-4 ③).
+    //     이 케이스를 지우면 root CI 에서 `unreadable` 커버리지가 0 이 된다 — 함께 읽을 것.
     expectSeamPresent()
     const asDirectory = makeTmp() // 파일이 아니라 디렉토리 자체를 준다
 
@@ -170,6 +172,13 @@ describe('readArtifact — 부재·읽기 실패 (RD1·RD8·RD8b · 🔴RED 미�
   it.skipIf(IS_ROOT)('RD8: 권한 없는 파일(EACCES) → stale(`unreadable`) · **throw 없음**', () => {
     // RD8b 의 **보너스**다(EACCES 특화). root 는 `chmod 000` 을 우회하므로 그 환경에서만 skip 되고,
     //   사유는 §8-11 에 기록한다(조용한 skip 금지). 층 자체의 커버리지는 RD8b 가 항상 보장한다.
+    //
+    // ★ REFACTOR 분류(tdd §10.3-4 ③) = **Deprioritize**. Delete 가 아닌 이유: EACCES 는 EISDIR 과
+    //   **다른 errno 경로**이고(권한 대 파일종류), 실제로 더 흔한 형태다 — 지우면 그 축이 사라진다.
+    //   Archive 도 아니다(기능이 없어진 게 아니라 **환경에 따라 실행 여부가 갈릴 뿐**이다). 그래서
+    //   비-root 에서는 항상 돌고, root CI 에서만 빠지며 그 사실이 §8-11 에 수치로 남는다.
+    //   ☞ **짝은 위의 RD8b(EISDIR)** 다 — uid 와 무관하므로 root 에서도 반드시 실행된다.
+    //     즉 이 케이스가 skip 돼도 `unreadable` 사유의 커버리지는 0 이 되지 않는다.
     expectSeamPresent()
     const dir = makeTmp()
     const copied = copyArtifactFixture('valid.json', dir)

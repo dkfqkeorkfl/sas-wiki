@@ -102,7 +102,7 @@ describe('buildSummary', () => {
   })
 
   it('schemaVersion 은 정수 2이다(문자열 "2" 금지)', () => {
-    // §4 원장 ⑨ — P4 가 아티팩트 헤더 3키(`producer`·`env` + env 별 경로)를 더하면서 1 → **2**.
+    // §4 원장 ⑨ — P4 가 아티팩트 헤더 2키(`producer`·`env`)를 더하면서 1 → **2**(D-D (b)).
     //   옛 아티팩트는 "미지 버전" 이 아니라 **구 버전**이라 독자가 stale 로 떨어뜨리고 재생성한다
     //   (마이그레이션 없음 — 파생 데이터다 · D-D (b)).
     const summary = summaryOf([aDoc().build()])

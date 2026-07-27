@@ -102,6 +102,9 @@ const reportJson = (vault) => path.join(vault, 'logs', 'summary.report.json')
 
 describe('종료코드 — 성공 경로 (XC1·XC2 · 🔴RED 미구현)', () => {
   it('XC1: 정상 vault → exit 0 · 캐시 파일 존재', () => {
+    // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②). `summary.import-graph.test.mjs`(IG1·IG6)가 무는
+    //   것은 구조뿐이라, 판정 경로에서 렌더 툴체인을 뗀 나머지로 **아무것도 만들지 못하는** 구현도
+    //   거기서는 green 이다. 프로세스 경계에서 산출물이 실제로 생겼음을 보는 이 케이스가 그 짝이다.
     const vault = freshClean()
 
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
@@ -197,6 +200,8 @@ describe('종료코드 — 문턱 초과는 3, 산출물은 있다 (XC7 · 🔴R
   it('XC7: `--max-excluded=0` + 오염 2건 → exit 3 · 캐시는 존재하고 스키마를 통과한다', () => {
     // ★ D-D "3 은 산출물 있음". 파일 존재를 함께 확인해야 "그냥 죽는" 구현이 배제된다 — 3 과 1 의
     //   차이는 **호출자가 산출물을 써도 되는가** 하나뿐이다.
+    // ★ 동시에 **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②) — 실패 종료 경로에서도 발행이 살아 있음을
+    //   무는 유일한 자리라, IG1 이 구조만 보고 통과하는 것을 기능 쪽에서 받쳐 준다.
     const vault = freshPolluted()
 
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev', '--max-excluded=0'])

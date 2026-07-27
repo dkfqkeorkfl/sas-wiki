@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { ARTIFACT_PRODUCER, SCHEMA_VERSION, artifactPath, readArtifact } from './lib/artifact.mjs'
 import { writeFileAtomic } from './lib/atomic.mjs'
+import { envEnumError } from './lib/cli-env.mjs'
 import { computeInputsFingerprint } from './lib/fingerprint.mjs'
 import { makeGitRunner } from './lib/git.mjs'
 import { buildSummary } from './lib/payloads.mjs'
@@ -23,7 +24,9 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, '..')
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 
 export async function runSummaryGenerator({
-  cachePath,
+  // `--out` 로 들어오는 경로 **덮어쓰기**다(미지정이면 아래에서 파생한다). 같은 이름의 import 를
+  //   가리지 않도록 지역 이름만 바꿔 받는다 — 옵션 키 자체는 반환 키·`--status` 와 같은 낱말이다.
+  artifactPath: artifactPathOverride,
   env = 'prod',
   force = false,
   maxExcluded,
@@ -33,8 +36,7 @@ export async function runSummaryGenerator({
   writeSideEffects = true,
 }) {
   const vaultDir = path.resolve(vault)
-  // 반환 키는 `cachePath` 로 남는다(호출 계약) — 가리키는 파일은 캐시가 아니라 발행 아티팩트다.
-  const effectiveCachePath = cachePath ?? artifactPath(vaultDir, env)
+  const effectiveArtifactPath = artifactPathOverride ?? artifactPath(vaultDir, env)
   const effectiveReportDir = reportDir ?? path.join(vaultDir, 'logs')
   const reportJsonPath = path.join(effectiveReportDir, 'summary.report.json')
   const reportTxtPath = path.join(effectiveReportDir, 'summary.report.txt')
@@ -58,7 +60,7 @@ export async function runSummaryGenerator({
         producer: ARTIFACT_PRODUCER,
         schemaVersion: SCHEMA_VERSION,
       },
-      path: effectiveCachePath,
+      path: effectiveArtifactPath,
     })
     // 리포트에는 발행 봉투가 없다 — 관측 채널이라 `producer`·`env` 를 싣지 않는다. 그래서
     //   `readArtifact` 의 검증 대상이 아니고, 여기서 지문 한 축만 대조한다. **못 읽으면 "모른다"**
@@ -76,7 +78,7 @@ export async function runSummaryGenerator({
     if (artifact.fresh && report) {
       const excludedCount = report.summary?.excluded ?? 0
       return {
-        cachePath: effectiveCachePath,
+        artifactPath: effectiveArtifactPath,
         excluded: report.excluded ?? [],
         excludedCount,
         inputsFingerprint,
@@ -104,7 +106,7 @@ export async function runSummaryGenerator({
   })
   const excluded = parsed.stats.excluded ?? []
   const result = {
-    cachePath: effectiveCachePath,
+    artifactPath: effectiveArtifactPath,
     excluded,
     excludedCount: excluded.length,
     inputsFingerprint,
@@ -117,7 +119,7 @@ export async function runSummaryGenerator({
 
   if (!writeSideEffects) return result
 
-  writeFileAtomic(effectiveCachePath, `${JSON.stringify(payload)}\n`)
+  writeFileAtomic(effectiveArtifactPath, `${JSON.stringify(payload)}\n`)
   const report = buildReport({
     env,
     excluded,
@@ -166,11 +168,11 @@ export async function main(argv = process.argv.slice(2)) {
       )
     } else if (result.regenerated) {
       console.error(
-        `[wiki] summary regenerated status=${result.status} excluded=${result.excludedCount} artifact=${result.cachePath}`,
+        `[wiki] summary regenerated status=${result.status} excluded=${result.excludedCount} artifact=${result.artifactPath}`,
       )
     } else {
       console.error(
-        `[wiki] summary artifact hit excluded=${result.excludedCount} artifact=${result.cachePath}`,
+        `[wiki] summary artifact hit excluded=${result.excludedCount} artifact=${result.artifactPath}`,
       )
     }
     if (result.report.error) console.error(`[wiki] report error: ${result.report.error}`)
@@ -213,14 +215,15 @@ function parseCliArgs(argv) {
     }
     if (name === '--env') {
       const value = readValue()
-      if (value !== 'dev' && value !== 'prod') {
-        throw new Error(`알 수 없는 --env 값: "${value}" — dev|prod 만 허용합니다`)
-      }
+      // 문구는 `lib/cli-env.mjs` 가 소유하고, **종료는 여기서** 한다 — 던지면 `main()` 이 받아
+      //   exitCode 2 를 세운다(다른 인자 오류와 같은 경로).
+      const envError = envEnumError(value)
+      if (envError !== null) throw new Error(envError)
       options.env = value
       continue
     }
     if (name === '--out') {
-      options.cachePath = path.resolve(readValue())
+      options.artifactPath = path.resolve(readValue())
       continue
     }
     if (name === '--max-excluded') {
@@ -271,7 +274,7 @@ function formatReportText(report) {
  */
 function statusPayload(result, env) {
   return {
-    artifactPath: result.cachePath,
+    artifactPath: result.artifactPath,
     env,
     excludedCount: result.excludedCount,
     inputsFingerprint: result.inputsFingerprint,

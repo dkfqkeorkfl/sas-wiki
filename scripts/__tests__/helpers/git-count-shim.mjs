@@ -1,8 +1,10 @@
 // P3 — git spawn 계수 shim (tdd §7.5 · §8.2 측정용). **`expect` 를 두지 않는다**(규범 D).
 //
 // 용도 분리(섞지 않는다):
-//   · **FR7**(스킵 경로가 `rev-parse HEAD` **1회**만 부르는가) → `runSummaryGenerator({ runGit })`
+//   · **FR7**(스킵 경로가 `rev-parse HEAD` **1회**만 부르는가) → `await runSummaryGenerator({ runGit })`
 //     에 테스트 로컬 계수 fake 를 주입한다. 결정성이 높고 프로세스 경계를 넘지 않는다.
+//     (P4 §4 원장 ⑫·⑭: 생성기가 **async** 가 됐다 — D-A 가 파싱 툴체인을 동적 import 로 미뤘기
+//      때문이다. 주입하는 `runGit` 자체는 **여전히 동기** fake 이고, 계수는 호출 시점에 일어난다.)
 //   · **§8.2**(`feeds --env dev` 33 → 18 실측) → 이 shim. CLI 를 **자식 프로세스로** 띄워야 하므로
 //     함수 주입이 불가능하다. PATH 앞에 `git` 래퍼를 놓고 argv 를 로그에 append 한다.
 //

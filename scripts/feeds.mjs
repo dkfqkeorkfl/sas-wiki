@@ -5,6 +5,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { envEnumError } from './lib/cli-env.mjs'
 import { pageFeeds } from './lib/git-walk.mjs'
 import { buildWirePayload } from './lib/parse-vault.mjs'
 import { buildFeeds } from './lib/payloads.mjs'
@@ -59,8 +60,11 @@ export async function main(argv = process.argv.slice(2)) {
   //   조용한 prod 폴백은 fail-closed 가 아니라 **silent misconfiguration** 이다: `--env Dev` 오타 하나로
   //   dev 예제를 본다고 믿는 사람이 상용 산출물을 받는다(반대 방향이면 미공개 데이터 누출이다).
   //   미지정은 여전히 prod 다 — 여기서 막는 것은 **오타뿐**이다.
-  if (values.env !== 'dev' && values.env !== 'prod') {
-    console.error(`알 수 없는 --env 값: "${values.env}" — dev|prod 만 허용합니다`)
+  //   문구는 `lib/cli-env.mjs` 가 소유하고, **종료는 여기서** 한다 — 아래 `.catch` 는 exit 1 이라
+  //   던져서는 안 된다(EV1·EV7 이 exit 2 를 문다).
+  const envError = envEnumError(values.env)
+  if (envError !== null) {
+    console.error(envError)
     process.exitCode = 2
     return
   }
