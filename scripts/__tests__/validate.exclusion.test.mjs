@@ -137,7 +137,9 @@ describe('validate — 게이트 순서 보존 (VD6 · pin)', () => {
     const outcome = outcomeOf(() => buildContent({ env: 'dev', vault }))
 
     expect(outcome.threw).toBe(true)
-    expect(outcome.message).toMatch(/커밋|컨벤션|같은 커밋|추가.*삭제/)
+    // ★ `/커밋/` 같은 단어 하나로 만족되는 alternation 은 일반 git 에러("커밋 정보를 가져올 수 없습니다" 류)로도
+    //   통과한다 — 컨벤션 게이트가 먼저 울렸다는 **고유** 신호를 요구한다(`invariants.mjs` 의 실제 머리말).
+    expect(outcome.message).toContain('컨벤션 위반')
     expect(outcome.message).not.toContain('SCHEMA_VIOLATION')
   })
 })

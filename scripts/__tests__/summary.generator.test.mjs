@@ -274,7 +274,10 @@ describe('리포트 실패는 산출물 실패가 아니다 (RP4 · 🔴RED 미�
 
     expect(existsSync(cacheFile(vault))).toBe(true) // 앵커: 캐시는 **실제로** 만들어졌다
     expect(result.status).toBe('clean')
-    expect(result.report.error).toBeTruthy()
+    // `toBeTruthy()` 로는 부족하다 — 구현이 원인과 무관하게 상수를 채워도 통과한다.
+    //   **문자열**이어야 하고(형태), 실패한 자원을 지목해야 한다(무엇이 왜).
+    expect(typeof result.report.error).toBe('string')
+    expect(result.report.error).toContain('logs')
   })
 
   it('RP5: 생성된 report.json 이 `report.schema.json` 을 통과한다', () => {
