@@ -149,7 +149,10 @@ describe('judgeDocs — 오염 1종씩 (DG1~DG5 · 🔴RED 미구현)', () => {
     expect(result.excluded).toHaveLength(1)
     expect(result.excluded[0].reasonCode).toBe('SCHEMA_VIOLATION')
     // 사유만 맞고 "무엇이 틀렸는지" 를 안 알려주는 리포트를 배제한다.
-    expect(result.excluded[0].message).toContain('id')
+    // ★ `toContain('id')` 로는 부족하다 — 영어 `invalid` 도, 경로 `깨진id.md` 도 부분문자열 `id` 를
+    //   갖는다. **필드로서의** id(콜론 뒤 설명이 따라오는 형태)와 어긴 제약 이름을 함께 요구한다.
+    expect(result.excluded[0].message).toMatch(/id:\s/u)
+    expect(result.excluded[0].message).toContain('pattern')
     expect(relPathsOf(result.visible)).toEqual(['company/정상'])
   })
 
@@ -249,7 +252,9 @@ describe('judgeDocs — 중복·결정성·우선순위 (DG6~DG10 · 🔴RED 미
     const result = judge(docs, ctx())
 
     expect(result.excluded).toHaveLength(2)
-    const byPath = Object.fromEntries(result.excluded.map((entry) => [entry.path, entry.reasonCode]))
+    const byPath = Object.fromEntries(
+      result.excluded.map((entry) => [entry.path, entry.reasonCode]),
+    )
     expect(byPath['wiki/concept/무효A.md']).toBe('SCHEMA_VIOLATION')
     expect(byPath['wiki/concept/짝B.md']).toBe('DUPLICATE_ID')
     expect(result.visible).toEqual([])

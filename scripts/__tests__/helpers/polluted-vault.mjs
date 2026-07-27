@@ -128,7 +128,11 @@ export function seedCleanVault() {
   writeDoc(vault, 'concept/공정', { id: ID_C, wikiRoot: 'wiki' })
   commit(vault, 'chore: 초기 문서 3건')
 
-  writeTaggedDoc(vault, CONTROL_REL, { body: '## 정의\n\n정상 갱신.\n', id: ID_A, tag: CONTROL_TAG })
+  writeTaggedDoc(vault, CONTROL_REL, {
+    body: '## 정의\n\n정상 갱신.\n',
+    id: ID_A,
+    tag: CONTROL_TAG,
+  })
   const controlFeedSha = feedCommit(vault, { date: T1, subject: CONTROL_FEED_TITLE })
   return { controlFeedSha, vault }
 }
@@ -154,10 +158,18 @@ export function seedPollutedVault() {
   writeTaggedDoc(vault, TWIN_B_REL, { id: ID_DUP, tag: TWIN_TAG })
   commit(vault, 'chore: 초기 문서 3건')
 
-  writeTaggedDoc(vault, CONTROL_REL, { body: '## 정의\n\n정상 갱신.\n', id: ID_A, tag: CONTROL_TAG })
+  writeTaggedDoc(vault, CONTROL_REL, {
+    body: '## 정의\n\n정상 갱신.\n',
+    id: ID_A,
+    tag: CONTROL_TAG,
+  })
   const controlFeedSha = feedCommit(vault, { date: T1, subject: CONTROL_FEED_TITLE })
 
-  writeTaggedDoc(vault, TWIN_A_REL, { body: '## 정의\n\n쌍둥이 갱신.\n', id: ID_DUP, tag: TWIN_TAG })
+  writeTaggedDoc(vault, TWIN_A_REL, {
+    body: '## 정의\n\n쌍둥이 갱신.\n',
+    id: ID_DUP,
+    tag: TWIN_TAG,
+  })
   const twinFeedSha = feedCommit(vault, { date: T2, subject: TWIN_FEED_TITLE })
 
   return { controlFeedSha, twinFeedSha, vault }

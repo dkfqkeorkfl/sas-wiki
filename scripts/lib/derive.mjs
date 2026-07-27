@@ -28,6 +28,11 @@ export function checkAnchorExists(pathToDoc, targetPath, anchorRaw) {
  * - `tags`   : `Record<tag, docId[]>` — active 만
  * - `pathToDoc` : **disable 포함**(위키링크 데드링크 방지)
  */
+/**
+ * **중복 id·path 배제는 이 함수의 책임이 아니다.** 예전에는 여기서 발견 즉시 throw 했고, 그래서
+ * 오타 하나가 위키 서빙 전체를 500 으로 만들었다(P3 착수 전 실측). 지금 그 판정은 `doc-gate.mjs`
+ * 가 **값**으로 끝내며, 이 함수는 이미 걸러진 `visibleDocs` 만 받는다는 것을 전제한다.
+ */
 export function derive(parsedDocs, runGit, { wikiPrefix }) {
   const enriched = parsedDocs.map((parsed) => {
     const relFilePath = `${wikiPrefix}${parsed.relPath}.md`

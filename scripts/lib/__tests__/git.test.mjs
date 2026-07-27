@@ -3,7 +3,7 @@
 // P2 RED-2 · scripts/wiki/lib/git.mjs (rename 역인덱스 · 삭제 집합 · shallow 판정) — tdd §6.2
 //
 // RED 사유:
-//   ① `getFileHistory`·`buildPathIndex`·`collectDeletedDocPaths`·`checkHistoryIntegrity` 미구현
+//   ① `getFileHistory`·`buildPathIndex`·`checkHistoryIntegrity` 미구현
 //      (export 부재) → import 링크 실패(파일 전체 RED).
 //   ② `getFileCommitDates` 는 현행이 `%H%x09%aI` 만 뽑아 **당시 경로를 내지 않고**,
 //      hash 를 "가장 오래된 커밋"으로 잡는다 → 삭제 후 재생성 문서의 **죽은 id 를 부활**시킨다.
@@ -16,7 +16,6 @@
 //   getFileHistory(runGit, relFilePath)  → [{ oldPath?, pathAtCommit, sha, status, ts }] (최신순)
 //   getFileCommitDates(runGit, relPath)  → { created, hash, updated }  (getFileHistory 위의 얇은 래퍼)
 //   buildPathIndex(docs, runGit)         → Map<`${sha}:${당시경로}`, docId>   docs: [{ filePath, id }]
-//   collectDeletedDocPaths(runGit, { headPaths, isDocPath }) → Set<'wiki/….md' | non-wiki .md>
 //   checkHistoryIntegrity(runGit)        → { partialFilter, shallow }
 import { describe, expect, it } from 'vitest'
 
@@ -24,10 +23,8 @@ import {
   anyMarkdown,
   buildPathIndex,
   checkHistoryIntegrity,
-  collectDeletedDocPaths,
   collectEverDeletedDocPaths,
   collectGitLog,
-  getCommitDiffHunks,
   getCommitDocStatuses,
   getFileCommitDates,
   getFileHistory,
@@ -188,33 +185,6 @@ describe('buildPathIndex — (커밋, 당시경로) → 현재 문서 id', () =>
   })
 })
 
-describe('collectDeletedDocPaths — 삭제되어 HEAD 에 없는 문서', () => {
-  const DELETED_LOG = [`D\t${SCRAP}`, `D\twiki/tech/HBM.md`, 'D\tREADME.md'].join('\n')
-
-  it('삭제된 markdown 경로를 낸다', () => {
-    const deleted = collectDeletedDocPaths(() => DELETED_LOG, {
-      headPaths: new Set([HBM_NOW]),
-      isDocPath: anyMarkdown,
-    })
-
-    expect(deleted.has(SCRAP)).toBe(true)
-    // 삭제 수집은 **히스토리 계층**이라 prefix 를 걸 수 없다. "위키 문서인가"는 이후
-    // `everWikiPaths` 게이트가 판정한다.
-    expect(deleted.has('README.md')).toBe(true)
-  })
-
-  it('삭제 후 재생성된 경로는 포함하지 않는다(HEAD 에 있다)', () => {
-    // 2번째 케이스: HEAD 대조 없이 D 만 긁으면 살아 있는 문서를 prune 해버린다.
-    const deleted = collectDeletedDocPaths(() => DELETED_LOG, {
-      headPaths: new Set([HBM_NOW]),
-      isDocPath: anyMarkdown,
-    })
-
-    expect(deleted.has(HBM_NOW)).toBe(false)
-    expect(deleted.size).toBe(2)
-  })
-})
-
 describe('collectEverDeletedDocPaths — HEAD 재생성 여부와 무관한 삭제 이력', () => {
   const DELETED_LOG = [`D\t${SCRAP}`, `D\twiki/tech/HBM.md`, 'D\tREADME.md'].join('\n')
 
@@ -305,32 +275,5 @@ describe('checkHistoryIntegrity — shallow · partial clone 판정', () => {
   it('정상 full clone 은 둘 다 아니다', () => {
     // 2번째 케이스: 하드코딩 true 리턴 방지(정상 리포가 빌드를 죽이면 안 된다).
     expect(checkHistoryIntegrity(stubRunner({}))).toEqual({ partialFilter: '', shallow: false })
-  })
-})
-
-describe('getCommitDiffHunks', () => {
-  it('git show --unified=0 출력에서 파일별 hunk(startLine,lineCount)를 파싱한다', () => {
-    const show = [
-      'diff --git a/wiki/foo.md b/wiki/foo.md',
-      'index 0000000..1111111 100644',
-      '--- a/wiki/foo.md',
-      '+++ b/wiki/foo.md',
-      '@@ -10,0 +11,2 @@ heading',
-      '+added',
-      '+more',
-    ].join('\n')
-
-    const calls = []
-    const hunks = getCommitDiffHunks((args) => {
-      calls.push(args)
-      return show
-    }, 'abc123')
-
-    expect(hunks['wiki/foo.md']).toEqual([{ lineCount: 2, startLine: 11 }])
-    expect(calls[0]).toContain('show')
-  })
-
-  it('빈 diff 는 빈 객체를 반환한다', () => {
-    expect(getCommitDiffHunks(() => '', 'abc123')).toEqual({})
   })
 })

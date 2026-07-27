@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 
 import { byRecencyThenId, parseCommitForFeed } from './feed.mjs'
@@ -11,11 +10,21 @@ import {
 } from './git.mjs'
 import { judgeFeedSurvival } from './feed-survival.mjs'
 import { loadHeadDocState } from './head-state.mjs'
-import { applyIgnoreFeeds } from './ignore.mjs'
+import { applyIgnoreFeeds, loadIgnoreFeeds } from './ignore.mjs'
 import { parseFrontmatterYaml } from './parse.mjs'
 
 const DEFAULT_FEED_LIMIT = 50
 
+/**
+ * 독립 실행형 피드 워크 — 수집(`collectFeedItems`) + 페이지(`pageFeeds`)의 합성.
+ *
+ * **프로덕션 경로는 이것을 부르지 않는다.** F-2 통합 이후 `feeds.mjs` 는 `parseVault` 가 이미 만든
+ * items 에 `pageFeeds` 만 얹는다(파싱 1회). 이 함수는 그 결과와 대조하는 **참조 구현**이자,
+ * 전체 파싱 없이 피드만 훑고 싶은 호출자를 위한 진입점으로 남는다.
+ *
+ * ⚠️ `runGit`·`headState` 를 주지 않으면 **매번 새 러너와 새 HEAD 상태**를 만든다(메모이즈 없음).
+ * 새 프로덕션 코드에서 무인자로 부르면 프로세스 스폰이 그대로 늘어난다 — `parseVault` 를 쓰라.
+ */
 export function walkFeeds(vault, { after, count, env, from, headState, runGit, to } = {}) {
   const vaultDir = path.resolve(vault)
   const limit = typeof count === 'number' && count > 0 ? count : DEFAULT_FEED_LIMIT
@@ -308,10 +317,4 @@ function refsForStatus(sha, status) {
     refs.push(`${sha}:${status.oldPath}`, `${sha}^:${status.oldPath}`)
   }
   return refs
-}
-
-function loadIgnoreFeeds(vaultDir) {
-  const ignorePath = path.join(vaultDir, 'ignore-feeds.json')
-  if (!fs.existsSync(ignorePath)) return []
-  return JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
 }

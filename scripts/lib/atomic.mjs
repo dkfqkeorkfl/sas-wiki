@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 export function classifyFsError(code) {
-  const retryable = new Set([`E${'PERM'}`, 'EACCES', 'EBUSY'])
+  const retryable = new Set(['EPERM', 'EACCES', 'EBUSY'])
   return retryable.has(code) ? 'retry' : 'fatal'
 }
 

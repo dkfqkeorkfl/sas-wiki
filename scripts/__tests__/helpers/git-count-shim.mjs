@@ -6,9 +6,9 @@
 //   · **§8.2**(`feeds --env dev` 33 → 18 실측) → 이 shim. CLI 를 **자식 프로세스로** 띄워야 하므로
 //     함수 주입이 불가능하다. PATH 앞에 `git` 래퍼를 놓고 argv 를 로그에 append 한다.
 //
-// 성립 근거(실측): `makeGitRunner`(`git.mjs:361` execFileSync)와 `catFileBatch`(`git.mjs:378`
-//   spawnSync) 가 **둘 다 `'git'` 을 PATH 로 해석**한다(절대경로 하드코딩 없음). 실 git 의 절대경로는
-//   래퍼 안에서 `command -v` 로 **1회** 해석해 재귀를 피한다.
+// 성립 근거(실측): `makeGitRunner`(`git.mjs` execFileSync)가 `'git'` 을 **PATH 로 해석**한다
+//   (절대경로 하드코딩 없음). 실 git 의 절대경로는 래퍼 안에서 `command -v` 로 **1회** 해석해
+//   재귀를 피한다.
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'

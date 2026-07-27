@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -7,8 +6,7 @@ import { parseCommitForFeed } from './feed.mjs'
 import { collectFeedItems } from './git-walk.mjs'
 import { checkGitAvailable, checkHistoryIntegrity, collectGitLog, makeGitRunner } from './git.mjs'
 import { WIKI_PREFIX, loadHeadDocState } from './head-state.mjs'
-import { reportIgnoreHygiene } from './ignore.mjs'
-import { loadSchema, validateItem } from './validate.mjs'
+import { loadIgnoreFeeds, reportIgnoreHygiene } from './ignore.mjs'
 
 /** 생산 JSON Schema 디렉토리 — 이 모듈은 scripts/lib/ 이므로 상위 scripts/schema. */
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
@@ -41,7 +39,6 @@ export function parseVault(
   const derived = derive(headState.visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
   const { items, stats } = collectFeedItems(vaultDir, { env, headState, runGit })
   stats.excluded = headState.excluded
-  stats.invalidExcludedRefs ??= []
 
   const ignore = loadIgnoreFeeds(vaultDir, schemaDir)
   const allFeedIds = new Set(
@@ -120,29 +117,4 @@ function memoize(runGit) {
     cache.set(key, value)
     return value
   }
-}
-
-/**
- * vault 리포 루트의 `ignore-feeds.json`(억제 tombstone 목록)을 로드·검증한다.
- *
- * **부재 = `[]`(fail-open)** — 목록 부재는 "억제 없음"이지 "전량 억제" 가 아니다. **존재하되 스키마
- * 위반 = throw(fail-loud)** — 신뢰 못 할 억제 목록은 조용히 무시하지 않는다(malformed JSON 도 throw).
- * stale(대응 feed 없는 유효 엔트리)은 여기서 끊지 않고 hygiene 경고로만 관측한다.
- */
-function loadIgnoreFeeds(vaultDir, schemaDir) {
-  const ignorePath = path.join(vaultDir, 'ignore-feeds.json')
-  if (!fs.existsSync(ignorePath)) return []
-  const entries = JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
-  const errors = validateItem(
-    entries,
-    loadSchema(path.join(schemaDir, 'ignore-feeds.schema.json')),
-    'ignore-feeds.json',
-  )
-  if (errors.length > 0) {
-    throw new Error(
-      `ignore-feeds.json 스키마 위반 ${errors.length}건 — 신뢰할 수 없는 억제 목록으로 빌드를 중단한다:\n` +
-        errors.map((message) => `  - ${message}`).join('\n'),
-    )
-  }
-  return entries
 }

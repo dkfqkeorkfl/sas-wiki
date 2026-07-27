@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 import { parseFrontmatterYaml } from './parse.mjs'
 
@@ -65,31 +65,6 @@ export function checkHistoryIntegrity(runGit) {
     'remote.origin.partialclonefilter',
   ]).trim()
   return { partialFilter, shallow }
-}
-
-/**
- * 과거에 삭제되어 HEAD 에 없는 vault 문서 경로.
- *
- * HEAD 대조가 필수다 — `D` 만 긁으면 **삭제 후 같은 경로에 재생성된** 살아 있는 문서까지 prune 된다.
- */
-export function collectDeletedDocPaths(runGit, { headPaths, isDocPath }) {
-  const raw = tryGit(runGit, [
-    ...QUOTEPATH_OFF,
-    'log',
-    '--diff-filter=D',
-    '--name-status',
-    '--format=',
-  ])
-  const deleted = new Set()
-  for (const line of raw.split(/\r?\n/)) {
-    const match = line.match(STATUS_LINE_RE)
-    if (!match || match[1] !== 'D') continue
-    const filePath = match[3].split('\t').at(-1)
-    if (!isDocPath(filePath)) continue
-    if (headPaths.has(filePath)) continue
-    deleted.add(filePath)
-  }
-  return deleted
 }
 
 /** 과거에 한 번이라도 삭제된 vault 문서 경로. HEAD 재생성 여부와 무관하게 feed prune 설명에 쓴다. */
@@ -198,35 +173,6 @@ export function collectGitLog(runGit) {
         subject: subject || '',
       }
     })
-}
-
-export function getCommitDiffHunks(runGit, hash) {
-  let raw
-  try {
-    raw = runGit([...QUOTEPATH_OFF, 'show', '--unified=0', '--format=', hash])
-  } catch {
-    // diff 조회 실패 시 빈 결과 → 피드 참조 해석 호출부가 변경 파일 없음으로 취급한다.
-    return {}
-  }
-
-  const fileHunks = {}
-  let currentFile = null
-  for (const line of raw.split(/\r?\n/)) {
-    const fileMatch = line.match(/^\+\+\+ b\/(.+)$/)
-    if (fileMatch) {
-      currentFile = fileMatch[1]
-      fileHunks[currentFile] ||= []
-      continue
-    }
-    const hunkMatch = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/)
-    if (hunkMatch && currentFile) {
-      fileHunks[currentFile].push({
-        lineCount: Math.max(hunkMatch[2] === undefined ? 1 : Number.parseInt(hunkMatch[2], 10), 1),
-        startLine: Number.parseInt(hunkMatch[1], 10),
-      })
-    }
-  }
-  return fileHunks
 }
 
 /**
@@ -366,60 +312,6 @@ export function makeGitRunner(cwd) {
       maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-}
-
-/**
- * 여러 git object ref 를 `git cat-file --batch` 한 번으로 읽는다.
- *
- * @param {string} cwd git repository root
- * @param {string[]} refs object refs such as `${sha}:wiki/a.md`
- * @returns {Map<string, string|null>} ref -> blob text, missing/non-blob -> null
- */
-export function catFileBatch(cwd, refs) {
-  const out = new Map()
-  if (refs.length === 0) return out
-
-  const child = spawnSync('git', ['cat-file', '--batch'], {
-    cwd,
-    input: `${refs.join('\n')}\n`,
-    maxBuffer: 64 * 1024 * 1024,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
-  if (child.status !== 0) {
-    throw new Error(
-      `git cat-file --batch 실패: ${child.stderr ? child.stderr.toString('utf8') : ''}`.trim(),
-    )
-  }
-
-  const buffer = child.stdout
-  let offset = 0
-  for (const ref of refs) {
-    const lineEnd = buffer.indexOf(0x0a, offset)
-    if (lineEnd === -1) {
-      out.set(ref, null)
-      break
-    }
-
-    const header = buffer.subarray(offset, lineEnd).toString('utf8')
-    offset = lineEnd + 1
-    if (header.endsWith(' missing')) {
-      out.set(ref, null)
-      continue
-    }
-
-    const match = header.match(/ (blob) (\d+)$/u)
-    if (!match) {
-      out.set(ref, null)
-      continue
-    }
-
-    const size = Number.parseInt(match[2], 10)
-    out.set(ref, buffer.subarray(offset, offset + size).toString('utf8'))
-    offset += size
-    if (buffer[offset] === 0x0a) offset += 1
-  }
-
-  return out
 }
 
 /**

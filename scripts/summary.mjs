@@ -49,14 +49,22 @@ export function runSummaryGenerator({
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
   const inputsFingerprint = computeInputsFingerprint({ env, sourceCommit, vaultDir })
 
+  // 스킵은 **캐시와 리포트가 둘 다** 이 지문의 것일 때만 한다.
+  //
+  // 리포트가 없거나 지문이 어긋나면 제외 건수를 알 방법이 없는데, 예전에는 그것을 `?? 0` 으로 메워
+  // `status: 'clean'` 을 돌려줬다 — 문서 2건이 제외된 vault 가 "깨끗함" 으로 보고되고 `--max-excluded 0`
+  // 게이트가 exit 3 → exit 0 으로 뒤집혔다(실측). 리포트 쓰기 실패는 산출물 실패가 아니라는 원칙(D-F ·
+  // RP4)이 바로 이 상태를 **정상적으로** 만들어내므로 가정이 아니라 실제 조건이다.
+  //
+  // 그래서 "모르면 다시 만든다". 관측을 잃은 대가는 재생성 비용이지 거짓 보고가 아니다.
   if (writeSideEffects && !force) {
     const cached = readFreshCache(effectiveCachePath, inputsFingerprint)
-    if (cached) {
-      const report = readMatchingReport(effectiveReportDir, inputsFingerprint)
-      const excludedCount = report?.summary?.excluded ?? 0
+    const report = cached ? readMatchingReport(effectiveReportDir, inputsFingerprint) : null
+    if (cached && report) {
+      const excludedCount = report.summary?.excluded ?? 0
       return {
         cachePath: effectiveCachePath,
-        excluded: report?.excluded ?? [],
+        excluded: report.excluded ?? [],
         excludedCount,
         inputsFingerprint,
         payload: cached,
@@ -139,7 +147,13 @@ export async function main(argv = process.argv.slice(2)) {
     } else {
       process.stdout.write(`${JSON.stringify(result.payload)}\n`)
     }
-    if (result.regenerated) {
+    // `--stdout` 은 **아무것도 쓰지 않는다**(side-effect-free 질의). 그런데도 `cache=<경로>` 를 찍으면
+    //   "저 파일이 갱신됐다" 는 거짓을 말하게 된다 — 실제로는 그 경로가 옛 세대 그대로다.
+    if (!options.writeSideEffects) {
+      console.error(
+        `[wiki] summary computed status=${result.status} excluded=${result.excludedCount} (--stdout: 캐시·리포트 미기록)`,
+      )
+    } else if (result.regenerated) {
       console.error(
         `[wiki] summary regenerated status=${result.status} excluded=${result.excludedCount} cache=${result.cachePath}`,
       )

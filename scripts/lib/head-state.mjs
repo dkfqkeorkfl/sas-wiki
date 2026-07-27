@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { judgeDocs } from './doc-gate.mjs'
+import { docPath, judgeDocs } from './doc-gate.mjs'
 import { isDraft } from './draft.mjs'
 import { makeGitRunner } from './git.mjs'
 import {
@@ -71,8 +71,10 @@ export function loadHeadDocState(
   const visibleDocs = judged.visible
   const excluded = judged.excluded
   const excludedPaths = new Set(excluded.map((entry) => entry.path))
+  // 비교 좌표는 **판정한 쪽과 같은 함수**로 만든다 — 문자열을 각자 조립하면 한쪽만 정규화가 바뀔 때
+  //   매칭이 조용히 어긋나 "제외했는데 여전히 서빙되는" 상태가 된다.
   const invalidDocs = visibleCandidates.filter((doc) =>
-    excludedPaths.has(`${WIKI_PREFIX}${doc.relPath}.md`),
+    excludedPaths.has(docPath(doc, WIKI_PREFIX)),
   )
   const invalidSet = new Set(invalidDocs)
   const invalidRefs = invalidDocs

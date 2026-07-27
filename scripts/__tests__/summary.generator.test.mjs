@@ -284,9 +284,9 @@ describe('리포트 실패는 산출물 실패가 아니다 (RP4 · 🔴RED 미�
     generate({ env: 'dev', vault })
 
     expect(existsSync(schemaPath)).toBe(true) // 앵커: 스키마가 실재한다(자기 스키마 드리프트 차단)
-    expect(validateItem(readJson(reportJson(vault)), loadSchema(schemaPath), 'report.json')).toEqual(
-      [],
-    )
+    expect(
+      validateItem(readJson(reportJson(vault)), loadSchema(schemaPath), 'report.json'),
+    ).toEqual([])
   })
 })
 
@@ -351,6 +351,25 @@ describe('신선도 스킵 (FR1~FR6 · 🔴RED 미구현)', () => {
     )
 
     expect(generate({ env: 'dev', vault }).regenerated).toBe(true)
+  })
+
+  it('FR8: 리포트가 사라진 캐시는 신선하지 않다 — 제외 건수를 0 으로 위장하지 않는다', () => {
+    // ★ 리뷰에서 실측으로 잡힌 결함의 회귀 가드. 캐시만 보고 스킵하면 제외 건수를 **리포트에서** 읽어야
+    //   하는데, 그 파일이 없으면 예전 구현은 `?? 0` 으로 메워 `status:'clean'` 을 돌려줬다 — 문서 2건이
+    //   빠진 vault 가 "깨끗함" 이 되고 `--max-excluded 0` 게이트가 exit 3 → exit 0 으로 뒤집혔다.
+    //   RP4("리포트 실패는 산출물 실패가 아니다")가 바로 이 상태를 정상적으로 만들어내므로 가정이 아니다.
+    const vault = freshPolluted()
+    const first = generate({ env: 'dev', vault })
+
+    // 앵커: 이 vault 는 **실제로** 제외 문서를 갖는다(0 == 0 으로 공허 통과하는 것을 배제).
+    expect(first.excludedCount).toBeGreaterThan(0)
+
+    rmSync(reportJson(vault))
+    const second = generate({ env: 'dev', vault })
+
+    expect(second.regenerated).toBe(true)
+    expect(second.excludedCount).toBe(first.excludedCount)
+    expect(second.status).toBe(first.status)
   })
 
   it('FR6: 신선한 캐시라도 `force:true` 면 재생성한다', () => {

@@ -116,7 +116,8 @@ export function judgeDocs(parsedDocs, ctx) {
   }
 }
 
-function docPath(doc, wikiPrefix) {
+/** 문서 → 리포 상대 posix 경로. 제외 목록의 좌표계이므로 **비교하는 쪽도 이 함수를 써야** 한다. */
+export function docPath(doc, wikiPrefix) {
   return `${wikiPrefix}${doc.relPath}.md`.split(path.sep).join('/')
 }
 

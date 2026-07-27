@@ -21,14 +21,20 @@
 //   · 실제 파일을 고쳐 관측하되 **실 리포의 `scripts/**` 는 절대 고치지 않는다**(§10.1 절대금지 7).
 //     `scriptsDir` seam 에 tmp 를 주입한다. 기본값이 실 `scripts/` 를 가리킨다는 사실은 FG8 이 별도로
 //     못박고, 그 케이스는 실 파일을 **읽기만** 한다.
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { cleanup, commit, git, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs'
+import {
+  cleanup,
+  commit,
+  git,
+  initVault,
+  writeDoc,
+} from '../../__tests__/helpers/tmp-git-vault.mjs'
 
 const loaded = await import(new URL('../fingerprint.mjs', import.meta.url).href).catch((error) => ({
   __loadError: error instanceof Error ? error.message : String(error),
@@ -74,7 +80,7 @@ function makeScriptsDir() {
   writeFileSync(path.join(root, 'summary.mjs'), "export const kind = 'summary'\n")
   writeFileSync(path.join(root, 'lib', 'parse-vault.mjs'), "export const kind = 'parse'\n")
   writeFileSync(path.join(root, 'schema', 'summary.schema.json'), '{ "title": "wiki_summary" }\n')
-  writeFileSync(path.join(root, '__tests__', 'x.test.mjs'), "// 테스트다.\nexport const t = 1\n")
+  writeFileSync(path.join(root, '__tests__', 'x.test.mjs'), '// 테스트다.\nexport const t = 1\n')
   return root
 }
 
@@ -217,5 +223,26 @@ describe('computeInputsFingerprint — 기본 scriptsDir (FG8 · pair)', () => {
     })
 
     expect(fingerprint({ env: 'dev', sourceCommit: COMMIT_ONE, vaultDir })).toBe(explicit)
+  })
+})
+
+describe('computeInputsFingerprint — vault 경계 (FG10 · pair · 보안 리뷰 반영)', () => {
+  it('FG10: 심볼릭 링크 너머의 `.md` 는 입력이 아니다 · 진짜 파일은 입력이다', () => {
+    // ★ 실측으로 잡힌 결함: 워커가 `fs.statSync` 를 쓰면 링크를 **추종**해 `wiki/x -> /etc` 같은 항목
+    //   하나로 vault 밖 파일이 지문에 섞였다(문서 수집 쪽 `parse.mjs` 는 이미 `Dirent` 로 걸렀는데
+    //   지문만 다른 워커를 써서 생긴 비대칭).
+    const scriptsDir = makeScriptsDir()
+    const vaultDir = makePlainVault()
+    const outside = track(mkdtempSync(path.join(tmpdir(), 'wiki-fp-outside-')))
+    writeFileSync(path.join(outside, '비밀.md'), '# vault 밖 문서\n')
+
+    const before = fingerprint(base(scriptsDir, vaultDir))
+    symlinkSync(outside, path.join(vaultDir, 'wiki', 'company', '링크'), 'dir')
+
+    expect(fingerprint(base(scriptsDir, vaultDir))).toBe(before)
+
+    // 앵커(규범 B): 워커가 죽어 있어서 "안 바뀐" 것이 아니다 — 같은 자리에 **진짜** 파일을 두면 바뀐다.
+    writeFileSync(path.join(vaultDir, 'wiki', 'company', '진짜.md'), '# vault 안 문서\n')
+    expect(fingerprint(base(scriptsDir, vaultDir))).not.toBe(before)
   })
 })

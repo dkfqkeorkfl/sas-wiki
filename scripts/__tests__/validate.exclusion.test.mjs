@@ -98,9 +98,7 @@ describe('validate — 제외를 게이트로 소비한다 (VD2·VD3 · 🔴RED 
   it('VD3: `maxExcluded: 2` 를 주면 **throw 하지 않는다** (문턱의 실재)', () => {
     // ★ 옵션이 사실상 2값(0 이냐 무한이냐)이 되는 것을 막는다. 문턱이 없으면 `ignore`/`warn` 같은
     //   완화 축이 뒷문으로 다시 생긴다.
-    expect(() =>
-      buildContent({ env: 'dev', maxExcluded: 2, vault: polluted.vault }),
-    ).not.toThrow()
+    expect(() => buildContent({ env: 'dev', maxExcluded: 2, vault: polluted.vault })).not.toThrow()
   })
 })
 
