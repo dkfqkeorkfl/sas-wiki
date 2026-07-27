@@ -13,7 +13,8 @@
 //   흩어진다. 한쪽만 넓히면 나머지가 조용히 어긋나고, 그 어긋남은 `.mjs`(타입 체커 없음)에서 런타임
 //   까지 드러나지 않는다. PL3 이 그 3자를 한자리에서 맞댄다(트립와이어).
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -132,23 +133,44 @@ describe('배관 — 산출물 경로 소유권 (PL5 · 🔴RED)', () => {
     const { vault } = seedCleanVault()
     tmps.push(vault)
 
-    const result = spawnSync(process.execPath, [SUMMARY, '--vault', vault, '--env', 'dev'], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: 'safe.directory',
-        GIT_CONFIG_VALUE_0: '*',
-        SOURCE_DATE_EPOCH: '1700000000',
+    // **실 리포의 `cache/`·`logs/` 로 판정하지 않는다.** 그 둘은 공유 가변 상태다 — 기본 `--vault` 로
+    //   도는 다른 스펙(`cli-contract` 의 cwd=repo 케이스)이 같은 스위트에서 그 파일을 정당하게 쓰므로,
+    //   존재/지문 비교는 **이 프로세스가 아닌 남의 쓰기**를 잡아 무작위로 red 가 된다(실측).
+    //   대신 두 오배선을 **각각 결정적으로** 문다:
+    //     ① cwd 상대 → 스폰의 cwd 를 별도 tmp 로 두고 그 아래가 비어 있음을 단언
+    //     ② 스크립트 리포 상대 → 생성기가 **스스로 보고한 경로**(`--status`)가 vault 안인지 단언
+    const spawnCwd = mkdtempSync(path.join(tmpdir(), 'p3-cwd-'))
+    tmps.push(spawnCwd)
+
+    const result = spawnSync(
+      process.execPath,
+      [SUMMARY, '--vault', vault, '--env', 'dev', '--status'],
+      {
+        cwd: spawnCwd,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: 'safe.directory',
+          GIT_CONFIG_VALUE_0: '*',
+          SOURCE_DATE_EPOCH: '1700000000',
+        },
       },
-    })
+    )
 
     // 앵커: tmp vault 쪽에는 **실제로** 산출물이 생겼다(부재 단언이 "아무 일도 안 했다" 가 아니다).
     expect(existsSync(path.join(vault, 'cache', 'summary.json')), result.stderr).toBe(true)
     expect(existsSync(path.join(vault, 'logs', 'summary.report.json'))).toBe(true)
+    expect(existsSync(path.join(vault, 'logs', 'summary.report.txt'))).toBe(true)
 
-    expect(existsSync(path.join(REPO_ROOT, 'cache'))).toBe(false)
-    expect(existsSync(path.join(REPO_ROOT, 'logs', 'summary.report.json'))).toBe(false)
-    expect(existsSync(path.join(REPO_ROOT, 'logs', 'summary.report.txt'))).toBe(false)
+    // ① cwd 아래에는 아무것도 만들지 않았다.
+    expect(readdirSync(spawnCwd)).toEqual([])
+
+    // ② 생성기가 보고한 경로가 전부 vault 안이다.
+    const status = JSON.parse(result.stdout)
+    for (const reported of [status.cachePath, status.reportPath]) {
+      expect(typeof reported, JSON.stringify(status)).toBe('string')
+      expect(path.relative(vault, path.resolve(reported)).startsWith('..')).toBe(false)
+    }
   })
 })

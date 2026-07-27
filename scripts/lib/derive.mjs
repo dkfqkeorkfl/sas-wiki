@@ -43,18 +43,6 @@ export function derive(parsedDocs, runGit, { wikiPrefix }) {
     }
   })
 
-  // 불변식 8 의 최후 방어선 — 한 커밋이 문서 2개를 만들면(cwiki 1파일 규칙 위반) 둘이 같은
-  // 생성 해시를 갖는다 → 참조가 **틀린 문서**를 가리킨다(비는 게 아니라 틀린다).
-  const pathSeen = new Map()
-  const idSeen = new Map()
-  for (const doc of enriched) {
-    if (pathSeen.has(doc.relPath)) throw new Error(`중복 path 발견: ${doc.relPath}`)
-    const twin = idSeen.get(doc.id)
-    if (twin) throw new Error(`중복 id 발견: ${doc.id} (${twin.relPath}, ${doc.relPath})`)
-    pathSeen.set(doc.relPath, doc)
-    idSeen.set(doc.id, doc)
-  }
-
   const pathToDoc = new Map()
   for (const doc of enriched) {
     pathToDoc.set(doc.relPath, {

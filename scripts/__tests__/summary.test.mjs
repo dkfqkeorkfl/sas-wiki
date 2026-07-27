@@ -23,7 +23,15 @@ const { summary } = await import(new URL('../summary.mjs', import.meta.url).href
 const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
 const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
 
-const ENVELOPE_KEYS = ['docs', 'generatedAt', 'schemaVersion', 'sourceCommit', 'tags', 'tree']
+const ENVELOPE_KEYS = [
+  'docs',
+  'generatedAt',
+  'inputsFingerprint',
+  'schemaVersion',
+  'sourceCommit',
+  'tags',
+  'tree',
+]
 const ACTIVE_DOC_KEYS = [
   'aliases',
   'breadcrumb',

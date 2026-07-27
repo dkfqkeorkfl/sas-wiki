@@ -31,7 +31,13 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { checkFeedResolution } from '../invariants.mjs'
 import { parseVault } from '../parse-vault.mjs'
 import { walkFeeds } from '../git-walk.mjs'
-import { cleanup } from '../../__tests__/helpers/tmp-git-vault.mjs'
+import {
+  cleanup,
+  feedCommit,
+  git,
+  initVault,
+  writeDoc,
+} from '../../__tests__/helpers/tmp-git-vault.mjs'
 import { seedPollutedVault, seedStrayVault } from '../../__tests__/helpers/polluted-vault.mjs'
 import { seedSurvivalVault } from '../../__tests__/helpers/survival-vault.mjs'
 
@@ -50,11 +56,78 @@ const STATS_KEYS = [
 const pick5 = (stats) =>
   Object.fromEntries(STATS_KEYS.map((key) => [key, stats === undefined ? undefined : stats[key]]))
 
+const itemFacts = (items) =>
+  items.map((item) => ({
+    docs: item.docs.map((doc) => doc.id).toSorted(),
+    title: item.title,
+  }))
+
+function expectEquivalentItems(walk, legacy) {
+  expect(walk.items).toHaveLength(legacy.wire.items.length)
+  expect(itemFacts(walk.items)).toEqual(itemFacts(legacy.wire.items))
+}
+
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
 function track(vault) {
   tmps.push(vault)
+  return vault
+}
+
+const ID_MERGE_A = '0192a000-0000-7000-8000-0000000000aa'
+const ID_MERGE_B = '0192b000-0000-7000-8000-0000000000bb'
+const ID_MERGE_C = '0192c000-0000-7000-8000-0000000000cc'
+
+function writeOldDoc(vault, rel, options) {
+  return writeDoc(vault, rel, { ...options, wikiRoot: 'vault/wiki' })
+}
+
+function commitAt(vault, message, date) {
+  git(vault, ['add', '-A'])
+  git(vault, ['commit', '--no-gpg-sign', '-m', message], {
+    GIT_AUTHOR_DATE: date,
+    GIT_COMMITTER_DATE: date,
+  })
+  // **sha 를 돌려준다.** `git commit` 의 stdout(요약 줄)을 그대로 반환하면 호출부가 그것을 rev 로
+  //   넘겨 `checkout -b topic <요약문>` 이 fatal 로 죽는다(실측). `merge-tolerance` 의 동명 헬퍼와 동일.
+  return git(vault, ['rev-parse', 'HEAD'])
+}
+
+function feedOn(vault, rel, id, subject, date) {
+  writeOldDoc(vault, rel, { body: `## 정의\n\n${subject} 갱신.\n`, id })
+  return feedCommit(vault, { date, subject })
+}
+
+function seedMergeVault() {
+  const vault = initVault()
+  writeOldDoc(vault, 'company/a', { id: ID_MERGE_A })
+  writeOldDoc(vault, 'company/b', { id: ID_MERGE_B })
+  writeOldDoc(vault, 'company/c', { id: ID_MERGE_C })
+  const seed = commitAt(vault, 'chore: 초기 문서 3건', '2026-01-01T00:00:00Z')
+  const mainBranch = git(vault, ['rev-parse', '--abbrev-ref', 'HEAD'])
+
+  feedOn(vault, 'company/a', ID_MERGE_A, '본선 소식 1', '2026-01-02T00:00:00Z')
+  feedOn(vault, 'company/a', ID_MERGE_A, '본선 소식 2', '2026-01-03T00:00:00Z')
+  feedOn(vault, 'company/a', ID_MERGE_A, '본선 소식 3', '2026-01-04T00:00:00Z')
+
+  git(vault, ['checkout', '-q', '-b', 'topic', seed])
+  feedOn(vault, 'company/b', ID_MERGE_B, '지선 소식 1', '2026-01-05T00:00:00Z')
+  feedOn(vault, 'company/b', ID_MERGE_B, '지선 소식 2', '2026-01-06T00:00:00Z')
+  feedOn(vault, 'company/c', ID_MERGE_C, '지선 소식 3', '2026-01-07T00:00:00Z')
+  feedOn(vault, 'company/c', ID_MERGE_C, '지선 소식 4', '2026-01-08T00:00:00Z')
+
+  git(vault, ['checkout', '-q', mainBranch])
+  git(vault, ['merge', '--no-ff', 'topic', '-m', 'feed: 병합 소식'], {
+    GIT_AUTHOR_DATE: '2026-01-09T00:00:00Z',
+    GIT_COMMITTER_DATE: '2026-01-09T00:00:00Z',
+  })
+
+  feedOn(vault, 'company/a', ID_MERGE_A, '후속 소식 1', '2026-01-10T00:00:00Z')
+  feedOn(vault, 'company/a', ID_MERGE_A, '후속 소식 2', '2026-01-11T00:00:00Z')
+
+  git(vault, ['mv', 'vault/wiki', 'wiki'])
+  commitAt(vault, 'chore: 문서 루트 이관', '2026-06-01T00:00:00Z')
   return vault
 }
 
@@ -80,6 +153,7 @@ describe('F-2 등가 — RR-BASE 5필드 (EQ1 · 🔴RED 미구현)', () => {
     expect(legacy.wire.items.length).toBeGreaterThan(0)
     expect(walk.items.length).toBeGreaterThan(0)
 
+    expectEquivalentItems(walk, legacy)
     expect(pick5(walk.stats)).toEqual(pick5(legacy.stats))
   })
 })
@@ -114,6 +188,26 @@ describe('F-2 등가 — 제외 모델 도입 후에도 (EQ3 · 🔴RED 미구�
     expect(legacy.wire.items.length).toBeGreaterThan(0) // 앵커
     expect(walk.items.length).toBeGreaterThan(0)
 
+    expectEquivalentItems(walk, legacy)
+    expect(pick5(walk.stats)).toEqual(pick5(legacy.stats))
+  })
+})
+
+describe('F-2 등가 — 병합 커밋 항목까지 비교한다 (EQ-MERGE)', () => {
+  it('EQ-MERGE: --no-ff `feed:` 병합 커밋의 items 개수·제목·docs 가 완전히 일치한다', () => {
+    const vault = track(seedMergeVault())
+    const legacy = parseVault(vault, 'dev', SCHEMA_DIR)
+    const walk = walkStatsOf(vault, 'dev')
+
+    expect(legacy.wire.items.find((item) => item.title === '병합 소식')?.docs).toEqual([
+      { id: ID_MERGE_B },
+      { id: ID_MERGE_C },
+    ])
+    expect(walk.items.find((item) => item.title === '병합 소식')?.docs).toEqual([
+      { id: ID_MERGE_B },
+      { id: ID_MERGE_C },
+    ])
+    expectEquivalentItems(walk, legacy)
     expect(pick5(walk.stats)).toEqual(pick5(legacy.stats))
   })
 })

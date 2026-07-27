@@ -17,6 +17,7 @@ export const DOC_A = { id: '0192a000-0000-7000-8000-0000000000aa', path: 'compan
 export const DOC_B = { id: '0192b000-0000-7000-8000-0000000000bb', path: 'tech/HBM' }
 
 export const GENERATED_AT = '2023-11-14T22:13:20.000Z'
+export const INPUTS_FINGERPRINT = '0123456789abcdef'
 
 /** 어디에도 없는 문서 id(유효 UUIDv7) — 불변식 1·3·4 의 위반 주입용 */
 export const GHOST_ID = '0192f000-0000-7000-8000-0000000000ff'
@@ -108,6 +109,7 @@ export function aSummary() {
     {
       docs: [],
       generatedAt: GENERATED_AT,
+      inputsFingerprint: INPUTS_FINGERPRINT,
       schemaVersion: 1,
       sourceCommit: SOURCE_COMMIT,
       tags: {},

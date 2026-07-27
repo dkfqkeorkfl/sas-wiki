@@ -5,10 +5,19 @@
   "description": "부팅 1회 페이로드 — 사이드바 트리·태그·검색·필터. 본문은 담지 않는다(wiki_body.json). strict: 제거된 필드가 산출물에 있으면 fail 한다.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "sourceCommit", "docs", "tree", "tags"],
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "inputsFingerprint",
+    "sourceCommit",
+    "docs",
+    "tree",
+    "tags"
+  ],
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "generatedAt": { "type": "string", "minLength": 1 },
+    "inputsFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
     "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "docs": { "type": "array", "items": { "$ref": "#/definitions/summaryDoc" } },
     "tree": { "type": "array", "items": { "$ref": "#/definitions/treeNode" } },

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sas-wiki/schema/report.schema.json",
+  "title": "summary_report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "inputsFingerprint",
+    "sourceCommit",
+    "inputs",
+    "regenerated",
+    "summary",
+    "excluded"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "generatedAt": { "type": "string", "minLength": 1 },
+    "inputsFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["env"],
+      "properties": {
+        "env": { "type": "string", "enum": ["dev", "prod"] }
+      }
+    },
+    "regenerated": { "type": "boolean" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "included", "excluded"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "included": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "id", "reasonCode", "message"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "id": { "type": ["string", "null"] },
+          "reasonCode": {
+            "type": "string",
+            "enum": [
+              "NO_FRONTMATTER",
+              "MISSING_TYPE",
+              "SCHEMA_VIOLATION",
+              "DUPLICATE_PATH",
+              "DUPLICATE_ID",
+              "ID_TAMPERED",
+              "DELETED_ID_REUSE"
+            ]
+          },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

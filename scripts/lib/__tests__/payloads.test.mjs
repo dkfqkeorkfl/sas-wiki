@@ -55,6 +55,7 @@ function summaryOf(docs) {
   return buildSummary({
     docs,
     generatedAt: GENERATED_AT,
+    inputsFingerprint: '0123456789abcdef',
     sourceCommit: SOURCE_COMMIT,
     tags: TAGS,
     tree: TREE,
@@ -68,6 +69,7 @@ describe('buildSummary', () => {
     expect(Object.keys(summary).toSorted()).toEqual([
       'docs',
       'generatedAt',
+      'inputsFingerprint',
       'schemaVersion',
       'sourceCommit',
       'tags',

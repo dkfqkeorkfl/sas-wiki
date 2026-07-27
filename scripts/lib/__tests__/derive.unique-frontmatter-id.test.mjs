@@ -55,15 +55,14 @@ function aParsedDoc(relPath, id) {
 }
 
 describe('R6 derive 유일 게이트 — frontmatter id 로도 성립', () => {
-  it('두 문서의 frontmatter id 가 같으면 throw 한다(git 해시가 달라도)', () => {
+  it('두 문서의 frontmatter id 가 같아도 derive 는 throw 하지 않는다(doc-gate 소유)', () => {
     const twins = [aParsedDoc('concept/twin-A', UUIDV7_A), aParsedDoc('concept/twin-B', UUIDV7_A)]
     const runner = makeRunner({
       'concept/twin-A': aLog(HASH_A, 'wiki/concept/twin-A.md'),
       'concept/twin-B': aLog(HASH_B, 'wiki/concept/twin-B.md'),
     })
 
-    // 현행: id=git-hash(A≠B) → 충돌 안 남 → throw 안 함 → 이 단언이 RED.
-    expect(() => deriveForTest(twins, runner)).toThrow()
+    expect(() => deriveForTest(twins, runner)).not.toThrow()
   })
 
   it('frontmatter id 가 서로 다르면 throw 하지 않는다(green-stay)', () => {

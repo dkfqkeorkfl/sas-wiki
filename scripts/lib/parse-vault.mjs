@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { derive } from './derive.mjs'
+import { judgeDocs } from './doc-gate.mjs'
 import { isDraft } from './draft.mjs'
 import { buildFeedItems, parseCommitForFeed } from './feed.mjs'
 import {
@@ -39,12 +40,17 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
  * @param {string} schemaDir 생산 JSON Schema 디렉토리
  * @returns {{ gate: { commits: object[], derived: object, runGit: Function, visibleDocs: object[] }, stats: object, wire: object }}
  */
-export function parseVault(vaultDir, env, schemaDir) {
+export function parseVault(
+  vaultDir,
+  env,
+  schemaDir,
+  { deepDocGate = false, runGit: injectedRunGit } = {},
+) {
   const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
 
   // 한 파싱 안에서 같은 git 질의는 같은 답을 낸다(리포는 그동안 변하지 않는다). 문서별
   // `git log --follow` 는 검증·파생·역인덱스 3곳이 각각 부르므로 캐시 없이는 프로세스 스폰이 3배다.
-  const runGit = memoize(makeGitRunner(vaultDir))
+  const runGit = memoize(injectedRunGit ?? makeGitRunner(vaultDir))
   checkGitAvailable(runGit)
   assertHistoryIntegrity(runGit, vaultDir)
   const commits = collectGitLog(runGit)
@@ -60,37 +66,50 @@ export function parseVault(vaultDir, env, schemaDir) {
   const parsedDocs = collectMarkdownFilesRecursive(wikiDir)
     .map((filePath) => {
       const parsed = parseMarkdownFile(filePath)
-      // frontmatter 가 없는 파일은 여기서 건너뛴다 — parseVault 는 **dev 서빙의 모든 요청 경로**라
-      //   오타 하나로 위키 전체가 죽으면 안 된다. 다만 조용한 누락은 남기지 않는다:
-      //   `validate.mjs:checkStrayDocs` 가 게이트에서 이를 오류로 올린다(서빙은 견디고, 검증은 막는다).
       if (!parsed) {
         strayDocPaths.add(`${WIKI_PREFIX}${path.relative(wikiDir, filePath).split(path.sep).join('/')}`) // prettier-ignore
         return null
       }
-      if (parsed.frontmatter.type === undefined)
-        throw new Error(`type 필드가 없습니다: ${filePath}`)
       const derived = derivePathAndBreadcrumb(filePath, wikiDir)
       return { ...parsed, breadcrumb: derived.breadcrumb, relPath: derived.path }
     })
     .filter(Boolean)
 
-  // dev/prod 분리(D2): prod 는 draft 문서를 제외한다. 이 필터는 반드시 **검증·파생·피드 이전**이다
-  // — 제외 문서는 스키마 검증·역인덱스·피드에서 통째로 배제돼야 부분 누출이 없다(fail-closed 방향).
-  // dev 는 전량 포함(Layer A: draft 미지정=공개는 여기가 아니라 isDraft 가 지킨다).
-  const visibleDocs = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
-  const excludedDocs = env === 'dev' ? [] : parsedDocs.filter((doc) => isDraft(doc))
+  const visibleCandidates = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
+  const draftExcludedDocs = env === 'dev' ? [] : parsedDocs.filter((doc) => isDraft(doc))
+  const judged = judgeDocs(visibleCandidates, {
+    runGit: deepDocGate ? runGit : undefined,
+    strayPaths: strayDocPaths,
+    wikiPrefix: WIKI_PREFIX,
+    wikiSchema: loadSchema(path.join(schemaDir, 'wiki-doc.schema.json')),
+  })
+  const visibleDocs = judged.visible
+  const excludedPaths = new Set(judged.excluded.map((entry) => entry.path))
+  const invalidDocs = visibleCandidates.filter((doc) =>
+    excludedPaths.has(`${WIKI_PREFIX}${doc.relPath}.md`),
+  )
+  const invalidIds = new Set(invalidDocs.map((doc) => doc.frontmatter.id))
 
   const derived = derive(visibleDocs, runGit, { wikiPrefix: WIKI_PREFIX })
 
-  const allHeadDocs = parsedDocs.map((doc) => ({
-    filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
-    id: doc.frontmatter.id,
-  }))
+  const allHeadDocs = parsedDocs
+    .filter((doc) => !invalidDocs.includes(doc))
+    .map((doc) => ({
+      filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
+      id: doc.frontmatter.id,
+    }))
   const headDocs = [...derived.pathToDoc.values()].map((doc) => ({
     filePath: `${WIKI_PREFIX}${doc.relPath}.md`,
     id: doc.id,
   }))
   const pathIndex = buildPathIndex(allHeadDocs, runGit)
+  const invalidFeedRefs = new Set(
+    buildPathIndex(
+      invalidDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
+      runGit,
+    ).keys(),
+  )
+  for (const strayPath of strayDocPaths) invalidFeedRefs.add(`HEAD:${strayPath}`)
   const deletedPaths = collectDeletedDocPaths(runGit, {
     headPaths: new Set(allHeadDocs.map((doc) => doc.filePath)),
     isDocPath: anyMarkdown,
@@ -98,18 +117,23 @@ export function parseVault(vaultDir, env, schemaDir) {
   const everDeletedPaths = collectEverDeletedDocPaths(runGit, { isDocPath: anyMarkdown })
   const excludedFeedRefs = new Set(
     buildPathIndex(
-      excludedDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
+      draftExcludedDocs.map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id })), // prettier-ignore
       runGit,
     ).keys(),
   )
   const { items, stats } = buildFeedItems(commits, {
     deletedPaths,
     everDeletedPaths,
+    excludedIds: new Set(draftExcludedDocs.map((doc) => doc.frontmatter.id)),
     excludedFeedRefs,
+    invalidFeedRefs,
+    invalidIds,
     pathIndex,
     runGit,
     strayDocPaths,
   })
+  stats.excluded = judged.excluded
+  stats.invalidExcludedRefs ??= []
 
   const ignore = loadIgnoreFeeds(vaultDir, schemaDir)
   const allFeedIds = new Set(

@@ -13,6 +13,9 @@ import path from 'node:path'
 
 const NAME = 'SAS Wiki Bot'
 const EMAIL = 'bot@sas.wiki'
+
+/** `type: company` 의 스키마 필수 `meta` 최소값. 리터럴이다 — 프로덕션 스키마에서 유도하지 않는다(규범 A). */
+const DEFAULT_COMPANY_META = { exchange: 'KRX', sector: '테스트', ticker: '000000' }
 let tick = 1_136_239_445
 
 export function git(cwd, args, extraEnv = {}) {
@@ -111,6 +114,7 @@ export function writeDoc(
   {
     body = '## 정의\n\n본문 문단이다.\n',
     id,
+    meta,
     status = 'active',
     title,
     type = 'concept',
@@ -126,6 +130,16 @@ export function writeDoc(
     `status: ${status}`,
   ]
   if (id !== undefined) fm.push(`id: "${id}"`)
+  // `type: company` 는 스키마상 `meta` 가 필수다(조건부 required). P3 이전에는 문서 스키마 검증이
+  //   `validate.mjs` 에서만 돌아 **서빙 경로가 이 위반을 통과**시켰고, 그래서 이 헬퍼가 meta 없이도
+  //   쓸 만했다. P3 부터 판정이 얕은 티어(항상)로 올라와 그런 문서는 서빙에서도 제외된다 —
+  //   즉 이 헬퍼가 만들던 company 문서는 이제 **부적합 데이터**다. 픽스처는 유효 문서를 만들어야
+  //   부재 단언이 공허해지지 않으므로, 지정이 없으면 타입이 요구하는 최소 meta 를 채운다.
+  const resolvedMeta = meta ?? (type === 'company' ? DEFAULT_COMPANY_META : undefined)
+  if (resolvedMeta !== undefined) {
+    fm.push('meta:')
+    for (const [key, value] of Object.entries(resolvedMeta)) fm.push(`  ${key}: "${value}"`)
+  }
   fm.push('---', '', body)
   writeFileSync(full, fm.join('\n'))
   return full

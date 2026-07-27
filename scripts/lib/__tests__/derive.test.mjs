@@ -267,7 +267,7 @@ describe('derive — 무결성 가드', () => {
     expect(pathToDoc.has('legacy/폐문서')).toBe(true)
   })
 
-  it('중복 id(한 커밋이 문서 2개 생성)는 throw 한다 — 불변식 8 의 최후 방어선', () => {
+  it('중복 id 판정은 doc-gate 로 이동했고 derive 는 throw 하지 않는다', () => {
     const twins = [
       aParsedDoc({ relPath: 'concept/쌍둥이-A' }),
       aParsedDoc({ relPath: 'concept/쌍둥이-B' }),
@@ -277,7 +277,7 @@ describe('derive — 무결성 가드', () => {
       'concept/쌍둥이-B': aLog(SAMSUNG_SHA, { file: 'wiki/concept/쌍둥이-B.md' }),
     })
 
-    expect(() => deriveForTest(twins, sameSha)).toThrow(/쌍둥이-A|쌍둥이-B|중복/)
+    expect(() => deriveForTest(twins, sameSha)).not.toThrow()
   })
 
   it('미커밋 문서(빈 로그)는 명시적으로 실패한다', () => {

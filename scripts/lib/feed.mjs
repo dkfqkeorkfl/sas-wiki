@@ -1,5 +1,6 @@
-import { getCommitDiffHunks } from './git.mjs'
+import { anyMarkdown, getCommitDiffHunks, getCommitDocStatuses } from './git.mjs'
 import { judgeFeedSurvival } from './feed-survival.mjs'
+import { parseFrontmatterYaml } from './parse.mjs'
 
 const FEED_SUBJECT_RE = /^feed:\s+(.+)$/
 export const IMPORTANCE = new Set(['breaking', 'fix', 'highlight', 'normal'])
@@ -32,6 +33,7 @@ export const byRecencyThenId = (a, b) => {
  *   docsById: Map<string, { bodyLineOffset: number, status: string }>,
  *   everDeletedPaths?: Set<string>,
  *   excludedFeedRefs?: Set<string>,
+ *   invalidFeedRefs?: Set<string>,
  *   pathIndex: Map<string, string>,
  *   runGit: (args: string[]) => string,
  * }} context
@@ -40,7 +42,10 @@ export function buildFeedItems(commits, context) {
   const {
     deletedPaths,
     everDeletedPaths = deletedPaths,
+    excludedIds = new Set(),
     excludedFeedRefs = new Set(),
+    invalidFeedRefs = new Set(),
+    invalidIds = new Set(),
     pathIndex,
     runGit,
     strayDocPaths = new Set(),
@@ -54,10 +59,13 @@ export function buildFeedItems(commits, context) {
   // 끊긴다. **판정은 저기서 끝났고 여기로는 결과만 온다** — 이 루프에 prefix 리터럴을 두지 않는 것이
   // 이 phase 의 요점이다.
   const everWikiPaths = new Set([
-    ...[...pathIndex.keys(), ...excludedFeedRefs].map((key) => key.slice(key.indexOf(':') + 1)),
+    ...[...pathIndex.keys(), ...excludedFeedRefs, ...invalidFeedRefs].map((key) =>
+      key.slice(key.indexOf(':') + 1),
+    ),
     ...strayDocPaths,
   ])
   const stats = {
+    invalidExcludedRefs: [],
     prunedDocRefs: 0,
     prunedFeeds: 0,
     unpublishedFeedCommits: [],
@@ -65,6 +73,7 @@ export function buildFeedItems(commits, context) {
     warnings: [],
   }
   const items = []
+  const knownIds = new Set([...pathIndex.values(), ...excludedIds, ...invalidIds])
 
   for (const commit of commits) {
     const subject = commit.subject || ''
@@ -72,11 +81,14 @@ export function buildFeedItems(commits, context) {
 
     if (!post) continue
 
-    const hunksByFile = getCommitDiffHunks(runGit, commit.hash)
+    let statuses = getCommitDocStatuses(runGit, commit.hash, anyMarkdown, {
+      diffMerges: 'first-parent',
+    })
+    if (statuses.length === 0) statuses = statusesFromDiffHunks(runGit, commit.hash)
     const refs = []
 
-    for (const [rawFile, hunks] of Object.entries(hunksByFile)) {
-      const filePath = rawFile.split('\\').join('/')
+    for (const status of statuses) {
+      const filePath = status.path.split('\\').join('/')
       if (!filePath.endsWith('.md')) continue
       // 문서가 아니면 조용히 건너뛴다. **현재 prefix 로 예외를 파지 않는다** — 그렇게 하면 히스토리
       //   계층에 현재 상태 개념이 다시 스며들어 이 phase 가 없애려는 결합이 부활한다. 파싱 실패한
@@ -97,11 +109,24 @@ export function buildFeedItems(commits, context) {
       // 역인덱스가 풀어내면 그것이 정답이다. 못 풀 때만 deletedPaths 로 "진짜 삭제라 못 찾은 것"과
       // "그 외 사유로 못 찾은 것(unresolved)" 을 가른다.
       const key = `${commit.hash}:${filePath}`
-      const docId = pathIndex.get(key)
+      let docId =
+        pathIndex.get(key) ??
+        (status.oldPath ? pathIndex.get(`${commit.hash}:${status.oldPath}`) : null)
+      if (!docId) {
+        const blobId = readBlobId(runGit, key, filePath)
+        if (blobId && knownIds.has(blobId)) docId = blobId
+      }
 
       if (!docId) {
         // 삭제된 문서는 도달할 곳이 없다(스텁조차 없다) → prune. disable 은 걷어내지 않는다.
-        if (everDeletedPaths.has(filePath)) {
+        if (invalidFeedRefs.has(`${commit.hash}:${filePath}`)) {
+          stats.invalidExcludedRefs?.push({ path: filePath, sha: commit.hash })
+          refs.push({ id: null, reason: 'invalid-excluded' })
+        } else if (strayDocPaths.has(filePath)) {
+          stats.invalidExcludedRefs?.push({ path: filePath, sha: commit.hash })
+          stats.unresolvedPaths.push({ path: filePath, sha: commit.hash })
+          refs.push({ id: null, reason: 'unresolved' })
+        } else if (everDeletedPaths.has(filePath)) {
           refs.push({ id: null, reason: 'deleted' })
         } else if (excludedFeedRefs.has(`${commit.hash}:${filePath}`)) {
           // prod 에서 draft 로 배제된 문서를 가리킨 피드 — 삭제와 동일하게 prune 한다(정상 배제).
@@ -115,14 +140,28 @@ export function buildFeedItems(commits, context) {
         continue
       }
 
-      if (excludedFeedRefs.has(key)) refs.push({ id: null, reason: 'draft-excluded' })
-      else refs.push({ id: docId, reason: null })
+      if (invalidIds.has(docId) || invalidFeedRefs.has(key)) {
+        stats.invalidExcludedRefs?.push({ path: filePath, sha: commit.hash })
+        refs.push({ id: null, reason: 'invalid-excluded' })
+      } else if (excludedIds.has(docId) || excludedFeedRefs.has(key)) {
+        refs.push({ id: null, reason: 'draft-excluded' })
+      } else refs.push({ id: docId, reason: null })
     }
 
     const survival = judgeFeedSurvival({ importance: post.importance, refs })
-    stats.prunedDocRefs += survival.counters.deleted + survival.counters.draftExcluded
+    stats.prunedDocRefs +=
+      survival.counters.deleted +
+      survival.counters.draftExcluded +
+      survival.counters.invalidExcluded
     if (!survival.feedSurvives) {
-      if (survival.counters.deleted + survival.counters.draftExcluded > 0) stats.prunedFeeds += 1
+      if (
+        survival.counters.deleted +
+          survival.counters.draftExcluded +
+          survival.counters.invalidExcluded >
+        0
+      ) {
+        stats.prunedFeeds += 1
+      }
       continue
     }
 
@@ -141,6 +180,30 @@ export function buildFeedItems(commits, context) {
   return {
     items: items.toSorted(byRecencyThenId),
     stats,
+  }
+}
+
+function statusesFromDiffHunks(runGit, hash) {
+  return Object.keys(getCommitDiffHunks(runGit, hash)).map((filePath) => ({
+    path: filePath.split('\\').join('/'),
+    status: 'M',
+  }))
+}
+
+function readBlobId(runGit, ref, filePath) {
+  let blob
+  try {
+    blob = runGit(['-c', 'core.quotepath=false', 'show', ref])
+  } catch {
+    return null
+  }
+  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
+  if (!match) return null
+  try {
+    const id = parseFrontmatterYaml(match[1], filePath).id
+    return typeof id === 'string' ? id : null
+  } catch {
+    return null
   }
 }
 

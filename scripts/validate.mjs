@@ -6,15 +6,10 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { checkAnchorExists } from './lib/derive.mjs'
-import {
-  anyMarkdown,
-  collectDeletedDocEvents,
-  readIdAtCreation,
-  readIdAtDeletion,
-} from './lib/git.mjs'
+import { computeInputsFingerprint } from './lib/fingerprint.mjs'
 import { applyIgnoreFeeds } from './lib/ignore.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
-import { collectMarkdownFilesRecursive, extractWikilinks, parseMarkdownFile } from './lib/parse.mjs'
+import { extractWikilinks } from './lib/parse.mjs'
 import { parseVault, WIKI_PREFIX } from './lib/parse-vault.mjs'
 import { buildBody, buildFeeds, buildSummary } from './lib/payloads.mjs'
 import { loadSchema, validateItem } from './lib/validate.mjs'
@@ -41,23 +36,27 @@ const PAYLOAD_FILES = {
  * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod', schema?: string, vault: string }} options
  * @returns {{ body: object, feeds: object, stats: object, summary: object }}
  */
-export function buildContent({ deadlinks = 'warn', env = 'prod', schema, vault }) {
+export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0, schema, vault }) {
   const vaultDir = path.resolve(vault)
   const schemaDir = schema ? path.resolve(schema) : SCHEMA_DIR
 
-  const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
+  const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir, { deepDocGate: true })
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
-  validateParsedDocs(gate.visibleDocs, gate.runGit, vaultDir, loadSchema(path.join(schemaDir, 'wiki-doc.schema.json'))) // prettier-ignore
+  gateExcluded(stats.excluded ?? [], maxExcluded, stats.invalidExcludedRefs ?? [])
   const deadlinkReport = collectDeadlinks(gate.visibleDocs, gate.derived)
   stats.deadlinks = gateDeadlinks(deadlinkReport, deadlinks, vaultDir)
   checkFeedResolution(stats)
-  checkStrayDocs(vaultDir)
-  checkDeletedIdReuse(gate)
 
   const feedItems = applyIgnoreFeeds(wire.items, wire.ignore)
+  const inputsFingerprint = computeInputsFingerprint({
+    env,
+    sourceCommit: wire.sourceCommit,
+    vaultDir,
+  })
   const summary = buildSummary({
     docs: wire.docs,
     generatedAt: wire.generatedAt,
+    inputsFingerprint,
     sourceCommit: wire.sourceCommit,
     tags: wire.tags,
     tree: wire.tree,
@@ -92,7 +91,7 @@ export async function main(argv = process.argv.slice(2)) {
  * 별칭·마이그레이션 금지). 옛 스크립트가 넘기면 시끄럽게 끊어 오배선을 드러낸다.
  */
 export function parseArgs(argv) {
-  const options = { deadlinks: 'warn', env: null, schema: SCHEMA_DIR, vault: null }
+  const options = { deadlinks: 'warn', env: null, maxExcluded: 0, schema: SCHEMA_DIR, vault: null }
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -122,6 +121,15 @@ export function parseArgs(argv) {
         throw new Error(`알 수 없는 --deadlinks 값: "${value}" — ignore|warn|error 만 허용합니다`)
       }
       options.deadlinks = value
+      i += 1
+      continue
+    }
+    if (arg === '--max-excluded') {
+      const value = argv[i + 1]
+      if (!value || !/^\d+$/u.test(value)) {
+        throw new Error('--max-excluded 에는 0 이상의 정수가 필요합니다')
+      }
+      options.maxExcluded = Number.parseInt(value, 10)
       i += 1
       continue
     }
@@ -199,74 +207,25 @@ function formatDeadlinks(deadlinks, vaultDir, header) {
 }
 
 /**
- * **삭제된 문서의 id 를 다른 문서가 물려받는 것**을 막는다.
+ * 제외 게이트 — 문서 단위 제외가 허용치를 넘으면 중단한다.
  *
- * 기존 두 게이트는 이 구멍을 못 봤다: 유일성은 HEAD 기준이라 이미 지워진 문서와는 안 겹치고,
- * 불변성은 각 문서의 *자기* 생성 blob 과만 대조한다. 그 사이로 「A(id X) 삭제 → 무관한 B 가
- * id X 로 생성」이 통과하면, A 를 가리키던 **과거 피드가 B 로 연결**된다. 피드가 곧 변경이력인
- * 제품에서 이는 조용한 오귀속이다.
- *
- * **규칙은 하나, 면제는 없다**: 삭제된 문서가 갖고 있던 id 를 지금 살아 있는 문서가 갖고 있으면
- * 위반이다.
- *
- * 예외를 두지 않는 이유 —
- *  - *이동* 은 삭제가 아니다. `collectDeletedDocEvents` 가 `--find-renames` 를 못박아 rename 을
- *    `R` 로 잡으므로 애초에 이 목록에 들어오지 않는다(로컬 `diff.renames=false` 도 무력화).
- *  - *같은 경로 재생성* 은 복원이 아니다. 데이터 계약(`README` · 문서 id)이 "지운 경로에 다시 문서를
- *    만들면 그건 복원이 아니라 새 문서다" 라고
- *    못박는다. 경로는 정체성이 아니며, 삭제는 그 문서의 피드를 prune 한다 — 같은 경로에 옛 id 를
- *    다시 쓰면 prune 된 이력이 새 내용 위로 되살아나 오귀속된다.
- *
- * 초판은 이 자리에 경로 기반 면제 두 개(rename 계보·현재 살아 있는 경로)를 뒀는데, 둘 다 sha 를
- * 버린 **경로 문자열** 비교라 재생성된 문서가 자기 자신을 면제했다(3차 감사). 경로로 정체성을
- * 판정하려 한 것이 오류의 뿌리다 — 이제 id 만 본다.
+ * **참조 sha 를 함께 싣는 이유**: 제외 모델 이전에는 깨진 문서를 가리킨 feed 가 `unresolved` 로
+ * 분류돼 `checkFeedResolution` 이 **"어느 커밋이" 그것을 가리켰는지**(sha)를 진단에 담았다. 제외
+ * 모델로 옮기면서 그 정보를 잃으면 저자는 "문서가 깨졌다" 만 알고 **어느 발행이 그것을 참조하는지**
+ * 는 모른다 — 피드가 커밋 감사추적인 제품에서 그건 진단의 절반을 버리는 것이다. `invalidExcludedRefs`
+ * 가 그 seam 이다.
  */
-function checkDeletedIdReuse({ derived, runGit }) {
-  const livePathById = new Map(
-    [...derived.pathToDoc.values()].map((doc) => [doc.id, `${WIKI_PREFIX}${doc.relPath}.md`]),
-  )
-
-  const violations = []
-  for (const event of collectDeletedDocEvents(runGit, { isDocPath: anyMarkdown })) {
-    const deletedId = readIdAtDeletion(runGit, event)
-    if (deletedId === null) continue // pre-id era — 대조할 id 가 없다
-    const livePath = livePathById.get(deletedId)
-    if (livePath !== undefined) {
-      violations.push({ deletedPath: event.path, id: deletedId, livePath })
-    }
-  }
-  if (violations.length === 0) return
-
-  const detail = violations
-    .map((entry) => `  - id ${entry.id}: 삭제된 ${entry.deletedPath} → 현재 ${entry.livePath}`)
+function gateExcluded(excluded, maxExcluded, invalidRefs = []) {
+  if (excluded.length <= maxExcluded) return
+  const detail = excluded
+    .map((entry) => `  - ${entry.path}: ${entry.reasonCode} ${entry.message}`)
     .join('\n')
+  const refs = invalidRefs
+    .map((entry) => `    - ${String(entry.sha).slice(0, 12)} ${entry.path}`)
+    .join('\n')
+  const refDetail = refs === '' ? '' : `\n  이 문서를 가리킨 feed 커밋:\n${refs}`
   throw new Error(
-    `삭제된 문서의 id 재사용 ${violations.length}건 — 과거 피드가 다른 문서로 연결된다:\n${detail}\n` +
-      `  해결: 새 문서에 새 UUIDv7 을 부여한다 — 삭제된 경로의 재생성은 계약상 새 문서다\n` +
-      `        (README · 문서 id). 문서를 *이동* 한 것이라면 삭제·재생성이 아니라\n` +
-      `        rename 으로 커밋해야 계보가 이어진다.`,
-  )
-}
-
-/**
- * wiki 아래에 **문서로 해석되지 않는 .md** 가 있으면 중단한다.
- *
- * `parseVault` 는 서빙 경로(요청마다 실행)라 이런 파일을 건너뛴다 — 오타 하나로 위키 전체가 죽으면
- * 안 되기 때문이다. 그 대신 조용한 누락을 여기서 막는다: 저자는 올렸다고 믿는데 독자에겐 없는
- * 상태가 가장 늦게 발견되는 결함이다.
- *
- * `checkFeedResolution` **뒤에** 놓는다 — 그 파일을 가리키는 feed 가 있으면 sha 를 담은 미해석
- * 진단이 더 구체적이므로 먼저 나가야 하고, 여기서는 **아무도 안 건드린 stray** 를 담당한다.
- */
-function checkStrayDocs(vaultDir) {
-  const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
-  const stray = collectMarkdownFilesRecursive(wikiDir).filter(
-    (filePath) => !parseMarkdownFile(filePath),
-  )
-  if (stray.length === 0) return
-  const detail = stray.map((filePath) => `  - ${path.relative(vaultDir, filePath)}`).join('\n')
-  throw new Error(
-    `frontmatter 가 없어 문서로 해석되지 않는 파일 ${stray.length}건 — 조용히 누락되지 않도록 중단한다:\n${detail}`,
+    `문서 제외 ${excluded.length}건이 허용치 ${maxExcluded}건을 초과했습니다:\n${detail}${refDetail}`,
   )
 }
 
@@ -298,36 +257,6 @@ function reportStats({ body, feeds, stats, summary }) {
 
 function usage() {
   return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error]'
-}
-
-function validateParsedDocs(parsedDocs, runGit, vaultDir, wikiSchema) {
-  const allErrors = []
-  for (const parsed of parsedDocs) {
-    // 무결성 3게이트: 형식·유일은 스키마 pattern + derive 가, presence 는 스키마 required(id) 가 잡는다.
-    // 여기서 frontmatter id 를 그대로 검증한다 — git-hash 를 주입해 덮지 않는다(그러면 missing id 가
-    // 조용히 구제되고 저작 UUIDv7 이 산출물로 흐르지 못한다).
-    const errors = validateItem(parsed.frontmatter, wikiSchema, path.relative(vaultDir, parsed.filePath)) // prettier-ignore
-    if ('created' in parsed.frontmatter || 'updated' in parsed.frontmatter) {
-      errors.push('created/updated는 frontmatter에서 제거되었습니다(git 히스토리 유도).')
-    }
-    // 불변 게이트: 생성 커밋 blob 의 id 와 HEAD frontmatter id 를 대조한다. 생성 시점 id 부재(pre-id
-    // era)는 null → PASS(false-fail 금지). 있는데 다르면 사후 변조 → fail.
-    const idAtCreation = readIdAtCreation(runGit, `${WIKI_PREFIX}${parsed.relPath}.md`)
-    if (idAtCreation !== null && idAtCreation !== parsed.frontmatter.id) {
-      errors.push(
-        `id 사후 변조: 생성 시점 id(${idAtCreation}) ≠ 현재 frontmatter id(${parsed.frontmatter.id})`,
-      )
-    }
-    if (errors.length > 0) allErrors.push({ errors, file: parsed.filePath })
-  }
-  if (allErrors.length === 0) return
-  const detail = allErrors
-    .map(
-      (entry) =>
-        `  - ${path.relative(vaultDir, entry.file)}:\n${entry.errors.map((message) => `      * ${message}`).join('\n')}`,
-    )
-    .join('\n')
-  throw new Error(`스키마 위반 ${allErrors.length}건 발견:\n${detail}`)
 }
 
 /** 산출물 strict 검증 — 제거된 필드가 하나라도 남아 있으면 여기서 죽는다(in-memory payload 대상). */

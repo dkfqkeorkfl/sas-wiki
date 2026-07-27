@@ -52,7 +52,7 @@ function judge(input) {
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 
 /** counters 기본값 — 각 행은 필요한 축만 덮어쓴다(무엇이 세어졌는지가 표에 보인다 · DAMP). */
-const zero = { deleted: 0, draftExcluded: 0, unresolved: 0 }
+const zero = { deleted: 0, draftExcluded: 0, invalidExcluded: 0, unresolved: 0 }
 
 // 각 행 = 개별 케이스(it.each). 반환 **객체 전체**를 toEqual 로 못박는다 — 부분 단언이면
 //   "docs 는 맞는데 counters 를 조용히 삼키는" 절반 구현이 통과한다(P1 CF5 형).

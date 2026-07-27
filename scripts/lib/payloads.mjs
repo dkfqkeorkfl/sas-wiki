@@ -51,12 +51,13 @@ export function buildFeeds({ generatedAt, items, sourceCommit }) {
  *
  * `generatedAt` 은 **주입**받는다 — 여기서 시계를 직접 읽으면 재빌드가 흔들린다(결정성 seam).
  */
-export function buildSummary({ docs, generatedAt, sourceCommit, tags, tree }) {
+export function buildSummary({ docs, generatedAt, inputsFingerprint, sourceCommit, tags, tree }) {
   return {
     docs: docs.map((doc) =>
       pick(doc, doc.status === 'disable' ? DISABLE_STUB_KEYS : ACTIVE_DOC_KEYS),
     ),
     generatedAt,
+    inputsFingerprint,
     schemaVersion: SCHEMA_VERSION,
     sourceCommit,
     tags,

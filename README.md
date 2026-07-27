@@ -2,7 +2,7 @@
 
 마크다운 vault(→ [저장소 구조](#저장소-구조) 에서 정의) 와 **git 히스토리**를 입력으로 받아, 위키 화면과 뉴스 피드에 필요한 JSON 을 세 개의 CLI 로 뱉는 데이터 리포지토리다.
 
-서버가 아니다. 빌드 산출물도 없다. `node scripts/<이름>.mjs` 로 실행하면 stdout 에 JSON 한 줄이 나오고 끝난다. 소비자(개발 서버·미래의 실서버)가 필요할 때마다 프로세스를 띄워 그 JSON 을 받아간다.
+서버가 아니다. `node scripts/<이름>.mjs` 로 실행하면 stdout 에 JSON 한 줄이 나온다. `summary` 는 추가로 `cache/summary.json` 과 `logs/summary.report.*` 를 발행하는 생성기이기도 하다. 소비자(개발 서버·미래의 실서버)는 프로세스를 띄워 stdout JSON 을 받아가며, 이후 phase 에서 캐시 파일 소비로 넘어간다.
 
 핵심 아이디어 두 개만 알면 나머지는 따라온다.
 
@@ -41,12 +41,14 @@ node scripts/feeds.mjs --env dev --count 20
 ```text
 vault/wiki/**/*.md      문서 원본. 폴더 구조가 곧 위키의 계층이다
 scripts/
-  summary.mjs           엔드포인트 — 화면 뼈대
+  summary.mjs           엔드포인트 겸 생성기 — 화면 뼈대 + cache/summary.json
   feeds.mjs             엔드포인트 — 뉴스 피드
   wiki.mjs              엔드포인트 — 문서 1건 본문
   validate.mjs          무결성 검사 CLI (엔드포인트 아님 — JSON 을 안 낸다)
   lib/                  순수 함수 부품 (파싱·git 워크·렌더·불변식)
   schema/               JSON Schema — frontmatter 1종 + 산출물 3종 + 억제목록 1종
+cache/summary.json      summary 생성 캐시(gitignore)
+logs/summary.report.*   summary 생성 리포트(gitignore)
 ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone). 아래 피드 발행법 참고
 ```
 
@@ -148,11 +150,23 @@ vault/wiki/company/삼성전자.md
 
 ### summary
 
-화면 뼈대. 사이드바 트리·태그·검색 색인·필터에 필요한 것만 담고 **본문은 담지 않는다**.
+화면 뼈대. 사이드바 트리·태그·검색 색인·필터에 필요한 것만 담고 **본문은 담지 않는다**. 기본 실행은 stdout 에 기존 summary payload 한 줄을 유지하면서 `<vault>/cache/summary.json` 을 원자 발행하고, `<vault>/logs/summary.report.json` 과 `.txt` 를 쓴다.
 
 ```bash
 node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
+                         [--out <file>] [--stdout] [--status]
+                         [--force] [--max-excluded <n>]
 ```
+
+| 플래그             | 의미                                                             |
+| ------------------ | ---------------------------------------------------------------- |
+| `--out`            | 캐시 파일 경로 override. 기본은 `<vault>/cache/summary.json`     |
+| `--stdout`         | 부작용 없는 조회. 캐시·리포트를 쓰지 않고 stdout payload 만 낸다 |
+| `--status`         | payload 대신 생성 상태 JSON 을 stdout 으로 낸다                  |
+| `--force`          | 지문이 같아도 재생성한다                                         |
+| `--max-excluded n` | 제외 문서가 n건을 넘으면 exit 3. 산출물은 이미 발행된다          |
+
+캐시 봉투에는 `inputsFingerprint`(16자리 sha256)가 들어간다. 입력은 생성기 소스, 스키마, vault 문서 내용, env, source commit 이며, 지문이 같으면 다음 실행은 캐시 파일을 그대로 stdout 에 echo 한다.
 
 ### feeds
 
@@ -202,7 +216,8 @@ node scripts/wiki.mjs --env dev --path 'company/삼성전자'
 vault 무결성 검사 전용. **JSON 을 생산하지 않는다.** 페이로드를 메모리에서만 조립해 게이트를 전량 돌리고, 통과하면 exit 0, 위반하면 사유를 출력하고 exit 1 로 죽는다.
 
 ```bash
-node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error]
+node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
+                          [--deadlinks ignore|warn|error] [--max-excluded <n>]
 ```
 
 | 플래그           | 의미                                                                  |
@@ -210,12 +225,13 @@ node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>] [--d
 | `--env`          | 미지정 시 prod + **stderr 경고**. 알 수 없는 값은 에러로 끊는다       |
 | `--schema`       | 스키마 디렉토리 override (기본 `scripts/schema`)                      |
 | `--deadlinks`    | 데드링크 심각도. `ignore`, `warn`(기본), `error` 중 하나              |
+| `--max-excluded` | 문서 단위 제외 허용치. 기본 0. 초과 시 validate 는 exit 1             |
 | `--help` `-h`    | 사용법 출력                                                           |
 | `--out` `--root` | **제거됨**. 넘기면 에러로 끊는다 (JSON 을 안 만드니 출력 인자도 없다) |
 
 > `pnpm run validate` 는 **`--env dev` 가 박혀 있다.** prod 를 검증하려면 `node scripts/validate.mjs` 를 직접 부른다. 둘은 결과가 크게 다르다 — 이 리포의 예제 vault 는 전량 draft 라 prod 에서는 `docs=0` 이 나온다.
 
-돌리는 게이트: 커밋 컨벤션 → frontmatter 스키마 + id 불변성 → 데드링크 → 피드 해석 실패 → 떠돌이 파일 → 삭제된 id 재사용 → 산출물 스키마(strict) → [불변식 8종](#불변식-8종).
+돌리는 게이트: 커밋 컨벤션 → 문서 단위 제외(`NO_FRONTMATTER`, `MISSING_TYPE`, `SCHEMA_VIOLATION`, `DUPLICATE_PATH`, `DUPLICATE_ID`, `ID_TAMPERED`, `DELETED_ID_REUSE`) → 데드링크 → 피드 해석 실패 → 산출물 스키마(strict) → [불변식 8종](#불변식-8종).
 
 출력은 JSON 이 아니라 요약 한 줄이다.
 

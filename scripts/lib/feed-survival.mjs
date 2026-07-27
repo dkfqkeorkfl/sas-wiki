@@ -1,7 +1,7 @@
-export const FEED_REF_REASONS = ['deleted', 'draft-excluded', 'unresolved']
+export const FEED_REF_REASONS = ['deleted', 'draft-excluded', 'invalid-excluded', 'unresolved']
 
 export function judgeFeedSurvival({ importance, refs }) {
-  const counters = { deleted: 0, draftExcluded: 0, unresolved: 0 }
+  const counters = { deleted: 0, draftExcluded: 0, invalidExcluded: 0, unresolved: 0 }
   const seen = new Set()
   const docs = []
 
@@ -15,6 +15,7 @@ export function judgeFeedSurvival({ importance, refs }) {
     }
     if (ref.reason === 'deleted') counters.deleted += 1
     else if (ref.reason === 'draft-excluded') counters.draftExcluded += 1
+    else if (ref.reason === 'invalid-excluded') counters.invalidExcluded += 1
     else if (ref.reason === 'unresolved') counters.unresolved += 1
   }
 
