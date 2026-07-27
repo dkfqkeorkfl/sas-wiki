@@ -57,6 +57,9 @@ const SCRIPTS_DIR = path.resolve(HERE, '..')
 
 const SUMMARY = path.join(SCRIPTS_DIR, 'summary.mjs')
 const WIKI = path.join(SCRIPTS_DIR, 'wiki.mjs')
+/** (P5 · Task 3 · D-E) `feeds` 도 아티팩트 소비자가 된다 → 같은 게이트를 여기에도 세운다(FC1). */
+const FEEDS = path.join(SCRIPTS_DIR, 'feeds.mjs')
+const DERIVE = path.join(SCRIPTS_DIR, 'lib', 'derive.mjs')
 /** 렌더 툴체인의 입구 — 6.9초 import 의 정체(plan B1). 경로는 **리터럴**이다. */
 const RENDER = path.join(SCRIPTS_DIR, 'lib', 'render.mjs')
 /** 렌더로 이어지는 상류 — IG1 이 red 일 때 "어디를 끊어야 하는가" 를 가리킨다. */
@@ -101,6 +104,29 @@ describe('정적 import 그래프 — 판정 경로 (IG1·IG6 · 🔴RED 오늘 
     expect(closure.files, `정적 사슬: ${describeChain(closure, PARSE_VAULT)}`).not.toContain(
       PARSE_VAULT,
     )
+  })
+})
+
+// ── P5 · Task 3 (D-E) — `feeds.mjs` 도 판정 경로가 된다 (tdd §3.3 FC1 · 🔴RED 오늘 도달 YES) ────
+//
+//   RED 사유: 오늘 `feeds.mjs:10` 이 `buildWirePayload` 를 정적으로 물고 그 사슬이
+//     `parse-vault → derive → render` 로 이어진다(실측 M5: `node_modules` 308 · render 1).
+//     전환 후 신선도는 `lib/generator.mjs`(OQ-P5-1=A)에서 오고, 그 재생성 분기는 **동적** import 라
+//     정적 폐쇄가 렌더-free 를 유지한다.
+//   ★ 이 게이트만으로는 부족하다(규범 G · D-J): 동적 import 는 정적 그래프에 안 잡히므로 게이트가
+//     green 인 채 툴체인이 실제로 로드되는 상태가 성립한다(CX-J′). 런타임 짝은 **TR3** 이다.
+//   앵커: 같은 파서가 `wiki.mjs` 에서는 도달을 실제로 검출한다(IG2) — 아래 describe 가 그것이다.
+describe('정적 import 그래프 — feeds 판정 경로 (FC1 · 🔴RED 오늘 도달 YES)', () => {
+  it('FC1: `feeds.mjs` 의 정적 폐쇄에 `parse-vault`·`render`·`derive` 가 **없다**', () => {
+    const closure = graph().staticImportClosure(FEEDS)
+
+    // 앵커: 폐쇄가 비어 있지 않다(파서가 죽어서 "도달 안 함" 이 된 것이 아니다).
+    expect(closure.files.length).toBeGreaterThan(1)
+    expect(closure.files, `정적 사슬: ${describeChain(closure, PARSE_VAULT)}`).not.toContain(
+      PARSE_VAULT,
+    )
+    expect(closure.files, `정적 사슬: ${describeChain(closure, RENDER)}`).not.toContain(RENDER)
+    expect(closure.files, `정적 사슬: ${describeChain(closure, DERIVE)}`).not.toContain(DERIVE)
   })
 })
 
