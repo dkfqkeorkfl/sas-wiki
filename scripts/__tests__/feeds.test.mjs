@@ -10,7 +10,8 @@
 //
 // 계약(GREEN 이 구현):
 //   feeds(vault, {from,to,count,after}) = walkFeeds(vault, {...}) + buildFeeds 봉투.
-//     from/to/count 의미 표면 보존(값경계·상한) · nextCursor 필드 **가산**(schemaVersion 불변=1).
+//     from/to/count 의미 표면 보존(값경계·상한) · nextCursor 필드 **가산**(당시 schemaVersion 불변).
+//     ☞ P4 에서 공용 `SCHEMA_VERSION` 이 1 → 2 가 된다(§4 원장 ⑦) — feeds 봉투 **형태**는 그대로다.
 //     억제·정렬·경계·tie-break·continuation 은 walkFeeds 에 **위임**(endpoints 층 재구현 금지 · SSOT).
 import { describe, expect, it } from 'vitest'
 
@@ -46,7 +47,7 @@ function seedFour(vault) {
 }
 
 describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환)', () => {
-  it('E-F1: feeds(vault, {count}) → 최신순 count건·유효 봉투(schemaVersion=1)', () => {
+  it('E-F1: feeds(vault, {count}) → 최신순 count건·유효 봉투(schemaVersion=2)', () => {
     const vault = initVault()
     try {
       seedFour(vault)
@@ -54,7 +55,9 @@ describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환
       const page = feeds(vault, 'dev', { count: 3 })
 
       expect(titlesOf(page)).toEqual(['n4', 'n3', 'n2'])
-      expect(page.schemaVersion).toBe(1)
+      // §4 원장 ⑦ — `SCHEMA_VERSION` 은 3 페이로드 **공용**이다(P2 확정: 쪼개면 `WikiDataProvider`
+      //   부팅 게이트가 영구 false). P4 가 summary 아티팩트에 헤더 3키를 더하며 1 → 2 로 올린다.
+      expect(page.schemaVersion).toBe(2)
       expect(Object.keys(page).toSorted()).toEqual(expect.arrayContaining(ENVELOPE_KEYS))
     } finally {
       cleanup(vault)

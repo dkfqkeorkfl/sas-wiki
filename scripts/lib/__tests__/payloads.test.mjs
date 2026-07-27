@@ -51,9 +51,14 @@ function aBodyRecord(patch = {}) {
   }
 }
 
+/** 아티팩트 스탬프 리터럴 — 프로덕션 상수를 import 하지 않는다(규범 A). 드리프트 감지는 RD10 이 한다. */
+const ENV = 'dev'
+const PRODUCER = 'sas-wiki/summary'
+
 function summaryOf(docs) {
   return buildSummary({
     docs,
+    env: ENV,
     generatedAt: GENERATED_AT,
     inputsFingerprint: '0123456789abcdef',
     sourceCommit: SOURCE_COMMIT,
@@ -63,13 +68,23 @@ function summaryOf(docs) {
 }
 
 describe('buildSummary', () => {
-  it('봉투 키 집합이 정확하다', () => {
+  it('봉투 키 집합이 정확하다 — 아티팩트 헤더 2키 포함 9키', () => {
+    // §4 원장 ⑤ (OQ-P4-4 = **A**): 아티팩트 파일 = stdout payload = HTTP 응답이 **같은 9키**다.
+    //   `buildSummary` 를 7키로 두면 형태가 둘이 된다 — `summary()`(얕은 티어)는 7키를 내는데 실제로
+    //   서빙되는 파일은 9키가 되고, webfront `dev-api.contract.test.ts` 가 **실제 계약과 다른 모양**을
+    //   계약으로 단언하게 된다. A 가 기각한 「두 형태」가 뒷문으로 들어오는 자리라 여기서 막는다.
+    //
+    // ★ 비대칭은 **의도**다: `buildFeeds`·`buildBody` 는 스탬프하지 않는다 — 이번 phase 에서 발행
+    //   아티팩트는 summary 하나뿐이고, 스탬프는 "이 파일이 무엇이며 어느 env 의 것인가" 를 말하는
+    //   **발행 계약**이지 페이로드 장식이 아니다.
     const summary = summaryOf([aDoc().build()])
 
     expect(Object.keys(summary).toSorted()).toEqual([
       'docs',
+      'env',
       'generatedAt',
       'inputsFingerprint',
+      'producer',
       'schemaVersion',
       'sourceCommit',
       'tags',
@@ -77,10 +92,22 @@ describe('buildSummary', () => {
     ])
   })
 
-  it('schemaVersion 은 정수 1이다(문자열 "1" 금지)', () => {
+  it('`producer`·`env` 스탬프가 실제 값을 싣는다(키만 있고 undefined 인 상태 배제)', () => {
+    // 키 집합만 보면 `{ ...payload, producer: undefined, env: undefined }` 도 9키로 통과한다 —
+    //   그러면 독자(`readArtifact`)의 producer·env 층이 **모든 파일을 stale 로 접고** dev 가 영원히
+    //   재생성만 돈다. `env` 는 **인자를 그대로** 실어야 한다(하드코딩이면 dev·prod 파일이 같아진다).
+    expect(summaryOf([aDoc().build()]).producer).toBe(PRODUCER)
+    expect(summaryOf([aDoc().build()]).env).toBe(ENV)
+    expect(buildSummary({ docs: [], env: 'prod', generatedAt: GENERATED_AT, inputsFingerprint: '0123456789abcdef', sourceCommit: SOURCE_COMMIT, tags: TAGS, tree: TREE }).env).toBe('prod') // prettier-ignore
+  })
+
+  it('schemaVersion 은 정수 2이다(문자열 "2" 금지)', () => {
+    // §4 원장 ⑨ — P4 가 아티팩트 헤더 3키(`producer`·`env` + env 별 경로)를 더하면서 1 → **2**.
+    //   옛 아티팩트는 "미지 버전" 이 아니라 **구 버전**이라 독자가 stale 로 떨어뜨리고 재생성한다
+    //   (마이그레이션 없음 — 파생 데이터다 · D-D (b)).
     const summary = summaryOf([aDoc().build()])
 
-    expect(summary.schemaVersion).toBe(1)
+    expect(summary.schemaVersion).toBe(2)
     expect(Number.isInteger(summary.schemaVersion)).toBe(true)
   })
 
@@ -136,7 +163,8 @@ describe('buildFeeds', () => {
       'sourceCommit',
     ])
     expect(feeds.items).toEqual([item])
-    expect(feeds.schemaVersion).toBe(1)
+    // §4 원장 ⑩ — 3 페이로드 **공용** 상수라 feeds 도 함께 2 가 된다(쪼개지 않는다 · AR7 이 pin).
+    expect(feeds.schemaVersion).toBe(2)
   })
 })
 

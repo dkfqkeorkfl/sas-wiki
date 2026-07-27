@@ -381,11 +381,13 @@ describe('실 vault ⑦ 전역 계약', () => {
     expect(body.sourceCommit).toBe(head)
   })
 
-  it('schemaVersion 은 정수 1이고 body 봉투에는 generatedAt 이 없다', () => {
+  it('schemaVersion 은 정수 2이고 body 봉투에는 generatedAt 이 없다', () => {
+    // §4 원장 ⑧ — 1 → **2**(D-D (b)). 세 페이로드가 **함께** 움직인다: 쪼개면 소비자
+    //   `sameGeneration`(`src/api/news.ts:118`)이 영원히 false 가 되어 부팅 게이트가 막힌다(P2 확정).
     const { body, feeds, summary } = ctx.result
 
     expect(Number.isInteger(summary.schemaVersion)).toBe(true)
-    expect([summary.schemaVersion, feeds.schemaVersion, body.schemaVersion]).toEqual([1, 1, 1])
+    expect([summary.schemaVersion, feeds.schemaVersion, body.schemaVersion]).toEqual([2, 2, 2])
     expect('generatedAt' in body).toBe(false)
   })
 

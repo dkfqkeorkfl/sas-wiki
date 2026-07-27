@@ -159,7 +159,7 @@ describe('배관 — 산출물 경로 소유권 (PL5 · 🔴RED)', () => {
     )
 
     // 앵커: tmp vault 쪽에는 **실제로** 산출물이 생겼다(부재 단언이 "아무 일도 안 했다" 가 아니다).
-    expect(existsSync(path.join(vault, 'cache', 'summary.json')), result.stderr).toBe(true)
+    expect(existsSync(path.join(vault, 'cache', 'summary.dev.json')), result.stderr).toBe(true)
     expect(existsSync(path.join(vault, 'logs', 'summary.report.json'))).toBe(true)
     expect(existsSync(path.join(vault, 'logs', 'summary.report.txt'))).toBe(true)
 
@@ -168,7 +168,7 @@ describe('배관 — 산출물 경로 소유권 (PL5 · 🔴RED)', () => {
 
     // ② 생성기가 보고한 경로가 전부 vault 안이다.
     const status = JSON.parse(result.stdout)
-    for (const reported of [status.cachePath, status.reportPath]) {
+    for (const reported of [status.artifactPath, status.reportPath]) {
       expect(typeof reported, JSON.stringify(status)).toBe('string')
       expect(path.relative(vault, path.resolve(reported)).startsWith('..')).toBe(false)
     }

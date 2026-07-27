@@ -23,10 +23,19 @@ const { summary } = await import(new URL('../summary.mjs', import.meta.url).href
 const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
 const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
 
+/**
+ * wire 봉투 **9키** — 7키(P3) + `producer`·`env`(P4 가산 · §4 원장 ⑤ · OQ-P4-4 = **A**).
+ *
+ * 아티팩트 파일 = stdout payload = HTTP 응답이 **같은 형태**여야 한다. 이 엔드포인트가 곧 그 형태이고
+ * (webfront `dev/wiki-backend/__tests__/dev-api.contract.test.ts` 가 봉투 계약으로 문다), 쪼개면
+ * `summary.schema.json`(strict)이 두 벌 필요해진다 = 「호환 분기」.
+ */
 const ENVELOPE_KEYS = [
   'docs',
+  'env',
   'generatedAt',
   'inputsFingerprint',
+  'producer',
   'schemaVersion',
   'sourceCommit',
   'tags',
@@ -53,7 +62,7 @@ function seedMixed(vault) {
 }
 
 describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)', () => {
-  it('E-S1: summary(vault, "prod") → 봉투 6키·draft 제외·본문 키 0', () => {
+  it('E-S1: summary(vault, "prod") → 봉투 9키·schemaVersion 2·draft 제외·본문 키 0', () => {
     const vault = initVault()
     try {
       seedMixed(vault)
@@ -61,7 +70,8 @@ describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)
       const out = summary(vault, 'prod')
 
       expect(Object.keys(out).toSorted()).toEqual(ENVELOPE_KEYS)
-      expect(out.schemaVersion).toBe(1)
+      // §4 원장 ⑥ — 아티팩트 헤더 3키가 늘었으므로 계약 버전이 1 → **2** 다(D-D (b)).
+      expect(out.schemaVersion).toBe(2)
       expect(out.docs.map((doc) => doc.id)).toContain(ID_A)
       expect(out.docs.map((doc) => doc.id)).not.toContain(ID_DRAFT) // draft 제외
       const active = out.docs.find((doc) => doc.id === ID_A)

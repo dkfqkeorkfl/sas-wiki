@@ -86,7 +86,14 @@ function freshPolluted() {
   return vault
 }
 
-const cacheFile = (vault) => path.join(vault, 'cache', 'summary.json')
+/**
+ * 발행 아티팩트 경로 — **env 별로 갈린다**(P4 · D-G ② · §4 원장 신설행).
+ *
+ * `cache/summary.json`(env 무관 단일 슬롯)은 dev·prod 가 서로를 무효화하던 P3 까지의 형태다.
+ * **리터럴 조립이다**(규범 A) — `artifact.mjs` 의 `artifactPath` 를 import 하면 "구현이 뭘 내든
+ * 테스트가 따라가는" 자기참조가 된다. 드리프트 감지는 AR1·AR3 이 맡는다.
+ */
+const artifactFile = (vault, env = 'dev') => path.join(vault, 'cache', `summary.${env}.json`)
 const reportJson = (vault) => path.join(vault, 'logs', 'summary.report.json')
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -100,7 +107,7 @@ describe('종료코드 — 성공 경로 (XC1·XC2 · 🔴RED 미구현)', () =>
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
 
     expect(result.status, result.stderr).toBe(0)
-    expect(existsSync(cacheFile(vault))).toBe(true)
+    expect(existsSync(artifactFile(vault))).toBe(true)
   })
 
   it('XC2: 오염 vault(문턱 미지정) → **exit 0** · 리포트가 제외 2건을 담는다', () => {
@@ -114,7 +121,7 @@ describe('종료코드 — 성공 경로 (XC1·XC2 · 🔴RED 미구현)', () =>
     expect(existsSync(reportJson(vault)), result.stderr).toBe(true)
     expect(JSON.parse(readFileSync(reportJson(vault), 'utf8')).excluded).toHaveLength(2)
     expect(result.status).toBe(0)
-    expect(existsSync(cacheFile(vault))).toBe(true)
+    expect(existsSync(artifactFile(vault))).toBe(true)
   })
 })
 
@@ -124,7 +131,7 @@ describe('종료코드 — 전역 실패 (XC3·XC4 · 🔴RED(flip)/RED)', () =>
     //   캐시가 없다" 는 캐시 개념이 아예 없는 지금도 자동으로 참이라 단언이 공허하다.
     const healthy = freshClean()
     expect(runCli(SUMMARY, ['--vault', healthy, '--env', 'dev']).status).toBe(0)
-    expect(existsSync(cacheFile(healthy))).toBe(true)
+    expect(existsSync(artifactFile(healthy))).toBe(true)
 
     const notARepo = mkdtempSync(path.join(tmpdir(), 'wiki-cli-nogit-'))
     tmps.push(notARepo)
@@ -134,7 +141,7 @@ describe('종료코드 — 전역 실패 (XC3·XC4 · 🔴RED(flip)/RED)', () =>
     expect(result.status).toBe(1)
     expect(result.stdout).toBe('') // 반쪽 payload 를 흘리지 않는다
     expect(result.stderr).not.toBe('')
-    expect(existsSync(cacheFile(notARepo))).toBe(false)
+    expect(existsSync(artifactFile(notARepo))).toBe(false)
   })
 
   it('XC4: 캐시 쓰기가 불가능한 `--out`(부모가 파일) → exit 1', () => {
@@ -195,12 +202,12 @@ describe('종료코드 — 문턱 초과는 3, 산출물은 있다 (XC7 · 🔴R
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev', '--max-excluded=0'])
 
     expect(result.status, result.stderr).toBe(3)
-    expect(existsSync(cacheFile(vault))).toBe(true)
+    expect(existsSync(artifactFile(vault))).toBe(true)
     expect(
       validateItem(
-        JSON.parse(readFileSync(cacheFile(vault), 'utf8')),
+        JSON.parse(readFileSync(artifactFile(vault), 'utf8')),
         loadSchema(path.join(SCHEMA_DIR, 'summary.schema.json')),
-        'cache/summary.json',
+        'cache/summary.<env>.json',
       ),
     ).toEqual([])
   })

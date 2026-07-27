@@ -4,3 +4,8 @@ pnpm-lock.yaml
 
 # Wiki entries are append-only data whose commit hashes are document ids.
 wiki
+
+# Deliberately malformed artifact fixture (P4 · RD2). It must break JSON.parse to be worth
+# anything — a "truncated" file that still parses makes the reader-distrust case vacuous.
+# Formatting it is impossible by construction, so prettier must not try.
+scripts/__tests__/fixtures/artifact/truncated.json
