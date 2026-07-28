@@ -201,12 +201,17 @@ describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격�
     expect(() => summary(undefined, 'dev')).toThrow()
   })
 
-  it('feeds(undefined, "dev") → throw', () => {
-    expect(() => feeds(undefined, 'dev')).toThrow()
+  // P5 · §4 원장 ㉖-a — `feeds`·`wiki` 가 async 가 됐다(신선도 확보가 `runSummaryGenerator` 재사용이라
+  //   async 다). 동기 `toThrow()` 는 `rejects.toThrow()` 로 번역한다 — **의도·강도는 무변경**(vault
+  //   기본값 미흡수 격리 불변식). 규범 C10 seam 가드를 함께 둔다(모듈이 죽어서 통과하는 모양 배제).
+  it('feeds(undefined, "dev") → reject', async () => {
+    expect(typeof feeds).toBe('function')
+    await expect(feeds(undefined, 'dev')).rejects.toThrow()
   })
 
-  it('wiki(undefined, "dev", "") → throw', () => {
-    expect(() => wiki(undefined, 'dev', '')).toThrow()
+  it('wiki(undefined, "dev", "") → reject', async () => {
+    expect(typeof wiki).toBe('function')
+    await expect(wiki(undefined, 'dev', '')).rejects.toThrow()
   })
 })
 

@@ -15,12 +15,13 @@
 import { describe, expect, it } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { buildContent } from '../../validate.mjs'
 import { isDraft } from '../draft.mjs'
 import { makeGitRunner, readIdAtCreation } from '../git.mjs'
-import { buildWirePayload } from '../parse-vault.mjs'
-import { walkFeeds } from '../git-walk.mjs'
+import { parseVault } from '../parse-vault.mjs'
+import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import {
   cleanup,
   commit,
@@ -29,6 +30,10 @@ import {
   initVault,
   writeDoc,
 } from '../../__tests__/helpers/tmp-git-vault.mjs'
+
+// P5 Task 9(D-I) — `buildWirePayload` 는 이제 `parseVault(...).wire` 다(얕은/깊은 구분이 사라져
+//   전용 wrapper 가 무의미해졌다). 좌표만 바뀌었을 뿐 이 스펙의 단언(가용성 보존)은 무변경이다.
+const SCHEMA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema')
 
 const UUIDV7_PUBLIC = '0192f0c0-8000-7000-8000-0123456789ab'
 const UUIDV7_DRAFT = '0192f0c0-8000-7000-9abc-0123456789ab'
@@ -165,14 +170,14 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
     }
   })
 
-  it('서빙 경로(buildWirePayload)는 stray 가 있어도 죽지 않는다 (가용성 보존)', () => {
+  it('서빙 경로(parseVault)는 stray 가 있어도 죽지 않는다 (가용성 보존)', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
       writeRawDoc(vault, 'tech/맨몸', '# frontmatter 없음\n\n본문.\n')
       commit(vault, 'cwiki: 문서 2건 생성')
 
-      expect(() => buildWirePayload(vault, 'prod')).not.toThrow()
+      expect(() => parseVault(vault, 'prod', SCHEMA_DIR)).not.toThrow()
     } finally {
       cleanup(vault)
     }

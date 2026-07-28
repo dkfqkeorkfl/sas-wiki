@@ -2,31 +2,30 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/report.schema.json",
   "title": "summary_report",
+  "description": "생성기 리포트 — 관측 채널(wire 아님). P5 부터 발행 봉투(producer·top-level env)를 실어 readArtifact 를 탄다(F-27). 예전 `inputs.env` 중첩은 제거됐다 — 같은 값을 두 곳에 두지 않는다.",
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "producer",
     "schemaVersion",
+    "env",
     "generatedAt",
     "inputsFingerprint",
     "sourceCommit",
-    "inputs",
     "regenerated",
     "summary",
-    "excluded"
+    "excluded",
+    "prunedFeeds",
+    "unresolvedPaths",
+    "invalidExcludedRefs"
   ],
   "properties": {
+    "producer": { "enum": ["sas-wiki/report"], "type": "string" },
     "schemaVersion": { "type": "integer", "minimum": 1 },
+    "env": { "type": "string", "enum": ["dev", "prod"] },
     "generatedAt": { "type": "string", "minLength": 1 },
     "inputsFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
     "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "inputs": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["env"],
-      "properties": {
-        "env": { "type": "string", "enum": ["dev", "prod"] }
-      }
-    },
     "regenerated": { "type": "boolean" },
     "summary": {
       "type": "object",
@@ -60,6 +59,37 @@
             ]
           },
           "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "prunedFeeds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Task 10(F-17) — 생존하지 못하고 드랍된 feed 커밋 수(관측 채널 · 아티팩트 아님)."
+    },
+    "unresolvedPaths": {
+      "type": "array",
+      "description": "Task 10(F-17) — fail-closed 로 드랍된 feed 문서 참조({path, sha}).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+        }
+      }
+    },
+    "invalidExcludedRefs": {
+      "type": "array",
+      "description": "Task 10(F-17) — 제외된(무효/미공개) 문서를 가리킨 feed 참조({path, sha}).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
         }
       }
     }

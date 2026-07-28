@@ -7,8 +7,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { envEnumError } from './lib/cli-env.mjs'
 import { checkAnchorExists } from './lib/derive.mjs'
+import { parseCommitForFeed } from './lib/feed.mjs'
 import { computeInputsFingerprint } from './lib/fingerprint.mjs'
-import { applyIgnoreFeeds } from './lib/ignore.mjs'
+import { applyIgnoreFeeds, loadIgnoreFeeds, reportIgnoreHygiene } from './lib/ignore.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
 import { extractWikilinks } from './lib/parse.mjs'
 import { WIKI_PREFIX } from './lib/head-state.mjs'
@@ -42,14 +43,29 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0
   const vaultDir = path.resolve(vault)
   const schemaDir = schema ? path.resolve(schema) : SCHEMA_DIR
 
-  const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir, { deepDocGate: true })
+  // P5 Task 9(D-I) — parseVault 는 이제 항상 깊은 티어다(얕은 티어 선택 스위치를 제거했다).
+  const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
   gateExcluded(stats.excluded ?? [], maxExcluded, stats.invalidExcludedRefs ?? [])
   const deadlinkReport = collectDeadlinks(gate.visibleDocs, gate.derived)
   stats.deadlinks = gateDeadlinks(deadlinkReport, deadlinks, vaultDir)
   checkFeedResolution(stats)
 
-  const feedItems = applyIgnoreFeeds(wire.items, wire.ignore)
+  // ★ P5 Task 8(D-H) — 억제 목록 로드·hygiene 관측은 `parseVault` 밖(여기)으로 옮겼다. 생성기
+  //   (`lib/generator.mjs`)는 억제를 전혀 보지 않아야 하는데(D-A·D-H), `parseVault` 가 내부에서
+  //   `loadIgnoreFeeds` 를 불러 그 값을 공유하면 malformed 억제 목록 하나가 **생성기까지** throw
+  //   시킨다(실측 — SU8 이 그 회귀를 잡는다). 검증만 억제를 본다 — 그것이 fail-loud 여야 할 유일한
+  //   지점이다(OQ-P5-6).
+  const ignore = loadIgnoreFeeds(vaultDir, schemaDir)
+  const allFeedIds = new Set(
+    gate.commits
+      .filter((commit) => parseCommitForFeed(commit) !== null)
+      .map((commit) => commit.hash.slice(0, 12)),
+  )
+  for (const stale of reportIgnoreHygiene(ignore, allFeedIds)) {
+    stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
+  }
+  const feedItems = applyIgnoreFeeds(wire.items, ignore)
   const inputsFingerprint = computeInputsFingerprint({
     env,
     sourceCommit: wire.sourceCommit,
@@ -66,6 +82,7 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0
   })
   const feeds = buildFeeds({
     generatedAt: wire.generatedAt,
+    inputsFingerprint,
     items: feedItems,
     sourceCommit: wire.sourceCommit,
   })

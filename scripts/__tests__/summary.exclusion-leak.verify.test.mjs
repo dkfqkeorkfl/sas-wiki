@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { walkFeeds } from '../lib/git-walk.mjs'
+import { walkFeeds } from './helpers/walk-feeds.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 import { BAD_ID, ID_A, ID_B, T1, T2, T3 } from './helpers/polluted-vault.mjs'
 

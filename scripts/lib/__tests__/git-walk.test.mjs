@@ -31,7 +31,9 @@ import {
   writeDoc,
 } from '../../__tests__/helpers/tmp-git-vault.mjs'
 
-const { walkFeeds } = await import(new URL('../git-walk.mjs', import.meta.url).href)
+const { walkFeeds } = await import(
+  new URL('../../__tests__/helpers/walk-feeds.mjs', import.meta.url).href
+)
 
 // 유효 UUIDv7(스키마 pattern 준수) — 문서 정체성.
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'

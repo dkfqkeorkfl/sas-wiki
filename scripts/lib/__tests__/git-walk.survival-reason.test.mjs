@@ -24,7 +24,9 @@ import { describe, expect, it } from 'vitest'
 import { ID_A, ID_B, T2, seedSurvivalVault } from '../../__tests__/helpers/survival-vault.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
 
-const { walkFeeds } = await import(new URL('../git-walk.mjs', import.meta.url).href)
+const { walkFeeds } = await import(
+  new URL('../../__tests__/helpers/walk-feeds.mjs', import.meta.url).href
+)
 
 const titlesOf = (items) => items.map((item) => item.title)
 const docIdsOf = (items, title) =>

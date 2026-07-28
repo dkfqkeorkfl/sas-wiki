@@ -52,21 +52,22 @@ describe('서빙 경로 — 오염 vault 에서 죽지 않는다 (SR1~SR3 · �
     expect(payload.docs.map((doc) => doc.id)).not.toContain(ID_DUP)
   })
 
-  it('SR2: `wiki` 로 제외 문서를 조회하면 **null** 이다 (대조군은 조회된다)', () => {
+  it('SR2: `wiki` 로 제외 문서를 조회하면 **null** 이다 (대조군은 조회된다)', async () => {
     // `null` 을 못박아 "빈 객체" 표현을 배제한다 — 소비자(webfront)가 `?? null` 로 뭉개면 부재 문서
     //   화면(P4)이 영원히 안 나온다.
-    const control = wiki(polluted.vault, 'dev', CONTROL_REL)
+    // P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다(D-F). 단언 내용은 무변경 — `await` 만 붙는다.
+    const control = await wiki(polluted.vault, 'dev', CONTROL_REL)
     expect(control).not.toBeNull() // 앵커: 조회 자체는 동작한다
 
-    expect(wiki(polluted.vault, 'dev', TWIN_A_REL)).toBeNull()
-    expect(wiki(polluted.vault, 'dev', TWIN_B_REL)).toBeNull()
+    expect(await wiki(polluted.vault, 'dev', TWIN_A_REL)).toBeNull()
+    expect(await wiki(polluted.vault, 'dev', TWIN_B_REL)).toBeNull()
   })
 
-  it('SR3: `feeds` 가 throw 하지 않고 피드 2건을 그대로 낸다', () => {
-    let payload
-    expect(() => {
-      payload = feeds(polluted.vault, 'dev', { count: 10 })
-    }).not.toThrow()
+  it('SR3: `feeds` 가 throw 하지 않고 피드 2건을 그대로 낸다', async () => {
+    // P5 · §4 원장 ㉖-b — `feeds()` 가 async 가 됐다(D-E). "던지지 않는다" 는 이제 **reject 하지
+    //   않는다** 로 옮긴다 — `await` 가 실패(rejection)를 그대로 전파하므로 감싸지 않아도 "안
+    //   던진다" 가 암묵 보존된다(단언 약화가 아니다).
+    const payload = await feeds(polluted.vault, 'dev', { count: 10 })
 
     // 개수와 **신원**을 함께 본다 — 개수만 보면 엉뚱한 2건이어도 통과한다.
     expect(payload.items).toHaveLength(2)
@@ -75,8 +76,8 @@ describe('서빙 경로 — 오염 vault 에서 죽지 않는다 (SR1~SR3 · �
     )
   })
 
-  it('SR4: 같은 "빈 docs" 라도 하나는 살고 하나는 연결만 끊긴다 (pair · 최종 관측점)', () => {
-    const payload = feeds(polluted.vault, 'dev', { count: 10 })
+  it('SR4: 같은 "빈 docs" 라도 하나는 살고 하나는 연결만 끊긴다 (pair · 최종 관측점)', async () => {
+    const payload = await feeds(polluted.vault, 'dev', { count: 10 })
     const twin = payload.items.find((item) => item.title === TWIN_FEED_TITLE)
     const control = payload.items.find((item) => item.title === CONTROL_FEED_TITLE)
 
@@ -86,7 +87,7 @@ describe('서빙 경로 — 오염 vault 에서 죽지 않는다 (SR1~SR3 · �
 })
 
 describe('서빙 경로 — 과잉 차단 가드 (SR5 · 대조군 vault)', () => {
-  it('SR5: 오염 0건 vault 에서 세 엔드포인트가 제외 모델 도입 전과 같은 것을 돌려준다', () => {
+  it('SR5: 오염 0건 vault 에서 세 엔드포인트가 제외 모델 도입 전과 같은 것을 돌려준다', async () => {
     // 정상 데이터가 제외 모델 때문에 사라지지 않는지 — SR1~SR4 의 반대 방향 가드다.
     const clean = seedCleanVault()
     tmps.push(clean.vault)
@@ -95,11 +96,11 @@ describe('서빙 경로 — 과잉 차단 가드 (SR5 · 대조군 vault)', () =
     expect(summaryPayload.docs.map((doc) => doc.id)).toContain(ID_A)
     expect(summaryPayload.docs).toHaveLength(3)
 
-    const doc = wiki(clean.vault, 'dev', CONTROL_REL)
+    const doc = await wiki(clean.vault, 'dev', CONTROL_REL)
     expect(doc).not.toBeNull()
     expect(doc.path).toBe(CONTROL_REL)
 
-    const feedPayload = feeds(clean.vault, 'dev', { count: 10 })
+    const feedPayload = await feeds(clean.vault, 'dev', { count: 10 })
     expect(titlesOf(feedPayload.items)).toEqual([CONTROL_FEED_TITLE])
     expect(feedPayload.items[0].docs).toEqual([{ id: ID_A }])
   })

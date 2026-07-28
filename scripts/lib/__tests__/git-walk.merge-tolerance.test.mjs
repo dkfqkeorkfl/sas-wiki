@@ -31,7 +31,7 @@ import {
   initVault,
   writeDoc,
 } from '../../__tests__/helpers/tmp-git-vault.mjs'
-import { walkFeeds } from '../git-walk.mjs'
+import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 
 // 유효 UUIDv7(스키마 pattern 준수) — 문서 정체성.
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'

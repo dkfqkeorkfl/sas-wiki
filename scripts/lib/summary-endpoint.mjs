@@ -1,4 +1,5 @@
-// summary 엔드포인트(**얕은 티어**) — vault 를 그 자리에서 파싱해 부팅 페이로드 1건을 만든다.
+// summary 엔드포인트(테스트 전용 · 프로덕션 호출자 0) — vault 를 그 자리에서 파싱해 부팅 페이로드
+//   1건을 만든다.
 //
 // ★ 왜 생성기 CLI(`scripts/summary.mjs`)와 같은 파일에 두지 않는가:
 //   이 함수는 `parse-vault → derive → render` 사슬을 **정적으로** 물어야 한다(본문을 실제로 파생하므로
@@ -8,11 +9,17 @@
 //   이것을 재export 하지 않는다 — 재export 는 정적 import 와 같은 비용이라 분리가 무효가 된다.
 //
 //   시그니처·동기성·비용 티어는 이동 전과 **완전히 같다**(위치만 옮겼다).
+//
+//   P5 Task 9(D-I) — 얕은/깊은 판정 스위치가 사라지며 전용 pre-wire 추출 함수가 그 파싱 엔진의
+//   1줄 wrapper 로 좁아졌다(늘 같은 결과). 그래서 여기서는 파싱 엔진을 직접 부른다.
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { computeInputsFingerprint } from './fingerprint.mjs'
-import { buildWirePayload } from './parse-vault.mjs'
+import { parseVault } from './parse-vault.mjs'
 import { buildSummary } from './payloads.mjs'
+
+const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
 
 /**
  * @param {string} vault git vault repository root — **기본값을 흡수하지 않는다**(순수 함수 격리 불변식).
@@ -20,7 +27,7 @@ import { buildSummary } from './payloads.mjs'
  */
 export function summary(vault, env = 'prod') {
   const vaultDir = path.resolve(vault)
-  const payload = buildWirePayload(vaultDir, env)
+  const payload = parseVault(vaultDir, env, SCHEMA_DIR).wire
   const inputsFingerprint = computeInputsFingerprint({
     env,
     sourceCommit: payload.sourceCommit,

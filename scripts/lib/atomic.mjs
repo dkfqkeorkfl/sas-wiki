@@ -55,9 +55,18 @@ function renameWithRetry(tmp, finalPath, { retryBudgetMs, retries }) {
   }
 }
 
+/**
+ * 동기 대기 — **busy-wait 가 아니라** `Atomics.wait` 로 커널에 넘긴다(F-19).
+ *
+ * CPU 를 태우지 않고 재시도 사이를 재운다. `Atomics.wait` 는 내장(node:lang 수준)이라 "의존성 0
+ * 유지" 원칙을 어기지 않는다 — 아무도 `Atomics.notify` 를 부르지 않으므로 항상 `ms` 만큼 기다린 뒤
+ * `'timed-out'` 으로 돌아온다(그 반환값은 쓰지 않는다 — 대기 자체가 목적이다).
+ */
 function sleep(ms) {
-  const until = Date.now() + ms
-  while (Date.now() < until) {
-    // Synchronous CLI path; keep dependency-free and bounded.
-  }
+  // `NaN` 을 걸러야 한다 — `Atomics.wait(…, NaN)` 은 스펙상 즉시 timeout 이 아니라 **무한 대기**다
+  //   (실측: 5초 강제종료까지 반환 없음). 지금은 산술상 NaN 이 될 호출부가 없지만, 예산·재시도 수가
+  //   나중에 CLI 플래그로 열리면 그 순간 조용한 프로세스 hang 이 된다.
+  if (!(ms > 0)) return
+  const view = new Int32Array(new SharedArrayBuffer(4))
+  Atomics.wait(view, 0, 0, ms)
 }

@@ -189,6 +189,32 @@ describe('computeInputsFingerprint — 입력 축별 차등 (FG2~FG7·FG9 · �
     expect(fingerprint(input)).toBe(before)
   })
 
+  it('FG11: vault **루트의 무관 파일** 편집 → **동일** (과잉 무효화 방지 · 반대 방향 짝)', () => {
+    // ★ P5(D-H)가 `ignore-feeds.json` 을 지문 입력에서 뺐다. 그 전환을 무는 케이스들(SU1~SU4)은
+    //   전부 **억제 파일 한 좌표**만 본다 — vault 루트가 통째로 입력이 되는 방향의 회귀는 아무도
+    //   못 잡는다. 그러면 억제 한 줄 편집이 23~26초 재생성을 부르던 상태로 조용히 되돌아간다.
+    //   삭제된 `fingerprint.ignore-input.test.mjs` 의 FP3 이 이 좌표를 갖고 있었고, 그 파일은
+    //   억제 케이스만 SU 로 승계되며 사라졌다 — **이 케이스가 그 공백을 잇는다**.
+    //   `FG6` 은 `scripts/__tests__/` 좌표라 vault 루트를 덮지 못한다(다른 루트다).
+    const scriptsDir = makeScriptsDir()
+    const vaultDir = makePlainVault()
+    const input = base(scriptsDir, vaultDir)
+    const docFile = path.join(vaultDir, 'wiki', 'company', '정상.md')
+    const original = readFileSync(docFile, 'utf8')
+    const before = fingerprint(input)
+
+    // 앵커(규범 B): 같은 vault·같은 호출이 **문서** 편집에는 실제로 반응한다 — 관측이 살아 있다.
+    writeFileSync(docFile, `${original}\n추가된 문단이다.\n`)
+    expect(fingerprint(input)).not.toBe(before)
+    writeFileSync(docFile, original)
+    expect(fingerprint(input)).toBe(before)
+
+    // 본 단언: 루트의 비-문서 파일은 지문을 흔들지 않는다.
+    writeFileSync(path.join(vaultDir, 'NOTE.txt'), '위키 문서가 아니다.\n')
+
+    expect(fingerprint(input)).toBe(before)
+  })
+
   it('FG7: vault 문서를 `git mv` 로 **경로만** 변경 → **다름** (경로가 입력에 들어간다)', () => {
     const scriptsDir = makeScriptsDir()
     const vaultDir = makeGitVault()

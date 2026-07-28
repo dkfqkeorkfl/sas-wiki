@@ -94,7 +94,8 @@ function freshPolluted() {
  * 테스트가 따라가는" 자기참조가 된다. 드리프트 감지는 AR1·AR3 이 맡는다.
  */
 const artifactFile = (vault, env = 'dev') => path.join(vault, 'cache', `summary.${env}.json`)
-const reportJson = (vault) => path.join(vault, 'logs', 'summary.report.json')
+// P5 · F-29 — 리포트 경로도 env 로 갈린다(§4 원장 ⑳). 리터럴 조립은 유지한다(규범 A).
+const reportJson = (vault, env = 'dev') => path.join(vault, 'logs', `summary.report.${env}.json`)
 
 // ────────────────────────────────────────────────────────────────────────────
 // XC — 종료코드 6종

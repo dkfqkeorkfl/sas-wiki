@@ -42,12 +42,14 @@ import { loadSchema, validateItem } from '../lib/validate.mjs'
 import { cleanup, git } from './helpers/tmp-git-vault.mjs'
 import { CONTROL_PATH, ID_A, seedCleanVault, seedPollutedVault } from './helpers/polluted-vault.mjs'
 
-const loaded = await import(new URL('../summary.mjs', import.meta.url).href)
+// P5 · OQ-P5-1=A — runSummaryGenerator 가 CLI 파일(summary.mjs)에서 lib/generator.mjs 로 이동했다.
+//   경로만 바뀐다(§4 원장 ⑬) — 단언·시그니처는 무변경이다.
+const loaded = await import(new URL('../lib/generator.mjs', import.meta.url).href)
 
 function generate(options) {
   if (typeof loaded.runSummaryGenerator !== 'function') {
     throw new Error(
-      '[RED] scripts/summary.mjs 에 runSummaryGenerator export 가 아직 없다 (P3 Task 5 미구현)',
+      '[RED] scripts/lib/generator.mjs 에 runSummaryGenerator export 가 아직 없다 (P5 OQ-P5-1=A 미구현)',
     )
   }
   return loaded.runSummaryGenerator(options)
@@ -107,8 +109,9 @@ function freshPolluted() {
  * 테스트가 따라가는" 자기참조가 된다. 드리프트 감지는 AR1·AR3 이 맡는다.
  */
 const artifactFile = (vault, env = 'dev') => path.join(vault, 'cache', `summary.${env}.json`)
-const reportJson = (vault) => path.join(vault, 'logs', 'summary.report.json')
-const reportTxt = (vault) => path.join(vault, 'logs', 'summary.report.txt')
+// P5 · F-29 — 리포트 경로도 env 로 갈린다(§4 원장 ⑳). 리터럴 조립은 유지한다(규범 A).
+const reportJson = (vault, env = 'dev') => path.join(vault, 'logs', `summary.report.${env}.json`)
+const reportTxt = (vault, env = 'dev') => path.join(vault, 'logs', `summary.report.${env}.txt`)
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
 // ────────────────────────────────────────────────────────────────────────────

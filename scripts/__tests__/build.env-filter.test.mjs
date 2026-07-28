@@ -242,12 +242,12 @@ describe('빈 prod 빌드 — 전 문서 draft → 0문서 우아 처리', () =>
     expect(ctx.prodResult.body.docs).toEqual({})
   })
 
-  it('deriveGeneratedAt([],[]) 는 1970 epoch 다 (빈 산출물 경로 회귀 락 — 이미 처리됨)', () => {
+  it('deriveGeneratedAt([]) 는 1970 epoch 다 (빈 산출물 경로 회귀 락 — P5 Task 1 · 1인자로 축소)', () => {
     // SOURCE_DATE_EPOCH 미설정 + 빈 산출물 → epoch 폴백(build.mjs:140). GREEN 무관 순수 단위 락.
     const prev = process.env.SOURCE_DATE_EPOCH
     delete process.env.SOURCE_DATE_EPOCH
     try {
-      expect(deriveGeneratedAt([], [])).toBe('1970-01-01T00:00:00.000Z')
+      expect(deriveGeneratedAt([])).toBe('1970-01-01T00:00:00.000Z')
     } finally {
       if (prev !== undefined) process.env.SOURCE_DATE_EPOCH = prev
     }

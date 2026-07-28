@@ -24,7 +24,7 @@
 //   뒤집어도 이 스펙들은 영향받지 않는다. 상수 드리프트 감지는 PR5 트립와이어가 담당한다.
 import { describe, expect, it } from 'vitest'
 
-import { walkFeeds } from '../lib/git-walk.mjs'
+import { walkFeeds } from './helpers/walk-feeds.mjs'
 import { buildContent } from '../validate.mjs'
 import { cleanup, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 

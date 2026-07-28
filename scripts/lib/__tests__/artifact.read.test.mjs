@@ -63,12 +63,22 @@ function read(input) {
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-/** 트립와이어(RD11) 전용 — 소스를 **읽기만** 한다. */
-const SUMMARY_SOURCE = path.resolve(HERE, '..', '..', 'summary.mjs')
+/**
+ * 트립와이어(RD11) 전용 — 소스를 **읽기만** 한다.
+ *
+ * P5 에서 좌표가 옮겨졌다(의도 불변) — OQ-P5-1=A 로 `runSummaryGenerator`(신선도 판정 본체)가
+ * `scripts/summary.mjs` 에서 `scripts/lib/generator.mjs` 로 옮겨갔다. pin 의 의도("생성기가 아티팩트
+ * 읽기를 손수 만들지 않고 단일 불신 함수를 쓴다")는 그대로다 — 관측 대상만 실제로 그 로직이 사는
+ * 파일로 따라간다.
+ */
+const SUMMARY_SOURCE = path.resolve(HERE, '..', 'generator.mjs')
 
 // ── 커밋 픽스처가 선언한 값 — 전부 **리터럴**이다(규범 A) ──────────────────────────────────────
+// P5 · D-G — 발행물 3종 + wire 3 페이로드 공용 SCHEMA_VERSION 이 2 → 3 이 됐다(§4 원장 ⑭).
+//   RD10 이 이 드리프트를 실제로 잡았다 — 픽스처(`scripts/__tests__/fixtures/artifact/*.json`)와
+//   함께 갱신한다(`schema-version-next.json` 은 **항상 "다음 버전"** 이어야 하므로 4로 올린다).
 const PRODUCER = 'sas-wiki/summary'
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 const ENV = 'dev'
 const FINGERPRINT = 'b5f0c1d2e3a49876'
 /** `fingerprint-tampered.json` 의 값 — 유효본과 **마지막 한 글자**만 다르다(부분 비교 우회 배제). */

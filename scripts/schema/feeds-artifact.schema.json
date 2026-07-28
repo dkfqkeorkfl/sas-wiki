@@ -1,20 +1,27 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "sas-wiki/schema/feeds.schema.json",
-  "title": "wiki_feeds",
-  "description": "뉴스 카드 — 서빙 시점에 걸러진 항목만 담는다(자르는 것은 getFeed({limit}) 다. 파일을 자르면 필터가 그 안에서만 맞는다). strict: sentiment·link·source·bodyHtml·tags·refs·path·breadcrumb 은 계약에서 사라졌다. `inputsFingerprint` 는 P5 가 required 로 추가했다(D-G — 생산자가 자기 출력을 상관 토큰으로 스탬프한다).",
+  "$id": "sas-wiki/schema/feeds-artifact.schema.json",
+  "title": "cache_feeds",
+  "description": "내부 발행 아티팩트(cache/feeds.<env>.json) — 억제 전 전량을 담는다. wire 가 아니다: raw 로 서빙되지 않는다(억제가 통째로 무효화되는 것을 막는 유일한 가드가 이 비대칭이다). `feedItem`·`docRef` 는 wire feeds.schema.json 과 같은 모양이나, 검증기가 로컬 $ref 만 지원하므로(validate.mjs) 정의를 이 파일에도 복제한다(교차 파일 참조 불가).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "sourceCommit", "inputsFingerprint", "items"],
+  "required": [
+    "producer",
+    "schemaVersion",
+    "env",
+    "generatedAt",
+    "inputsFingerprint",
+    "sourceCommit",
+    "items"
+  ],
   "properties": {
+    "producer": { "enum": ["sas-wiki/feeds"], "type": "string" },
     "schemaVersion": { "type": "integer", "minimum": 1 },
+    "env": { "enum": ["dev", "prod"], "type": "string" },
     "generatedAt": { "type": "string", "minLength": 1 },
-    "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "inputsFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
-    "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } },
-    "nextCursor": {
-      "anyOf": [{ "$ref": "#/definitions/feedCursor" }, { "type": "null" }]
-    }
+    "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } }
   },
   "definitions": {
     "feedItem": {
@@ -34,7 +41,7 @@
     },
     "docRef": {
       "type": "object",
-      "description": "이 커밋이 고친 문서 — path 가 아니라 **불변 id** 로 가리킨다(문서 이동 내성).",
+      "description": "이 커밋이 고친 문서 — path 가 아니라 불변 id 로 가리킨다(문서 이동 내성).",
       "additionalProperties": false,
       "required": ["id"],
       "properties": {
@@ -42,15 +49,6 @@
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
         }
-      }
-    },
-    "feedCursor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ts", "feedId"],
-      "properties": {
-        "ts": { "type": "string", "minLength": 1 },
-        "feedId": { "type": "string", "pattern": "^[0-9a-f]{12}$" }
       }
     }
   }

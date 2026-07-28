@@ -47,27 +47,39 @@ function recordingRunner(vault) {
 const deepTierCalls = (calls) =>
   calls.filter((args) => args.includes('--diff-filter=D') && args.includes('--find-renames'))
 
-describe('비용 티어 배선 — 서빙은 문서당 git 을 팔지 않는다 (CT1 · pair)', () => {
-  it('CT1: 서빙 파싱은 깊은 티어 git 0건 · 검증 파싱은 >0건 (같은 vault·같은 함수)', () => {
+describe('티어 선택 불가 — 파싱은 **항상** 깊다 (CT1 · P5 D-I 로 극성 반전)', () => {
+  // ★ P5(D-I)가 이 케이스의 전제를 없앴다. 예전 CT1 은 "서빙 파싱은 얕고 검증 파싱은 깊다" 를 물어
+  //   비용 티어 **배선**을 지켰다. 그런데 그 스위치(`deepDocGate`)는 비용 스위치로 문서화돼 있었을 뿐
+  //   실제로는 **제외집합을 바꾸는 의미 스위치**였고, 그래서 생성기가 제외한 문서를 `feeds`·`wiki` 가
+  //   계속 서빙했다(P5 가 고친 결함 그 자체다). `feeds`·`wiki` 가 발행 아티팩트 소비자가 되면서
+  //   얕은 호출자가 0이 됐고, 파라미터는 근절됐다.
+  //
+  //   **파일을 지우지 않고 극성을 뒤집는다**(tdd §10.1-3 "삭제 금지"): 지키는 대상이 "티어가 갈린다"
+  //   에서 **"티어를 고를 수 없다"** 로 바뀌었다. 프로세스 관측(TR1·TR2)과 소스 스캔(TR6)이 각각
+  //   CLI 층과 텍스트 층을 무는 것과 달리, 이 케이스는 **함수 층**에서 같은 보장을 문다 —
+  //   호출자가 어떤 옵션을 줘도 얕은 판정을 얻을 수 없어야 한다.
+  it('CT1: 어떤 옵션 조합으로도 얕은 판정을 얻을 수 없다 (깊은 티어 git 호출이 항상 난다)', () => {
     const { vault } = seedCleanVault()
     tmps.push(vault)
 
-    const serving = recordingRunner(vault)
-    const servingParse = parseVault(vault, 'dev', SCHEMA_DIR, { runGit: serving.run })
-
-    const validating = recordingRunner(vault)
-    const validatingParse = parseVault(vault, 'dev', SCHEMA_DIR, {
-      deepDocGate: true,
-      runGit: validating.run,
+    // 옛 스위치 이름을 **일부러** 넘긴다 — 되살아나면 이 케이스가 red 가 된다(부활 트립와이어).
+    const revived = recordingRunner(vault)
+    const revivedParse = parseVault(vault, 'dev', SCHEMA_DIR, {
+      deepDocGate: false,
+      runGit: revived.run,
     })
 
+    const plain = recordingRunner(vault)
+    const plainParse = parseVault(vault, 'dev', SCHEMA_DIR, { runGit: plain.run })
+
     // 앵커 ①: 두 파싱 다 **실제로 문서를 냈다**(빈 vault 에서 0 == 0 으로 공허 통과하는 것을 배제).
-    expect(servingParse.gate.visibleDocs.length).toBeGreaterThan(0)
-    expect(validatingParse.gate.visibleDocs).toHaveLength(servingParse.gate.visibleDocs.length)
+    expect(plainParse.gate.visibleDocs.length).toBeGreaterThan(0)
+    expect(revivedParse.gate.visibleDocs).toHaveLength(plainParse.gate.visibleDocs.length)
 
-    // 앵커 ②: 깊은 경로는 그 호출을 **실제로** 낸다 — 부재 단언의 위험 실재 증명.
-    expect(deepTierCalls(validating.calls).length).toBeGreaterThan(0)
+    // 앵커 ②: 이 vault·이 함수가 깊은 티어 호출을 **실제로** 낸다(관측자가 죽어서 0인 것을 배제).
+    expect(deepTierCalls(plain.calls).length).toBeGreaterThan(0)
 
-    expect(deepTierCalls(serving.calls)).toEqual([])
+    // 본 단언: 옛 스위치를 `false` 로 줘도 깊은 판정이 난다 — 티어는 호출자의 선택지가 아니다.
+    expect(deepTierCalls(revived.calls).length).toBeGreaterThan(0)
   })
 })

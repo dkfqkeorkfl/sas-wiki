@@ -95,10 +95,19 @@ export function aFeedItem() {
   return builder(DEFAULT_FEED_ITEM, { refs: (value, docs) => ({ ...value, docs }) })
 }
 
-/** wiki_feeds.json 봉투. */
+/**
+ * wiki_feeds.json 봉투 — P5 부터 `inputsFingerprint` 가 **required** 다(D-G · feeds.schema.json).
+ * 값은 **리터럴**이다(규범 A — 프로덕션 상수에서 만들면 자기참조가 된다).
+ */
 export function aFeeds() {
   return builder(
-    { generatedAt: GENERATED_AT, items: [], schemaVersion: 1, sourceCommit: SOURCE_COMMIT },
+    {
+      generatedAt: GENERATED_AT,
+      inputsFingerprint: INPUTS_FINGERPRINT,
+      items: [],
+      schemaVersion: 3,
+      sourceCommit: SOURCE_COMMIT,
+    },
     { withItem: (value, item) => ({ ...value, items: [...value.items, unwrap(item)] }) },
   )
 }

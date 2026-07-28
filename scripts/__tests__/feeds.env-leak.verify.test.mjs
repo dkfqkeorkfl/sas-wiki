@@ -28,7 +28,7 @@ import { describe, expect, it } from 'vitest'
 import { ID_A, ID_B, ID_C, T1, T2, T3 } from './helpers/survival-vault.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const { walkFeeds } = await import(new URL('../lib/git-walk.mjs', import.meta.url).href)
+const { walkFeeds } = await import(new URL('./helpers/walk-feeds.mjs', import.meta.url).href)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 /** sas-wiki 리포 루트 — `scripts/__tests__` 의 두 단계 위. cwd 무관(import.meta.url 파생). */

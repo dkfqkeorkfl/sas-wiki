@@ -101,13 +101,14 @@ describe('buildSummary', () => {
     expect(buildSummary({ docs: [], env: 'prod', generatedAt: GENERATED_AT, inputsFingerprint: '0123456789abcdef', sourceCommit: SOURCE_COMMIT, tags: TAGS, tree: TREE }).env).toBe('prod') // prettier-ignore
   })
 
-  it('schemaVersion 은 정수 2이다(문자열 "2" 금지)', () => {
-    // §4 원장 ⑨ — P4 가 아티팩트 헤더 2키(`producer`·`env`)를 더하면서 1 → **2**(D-D (b)).
+  it('schemaVersion 은 정수 3이다(문자열 "3" 금지)', () => {
+    // §4 원장 ⑨ — P4 가 아티팩트 헤더 2키(`producer`·`env`)를 더하면서 1 → 2(D-D (b)).
+    //   P5(§4 원장 ⑭) 가 발행물 3종 + wire 3 페이로드 공용으로 2 → **3** 을 더 올렸다(D-G).
     //   옛 아티팩트는 "미지 버전" 이 아니라 **구 버전**이라 독자가 stale 로 떨어뜨리고 재생성한다
     //   (마이그레이션 없음 — 파생 데이터다 · D-D (b)).
     const summary = summaryOf([aDoc().build()])
 
-    expect(summary.schemaVersion).toBe(2)
+    expect(summary.schemaVersion).toBe(3)
     expect(Number.isInteger(summary.schemaVersion)).toBe(true)
   })
 
@@ -148,23 +149,38 @@ describe('buildSummary', () => {
 })
 
 describe('buildFeeds', () => {
-  it('봉투 키 집합이 정확하고 items 를 그대로 싣는다', () => {
+  it('봉투 키 집합이 정확하고 items 를 그대로 싣는다 (P5 · §4 원장 ⑮ · inputsFingerprint 가산)', () => {
     const item = aFeedItem().build()
     const feeds = buildFeeds({
       generatedAt: GENERATED_AT,
+      inputsFingerprint: '0123456789abcdef',
       items: [item],
       sourceCommit: SOURCE_COMMIT,
     })
 
     expect(Object.keys(feeds).toSorted()).toEqual([
       'generatedAt',
+      'inputsFingerprint',
       'items',
       'schemaVersion',
       'sourceCommit',
     ])
     expect(feeds.items).toEqual([item])
-    // §4 원장 ⑩ — 3 페이로드 **공용** 상수라 feeds 도 함께 2 가 된다(쪼개지 않는다 · AR7 이 pin).
-    expect(feeds.schemaVersion).toBe(2)
+    // §4 원장 ⑩·⑭ — 3 페이로드 **공용** 상수라 feeds 도 함께 3 이 된다(쪼개지 않는다 · AR7 이 pin).
+    expect(feeds.schemaVersion).toBe(3)
+  })
+
+  it('`inputsFingerprint` 스탬프가 실제 값을 싣는다(키만 있고 undefined 인 상태 배제)', () => {
+    // D-G — 소비자가 라벨을 붙이면 자기검증이 아니라 자기기만이다. 키 집합만 보면
+    //   `{ ...feeds, inputsFingerprint: undefined }` 도 5키로 통과하므로 값을 따로 문다.
+    const feeds = buildFeeds({
+      generatedAt: GENERATED_AT,
+      inputsFingerprint: '0123456789abcdef',
+      items: [],
+      sourceCommit: SOURCE_COMMIT,
+    })
+
+    expect(feeds.inputsFingerprint).toBe('0123456789abcdef')
   })
 })
 

@@ -324,11 +324,48 @@ function isCreation(entry) {
   return entry.status === 'A' || entry.status === 'C'
 }
 
-/** 값이 없으면 git 이 exit 1 로 끝나는 조회(`config --get` 등) → '' 로 정규화. */
+/**
+ * `config --get` 이 "값이 없다" 로 끝내는 실패인가 — exit 1 · stderr 없음이 그 계약이다.
+ *
+ * F-20: 예전엔 `tryGit` 이 **모든** 예외를 흡수했다. 그러면 고장난 git 러너의 실패가 "삭제된 적
+ * 없음" 으로 둔갑해 피드 사유가 `deleted` → `unresolved` 로 뒤집히고 fail-closed 드랍이 된다
+ * (AG4). 여기서 흡수 범위를 이 한 가지 알려진 양성 실패로만 좁힌다.
+ */
+function isBenignConfigMiss(args, error) {
+  return args[0] === 'config' && error?.status === 1 && !error?.stderr
+}
+
+/**
+ * **아직 커밋이 없는 리포**도 양성 실패다 — "삭제 이력이 없다" 가 참인 상태이지 고장이 아니다.
+ *
+ * 이 조건이 빠져 있었다(리뷰 실측): F-20 이 흡수 범위를 `config --get` 하나로 좁혔는데, 같은 phase 가
+ * 얕은 티어를 없애면서(D-I) `collectDeletedDocEvents`·`collectEverDeletedDocPaths` 가 **서빙 경로에서도
+ * 항상** 돌게 됐다. 예전엔 얕은 티어라 그 블록이 스킵돼 문제가 드러나지 않았고, `tryGit` 의 catch-all
+ * 이 이 케이스를 우연히 덮고 있었다. 둘이 겹치면서 커밋 0건 vault 에서 `parseVault` 전체가 죽는다
+ * (재현 확인). 형제 함수들(`collectGitLog:160`·`getFileHistory:247`·`revListFeedCandidates`)은 전부
+ * 자체 try/catch 로 같은 패턴을 이미 막고 있었다 — 여기만 그 방어가 없었다.
+ *
+ * **범위는 여전히 좁다**: 고장난 러너·권한 오류·잘못된 인자는 그대로 던진다(F-20 의 취지 유지).
+ */
+function isEmptyHistory(error) {
+  const text = `${error?.message ?? ''}\n${typeof error?.stderr === 'string' ? error.stderr : ''}`
+  return /does not have any commits yet|unknown revision|bad revision/iu.test(text)
+}
+
+/**
+ * 알려진 양성 실패(`config --get` 값 없음)만 `''` 로 흡수한다 — 그 외는 rethrow(F-20).
+ *
+ * rethrow 시 `stderr` 를 메시지에 합친다 — `execFileSync` 실패의 `message` 는 종종 원인을 담지
+ * 않고(`Command failed: …`) 실제 사유는 `stderr` 에 있다. 합치지 않으면 "고장났다" 는 알아도
+ * "왜" 는 알 수 없다.
+ */
 function tryGit(runGit, args) {
   try {
     return runGit(args)
-  } catch {
-    return ''
+  } catch (error) {
+    if (isBenignConfigMiss(args, error) || isEmptyHistory(error)) return ''
+    const message = error instanceof Error ? error.message : String(error)
+    const stderr = typeof error?.stderr === 'string' && error.stderr ? `\n${error.stderr}` : ''
+    throw new Error(`${message}${stderr}`, { cause: error })
   }
 }

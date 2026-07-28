@@ -15,25 +15,10 @@ import { parseFrontmatterYaml } from './parse.mjs'
 
 const DEFAULT_FEED_LIMIT = 50
 
-/**
- * 독립 실행형 피드 워크 — 수집(`collectFeedItems`) + 페이지(`pageFeeds`)의 합성.
- *
- * **프로덕션 경로는 이것을 부르지 않는다.** F-2 통합 이후 `feeds.mjs` 는 `parseVault` 가 이미 만든
- * items 에 `pageFeeds` 만 얹는다(파싱 1회). 이 함수는 그 결과와 대조하는 **참조 구현**이자,
- * 전체 파싱 없이 피드만 훑고 싶은 호출자를 위한 진입점으로 남는다.
- *
- * ⚠️ `runGit`·`headState` 를 주지 않으면 **매번 새 러너와 새 HEAD 상태**를 만든다(메모이즈 없음).
- * 새 프로덕션 코드에서 무인자로 부르면 프로세스 스폰이 그대로 늘어난다 — `parseVault` 를 쓰라.
- */
-export function walkFeeds(vault, { after, count, env, from, headState, runGit, to } = {}) {
-  const vaultDir = path.resolve(vault)
-  const limit = typeof count === 'number' && count > 0 ? count : DEFAULT_FEED_LIMIT
-  const ignoreEntries = loadIgnoreFeeds(vaultDir)
-  const collected = collectFeedItems(vaultDir, { env, headState, runGit })
-  const paged = pageFeeds(collected.items, ignoreEntries, { after, from, limit, to })
-
-  return withMeta(paged.items, paged.nextCursor, collected.stats)
-}
+// ★ P5 Task 9(D-I) — 독립 실행형 피드 워크(수집+페이지 합성)는 `scripts/__tests__/helpers/`로
+//   옮겼다(테스트 전용 참조 구현이라는 그 성격 자체는 P1 부터 그대로다 — 자리만 프로덕션 스캔
+//   범위 밖으로 이동했다). 이 파일이 프로덕션에 내보내는 것은 `collectFeedItems`(생성기가 쓴다)와
+//   `pageFeeds`(`feeds.mjs`가 쓴다) 둘뿐이다.
 
 export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, runGit } = {}) {
   const resolvedRunGit = runGit ?? makeGitRunner(vaultDir)
@@ -123,23 +108,9 @@ function parseBoundary(value, name) {
   if (value === undefined || value === null) return null
   const ms = Date.parse(value)
   if (Number.isNaN(ms)) {
-    throw new Error(`walkFeeds ${name} 경계가 유효한 ISO 날짜가 아니다: ${JSON.stringify(value)}`)
+    throw new Error(`pageFeeds ${name} 경계가 유효한 ISO 날짜가 아니다: ${JSON.stringify(value)}`)
   }
   return ms
-}
-
-function withMeta(items, cursor, stats) {
-  Object.defineProperty(items, 'nextCursor', {
-    configurable: true,
-    enumerable: false,
-    value: cursor,
-  })
-  Object.defineProperty(items, 'stats', {
-    configurable: true,
-    enumerable: false,
-    value: stats,
-  })
-  return items
 }
 
 function normalizeCursor(after) {
@@ -208,15 +179,21 @@ function resolveFeedItems(vaultDir, runGit, commits, context) {
       docs.push(resolveDocRef(status, commit.hash, context))
     }
     const survival = judgeFeedSurvival({ importance: post.importance, refs: docs })
+    // ★ Task 10(F-17) 실측 수정 — `unresolved`(stray 문서 참조)를 이 합에서 빠뜨리면 그 사유로
+    //   드랍된 feed 가 `items` 에서는 사라지는데(아래 continue) `prunedFeeds`/`prunedDocRefs` 는 0인
+    //   채로 남는다 — "버려졌다" 는 사실 자체가 리포트에서 조용히 유실된다(PL11 이 그 유실을 잡는다).
+    //   `deleted`·`draft-excluded`·`invalid-excluded` 와 같은 자리에서 세야 진단이 실제 드랍과 일치한다.
     stats.prunedDocRefs +=
       survival.counters.deleted +
       survival.counters.draftExcluded +
-      survival.counters.invalidExcluded
+      survival.counters.invalidExcluded +
+      survival.counters.unresolved
     if (!survival.feedSurvives) {
       if (
         survival.counters.deleted +
           survival.counters.draftExcluded +
-          survival.counters.invalidExcluded >
+          survival.counters.invalidExcluded +
+          survival.counters.unresolved >
         0
       ) {
         stats.prunedFeeds += 1

@@ -9,10 +9,13 @@
 //   에서 `entries.map` **TypeError**(의도한 미구현)로 실패한다.
 //
 // 계약(GREEN 이 구현):
-//   feeds(vault, {from,to,count,after}) = walkFeeds(vault, {...}) + buildFeeds 봉투.
+//   feeds(vault, {from,to,count,after}) — P5 부터 **아티팩트 소비자**다(D-E). 억제·정렬·경계·
+//   tie-break·continuation 은 `pageFeeds` 에 **위임**(endpoints 층 재구현 금지 · SSOT · FC5).
 //     from/to/count 의미 표면 보존(값경계·상한) · nextCursor 필드 **가산**(당시 schemaVersion 불변).
-//     ☞ P4 에서 공용 `SCHEMA_VERSION` 이 1 → 2 가 된다(§4 원장 ⑦) — feeds 봉투 **형태**는 그대로다.
-//     억제·정렬·경계·tie-break·continuation 은 walkFeeds 에 **위임**(endpoints 층 재구현 금지 · SSOT).
+//     ☞ P4 에서 공용 `SCHEMA_VERSION` 이 1 → 2, P5(D-G · §4 원장 ⑭)가 2 → **3** 이 된다 — feeds
+//     봉투 **형태**는 `inputsFingerprint` 가산(D-G) 외엔 그대로다.
+//   P5 · §4 원장 ③ — `feeds()` 가 async 가 됐다(신선도 확보가 `runSummaryGenerator` 재사용이라
+//   async 다). 단언 **내용**은 무변경 — `await` 만 붙는다.
 import { describe, expect, it } from 'vitest'
 
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs' // prettier-ignore
@@ -27,7 +30,8 @@ const T2 = '2026-01-02T00:00:00Z'
 const T3 = '2026-01-03T00:00:00Z'
 const T4 = '2026-01-04T00:00:00Z'
 
-const ENVELOPE_KEYS = ['generatedAt', 'items', 'schemaVersion', 'sourceCommit']
+/** P5 · D-G — `inputsFingerprint` 가 가산돼 5키가 된다(§4 원장 ⑮). */
+const ENVELOPE_KEYS = ['generatedAt', 'inputsFingerprint', 'items', 'schemaVersion', 'sourceCommit']
 const titlesOf = (page) => page.items.map((item) => item.title)
 const idsOf = (page) => page.items.map((item) => item.id)
 
@@ -47,17 +51,17 @@ function seedFour(vault) {
 }
 
 describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환)', () => {
-  it('E-F1: feeds(vault, {count}) → 최신순 count건·유효 봉투(schemaVersion=2)', () => {
+  it('E-F1: feeds(vault, {count}) → 최신순 count건·유효 봉투(schemaVersion=3)', async () => {
     const vault = initVault()
     try {
       seedFour(vault)
 
-      const page = feeds(vault, 'dev', { count: 3 })
+      const page = await feeds(vault, 'dev', { count: 3 })
 
       expect(titlesOf(page)).toEqual(['n4', 'n3', 'n2'])
-      // §4 원장 ⑦ — `SCHEMA_VERSION` 은 3 페이로드 **공용**이다(P2 확정: 쪼개면 `WikiDataProvider`
-      //   부팅 게이트가 영구 false). P4 가 summary 아티팩트에 헤더 3키를 더하며 1 → 2 로 올린다.
-      expect(page.schemaVersion).toBe(2)
+      // §4 원장 ⑦·⑭ — `SCHEMA_VERSION` 은 3 페이로드 **공용**이다(P2 확정: 쪼개면 `WikiDataProvider`
+      //   부팅 게이트가 영구 false). P4 가 1 → 2, P5(D-G)가 2 → **3** 으로 올린다.
+      expect(page.schemaVersion).toBe(3)
       expect(Object.keys(page).toSorted()).toEqual(expect.arrayContaining(ENVELOPE_KEYS))
     } finally {
       cleanup(vault)
@@ -66,13 +70,13 @@ describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환
 })
 
 describe('endpoints.feeds — nextCursor 연속 seam (E-F2 🔴RED 신규 필드)', () => {
-  it('E-F2: 1페이지 nextCursor 로 2페이지 → 연속(누락·중복 0)', () => {
+  it('E-F2: 1페이지 nextCursor 로 2페이지 → 연속(누락·중복 0)', async () => {
     const vault = initVault()
     try {
       seedFour(vault)
 
-      const page1 = feeds(vault, 'dev', { count: 2 }) // [n4, n3]
-      const page2 = feeds(vault, 'dev', { after: page1.nextCursor, count: 2 }) // [n2, n1]
+      const page1 = await feeds(vault, 'dev', { count: 2 }) // [n4, n3]
+      const page2 = await feeds(vault, 'dev', { after: page1.nextCursor, count: 2 }) // [n2, n1]
 
       expect(titlesOf(page1)).toEqual(['n4', 'n3'])
       expect(page1.nextCursor).toBeDefined()
@@ -84,8 +88,8 @@ describe('endpoints.feeds — nextCursor 연속 seam (E-F2 🔴RED 신규 필드
   })
 })
 
-describe('endpoints.feeds — walkFeeds 위임(억제·정렬 재구현 안 함) (E-F3 🔴RED SSOT)', () => {
-  it('E-F3: 억제·정렬이 walkFeeds 로 위임돼 결과에 반영된다(자체 재구현 아님)', () => {
+describe('endpoints.feeds — 억제·정렬 재구현 안 함(pageFeeds 위임) (E-F3 🔴RED SSOT)', () => {
+  it('E-F3: 억제·정렬이 pageFeeds 로 위임돼 결과에 반영된다(자체 재구현 아님)', async () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
@@ -99,7 +103,7 @@ describe('endpoints.feeds — walkFeeds 위임(억제·정렬 재구현 안 함)
         'utf8',
       )
 
-      const page = feeds(vault, 'dev', { count: 10 })
+      const page = await feeds(vault, 'dev', { count: 10 })
 
       expect(titlesOf(page)).toEqual(['n3-남음', 'n1']) // 억제(n2) + ts 내림차순 위임 결과
     } finally {

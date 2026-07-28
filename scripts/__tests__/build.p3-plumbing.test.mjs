@@ -160,8 +160,9 @@ describe('배관 — 산출물 경로 소유권 (PL5 · 🔴RED)', () => {
 
     // 앵커: tmp vault 쪽에는 **실제로** 산출물이 생겼다(부재 단언이 "아무 일도 안 했다" 가 아니다).
     expect(existsSync(path.join(vault, 'cache', 'summary.dev.json')), result.stderr).toBe(true)
-    expect(existsSync(path.join(vault, 'logs', 'summary.report.json'))).toBe(true)
-    expect(existsSync(path.join(vault, 'logs', 'summary.report.txt'))).toBe(true)
+    // P5 · F-29 — 리포트 경로도 env 로 갈린다(§4 원장 ⑳).
+    expect(existsSync(path.join(vault, 'logs', 'summary.report.dev.json'))).toBe(true)
+    expect(existsSync(path.join(vault, 'logs', 'summary.report.dev.txt'))).toBe(true)
 
     // ① cwd 아래에는 아무것도 만들지 않았다.
     expect(readdirSync(spawnCwd)).toEqual([])

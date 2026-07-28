@@ -32,7 +32,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 
 import { judgeDocs } from '../lib/doc-gate.mjs'
 import { WIKI_PREFIX, loadHeadDocState } from '../lib/head-state.mjs'
-import { buildWirePayload, parseVault } from '../lib/parse-vault.mjs'
+import { parseVault } from '../lib/parse-vault.mjs'
 import { makeGitRunner } from '../lib/git.mjs'
 import { loadSchema } from '../lib/validate.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
@@ -162,19 +162,10 @@ describe('B8 반전 — 제외 문서의 본문을 서빙하지 않는다 (DR3 �
   })
 })
 
-describe('동시대 증거 — 얕은 참조 경로는 아직 그 문서를 담는다 (DR4 · 🟢pin · Task 9 에서 재홈)', () => {
-  it('DR4: `buildWirePayload`(얕은 티어)는 드리프트 문서를 **여전히** `docs` 에 담는다', () => {
-    // ★ plan 비공허성 요구 ② 의 "전환 **전**" 축이다 — 오늘의 서빙이 무엇을 내보내고 있었는지를
-    //   같은 커밋 안에서 증거로 남긴다. **Task 9 가 얕은 티어를 없애면 이 arm 이 소멸하고**
-    //   DR0 이 그 역할을 잇는다(§4.5 ㉒ — 삭제가 아니라 이동이며 스펙 주석에 사유를 남긴다).
-    const drifted = track(seedTamperedVault())
-    const pathsOf = (docs) => docs.map((doc) => doc.breadcrumb.join('/'))
-
-    expect(pathsOf(buildWirePayload(drifted.vault, 'dev').docs)).toContain(drifted.tamperedRel)
-    // 앵커: 같은 vault 를 깊은 티어로 보면 그 경로가 **빠진다** — 두 경로의 결과가 실제로 갈린다.
-    expect(pathsOf(deepWire(drifted.vault, 'dev').docs)).not.toContain(drifted.tamperedRel)
-  })
-})
+// DR4(§4.5 ㉒ 예고분) — 재홈 완료. "동시대 증거 — 얕은 참조 경로는 아직 그 문서를 담는다" 는 P5
+//   Task 9(D-I)가 얕은 판정 스위치를 제거하며 성립 자체가 불가능해졌다(`buildWirePayload` 삭제 —
+//   얕은/깊은 두 티어가 더 이상 존재하지 않는다). 삭제가 아니라 **이동**이다 — 그 역할(티어가 갈리면
+//   드리프트 판정도 갈린다는 증거)은 위 **DR0** 이 `judgeDocs` 를 직접 두 ctx 로 불러 계승한다.
 
 describe('서빙 극성 반전 금지 (DR5 · 🔴RED 오늘 사유 자체가 안 생긴다 · CX-F)', () => {
   it('DR5: 드리프트 참조 피드는 prod 에서도 **생존**(fail-open) · draft 참조 피드는 **사라진다**', async () => {

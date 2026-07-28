@@ -24,17 +24,19 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
  * 쓴다. 예전에는 두 파일이 같은 판정을 각자 구현했고, 그러면 한쪽만 바뀔 때 "서빙되는 문서 집합"과
  * "검증되는 문서 집합"이 조용히 갈린다(P3 Task 9 가 통합).
  *
- * `deepDocGate` 는 비용 티어 스위치다(D-A) — 켠 호출자(`validate`·생성기)만 git 을 파는 판정을 얻고,
- * 라이브 서빙 경로는 git spawn 0 인 얕은 판정만 받는다.
+ * ★ P5 Task 9(D-I) — 얕은/깊은 판정을 고르던 비용 스위치를 제거했다. `feeds`·`wiki` 가 발행 아티팩트 소비자로
+ * 전환되며(D-E·D-F) 얕은 티어의 프로덕션 호출자가 0이 됐다 — "안전이 `summary.mjs` 의 리터럴 `true`
+ * 하나에 걸려 있다"(R2 반례 6)는 상태를 파라미터 자체를 없애 근절한다. 판정은 **항상 깊다**(`ctx.runGit`
+ * 이 항상 전달된다) — 티어 개념 자체는 `doc-gate.mjs`(`ctx.runGit`)에 그대로 남는다(단위층 소유).
  *
  * @param {string} vaultDir
  * @param {'dev'|'prod'} env
- * @param {{ deepDocGate?: boolean, runGit?: Function, schemaDir?: string }} [options]
+ * @param {{ runGit?: Function, schemaDir?: string }} [options]
  */
 export function loadHeadDocState(
   vaultDir,
   env,
-  { deepDocGate = false, runGit: injectedRunGit, schemaDir = SCHEMA_DIR } = {},
+  { runGit: injectedRunGit, schemaDir = SCHEMA_DIR } = {},
 ) {
   const runGit = injectedRunGit ?? makeGitRunner(vaultDir)
   const wikiDir = path.join(vaultDir, ...WIKI_PREFIX.split('/').filter(Boolean))
@@ -63,7 +65,7 @@ export function loadHeadDocState(
   const visibleCandidates = env === 'dev' ? parsedDocs : parsedDocs.filter((doc) => !isDraft(doc))
   const draftExcludedDocs = env === 'dev' ? [] : parsedDocs.filter((doc) => isDraft(doc))
   const judged = judgeDocs(visibleCandidates, {
-    runGit: deepDocGate ? runGit : undefined,
+    runGit,
     strayPaths: strayDocPaths,
     wikiPrefix: WIKI_PREFIX,
     wikiSchema: loadSchema(path.join(schemaDir, 'wiki-doc.schema.json')),

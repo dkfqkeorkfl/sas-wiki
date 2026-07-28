@@ -62,7 +62,7 @@ function seedMixed(vault) {
 }
 
 describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)', () => {
-  it('E-S1: summary(vault, "prod") → 봉투 9키·schemaVersion 2·draft 제외·본문 키 0', () => {
+  it('E-S1: summary(vault, "prod") → 봉투 9키·schemaVersion 3·draft 제외·본문 키 0', () => {
     const vault = initVault()
     try {
       seedMixed(vault)
@@ -71,8 +71,9 @@ describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)
 
       expect(Object.keys(out).toSorted()).toEqual(ENVELOPE_KEYS)
       // §4 원장 ⑥ — 봉투가 7키 → **9키**로 늘었으므로(`producer`·`env` 가산) 계약 버전이
-      //   1 → **2** 다(D-D (b)). 단언이 약해진 것이 아니라 **계약이 바뀐** 자리다.
-      expect(out.schemaVersion).toBe(2)
+      //   1 → 2(D-D (b)) → **3**(P5 · D-G — 발행물 3종 + wire 3 페이로드 공용). 단언이 약해진 것이
+      //   아니라 **계약이 바뀐** 자리다.
+      expect(out.schemaVersion).toBe(3)
       expect(out.docs.map((doc) => doc.id)).toContain(ID_A)
       expect(out.docs.map((doc) => doc.id)).not.toContain(ID_DRAFT) // draft 제외
       const active = out.docs.find((doc) => doc.id === ID_A)

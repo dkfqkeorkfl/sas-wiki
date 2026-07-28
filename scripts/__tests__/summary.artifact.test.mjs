@@ -33,14 +33,16 @@ import { loadSchema, validateItem } from '../lib/validate.mjs'
 import { cleanup, git } from './helpers/tmp-git-vault.mjs'
 import { seedCleanVault } from './helpers/polluted-vault.mjs'
 
-const loadedSummary = await import(new URL('../summary.mjs', import.meta.url).href)
+// P5 · OQ-P5-1=A — runSummaryGenerator 가 CLI 파일(summary.mjs)에서 lib/generator.mjs 로 이동했다.
+//   경로만 바뀐다(§4 원장 ⑬) — 단언·시그니처는 무변경이다.
+const loadedSummary = await import(new URL('../lib/generator.mjs', import.meta.url).href)
 const loadedArtifact = await import(new URL('../lib/artifact.mjs', import.meta.url).href).catch(
   (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
 )
 
 async function generate(options) {
   if (typeof loadedSummary.runSummaryGenerator !== 'function') {
-    throw new Error('[RED] scripts/summary.mjs 에 runSummaryGenerator export 가 없다')
+    throw new Error('[RED] scripts/lib/generator.mjs 에 runSummaryGenerator export 가 없다')
   }
   // ★ `await` 는 **선제적**이다 — D-A 가 `runSummaryGenerator` 를 async 로 만든다(OQ-P4-3 승인).
   //   동기 반환값에 붙는 `await` 는 무해하므로 이 파일은 전후 양쪽에서 같은 의미를 갖는다.
@@ -84,8 +86,8 @@ const ARTIFACT_KEYS = [
   'tree',
 ]
 
-/** 계약 버전 — **리터럴 2**. 헤더 3키가 늘었으므로 1 → 2 다(D-D (b) · §4 원장 ⑥~⑩ 과 짝). */
-const SCHEMA_VERSION = 2
+/** 계약 버전 — **리터럴 3**(P5 · D-G · tdd §4.2 ⑭). 발행물 3종 + wire 3 페이로드 공용. */
+const SCHEMA_VERSION = 3
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -98,10 +100,16 @@ function freshClean() {
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
-describe('억제 저장이 재생성을 유발한다 (FP7 · 🔴RED 억제가 지문 입력 밖)', () => {
-  it('FP7: HEAD 불변 + 억제 목록만 **미커밋 저장** → 다음 실행이 재생성한다', async () => {
-    // ★ D-C 의 종단 증명이자 이 phase 의 User Story("커밋 없이 저장만 하면 반영된다"). 이것이 안 되면
-    //   소비자 캐시 키를 지문으로 갈아도 **D12 는 여전히 깨진 채**다 — Task 6·7 을 아무리 잘 해도.
+describe('억제 저장은 재생성을 유발하지 않는다 (FP7 · 🟩flip · P5 Task 8(D-H) · SU5 로 대체)', () => {
+  // ★ Rewrite(메인 세션 판정 · tdd §4 원장 ⑦·§4.5 ㉑) — P4 시절 이 케이스는 "억제가 지문 입력이라
+  //   저장만 해도 재생성된다" 를 세워 D12("저장만으로 즉시 반영")를 지켰다. P5 Task 8(D-H)로 억제는
+  //   지문의 입력에서 **빠졌다**(`fingerprint.mjs`) — 그 결과 이 파일 저장은 더 이상 재생성을 유발하지
+  //   않는다. D12 자체는 죽지 않았다 — 그 종단 증거는 `summary.suppression-independence.test.mjs`
+  //   의 **SU5~SU8**(같은 커밋에서 재작성)이 승계한다: `feeds.mjs` 가 서빙 시점에 억제를 캐시 없이
+  //   직접 읽으므로(D-A·D-C) 재생성 없이도 반영이 즉시다. 이 케이스는 **반대 방향의 회귀 가드**로
+  //   남는다 — 억제 저장이 다시 재생성을 유발하게 되면(지문에 억제가 도로 섞이면) 그것이 SU1~SU4 의
+  //   회귀이자 여기서도 flip 이다.
+  it('FP7: HEAD 불변 + 억제 목록만 **미커밋 저장** → 다음 실행도 재생성하지 않는다(지문 불변)', async () => {
     const vault = freshClean()
     const first = await generate({ env: 'dev', vault })
     const second = await generate({ env: 'dev', vault })
@@ -119,8 +127,8 @@ describe('억제 저장이 재생성을 유발한다 (FP7 · 🔴RED 억제가 �
 
     const third = await generate({ env: 'dev', vault })
 
-    expect(third.regenerated).toBe(true)
-    expect(third.inputsFingerprint).not.toBe(first.inputsFingerprint)
+    expect(third.regenerated).toBe(false)
+    expect(third.inputsFingerprint).toBe(first.inputsFingerprint)
   })
 })
 
@@ -156,7 +164,7 @@ describe('발행 아티팩트 — 봉투·버전·스키마 (AR4·AR6·AR8 · �
     expect(Object.keys(readJson(artifactPathOf(vault, 'dev'))).toSorted()).toEqual(ARTIFACT_KEYS)
   })
 
-  it('AR6: 발행 파일의 `schemaVersion` 이 정수 **2** 다', async () => {
+  it('AR6: 발행 파일의 `schemaVersion` 이 정수 **3** 다', async () => {
     // 헤더 3키가 늘었으므로 옛 파일은 "미지 버전" 이 아니라 **구 버전**이고, 독자가 stale 로
     //   떨어뜨려 재생성한다(마이그레이션 없음 — 파생 데이터다). 단위 대응물은 RD5 다.
     const vault = freshClean()

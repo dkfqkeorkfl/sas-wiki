@@ -32,6 +32,32 @@ export function artifactPath(vaultDir, env) {
 }
 
 /**
+ * 내부 feeds 아티팩트의 경로 — **summary 와 다른 파일**이다(D-C). 같은 파일에 쓰면 두 발행물이
+ * 서로를 덮어써 3중 신선도(D-D)가 무의미해진다. `cache/` 하위라는 자리는 같다 — 원자 발행 규율
+ * (`writeFileAtomic`)과 `.gitignore` 경계를 그대로 물려받기 위해서다.
+ *
+ * @param {string} vaultDir vault 리포 루트
+ * @param {'dev'|'prod'} env
+ * @returns {string} 절대 경로
+ */
+export function feedsArtifactPath(vaultDir, env) {
+  return path.join(path.resolve(vaultDir), 'cache', `feeds.${env}.json`)
+}
+
+/**
+ * 리포트(관측 채널)의 경로 — **env 별로 갈린다**(F-29). 예전엔 `logs/summary.report.{json,txt}`
+ * 단일 슬롯이라 dev·prod 교대 실행이 서로의 리포트를 덮어썼다.
+ *
+ * @param {string} vaultDir vault 리포 루트
+ * @param {'dev'|'prod'} env
+ * @param {'json'|'txt'} ext
+ * @returns {string} 절대 경로
+ */
+export function reportPath(vaultDir, env, ext) {
+  return path.join(path.resolve(vaultDir), 'logs', `summary.report.${env}.${ext}`)
+}
+
+/**
  * 아티팩트를 읽어 **신선한가**를 판정한다. 실패는 전부 stale 로 접는다 — **throw 하지 않는다.**
  *
  * | 입력                          | 결과                       |

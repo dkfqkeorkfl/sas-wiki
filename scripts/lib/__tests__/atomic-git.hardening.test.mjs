@@ -181,3 +181,31 @@ describe('F-20 의 서빙 귀결 (AG4 · 🔴RED 오늘 조용한 빈 결과 · 
     expect(() => collectEverDeletedDocPaths(broken, { isDocPath: anyMarkdown })).toThrow(/fatal/u)
   })
 })
+
+describe('AG5 — 커밋 0건 vault 는 **고장이 아니다** (F-20 좁힘의 과잉 교정 가드)', () => {
+  // ★ 이 케이스가 왜 뒤늦게 생겼나: F-20 이 `tryGit` 의 흡수 범위를 `config --get` 하나로 좁혔는데,
+  //   **같은 phase 가 얕은 티어를 없애면서**(D-I) `collectDeletedDocEvents`·`collectEverDeletedDocPaths`
+  //   가 서빙 경로에서도 항상 돌게 됐다. 예전엔 그 블록이 스킵돼 드러나지 않았고, catch-all 이 이
+  //   케이스를 우연히 덮고 있었다. 둘이 겹치자 **커밋 0건 vault 에서 `parseVault` 전체가 죽었다**
+  //   (리뷰 실측 → 메인 재현). 766개 테스트 중 아무것도 이 조합을 밟지 않았다.
+  //
+  //   "삭제 이력이 없다" 는 **참인 상태**이지 고장이 아니다. 좁히기 자체는 옳았고 경계가 한 칸
+  //   틀렸을 뿐이라, 넓히는 방향은 이 한 가지 조건에서 멈춘다 — 짝 단언(AG3·AG4)이 임의 실패는
+  //   여전히 rethrow 임을 계속 문다.
+  it('AG5: 커밋 0건 vault 에서 삭제 이력 조회가 빈 결과다 (임의 실패는 여전히 throw)', () => {
+    const vault = initVault() // `git init` 만 — 커밋 0건
+    tmps.push(vault)
+
+    // 앵커: 이 vault 는 실제로 git 리포이고 **커밋이 0건**이다(엉뚱한 디렉토리로 통과 배제).
+    expect(existsSync(path.join(vault, '.git'))).toBe(true)
+    expect(() => git(vault, ['rev-parse', 'HEAD'])).toThrow()
+
+    expect([...collectEverDeletedDocPaths(makeGitRunner(vault), { isDocPath: anyMarkdown })]).toEqual([]) // prettier-ignore
+
+    // 짝: 넓힌 것은 "커밋 없음" 하나뿐이다 — 진짜 고장은 그대로 던진다.
+    const broken = () => {
+      throw fatalGitError()
+    }
+    expect(() => collectEverDeletedDocPaths(broken, { isDocPath: anyMarkdown })).toThrow(/fatal/u)
+  })
+})

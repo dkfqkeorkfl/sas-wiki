@@ -91,7 +91,7 @@ describe('buildContent — 검증 경로의 사유별 생존 (BE1·BE2 🔴RED(f
   })
 
   it('BE2: prod 2건이고 **서빙 빌더(walkFeeds)와 튜플 동치**다 · prunedFeeds 1(실험 소식만)', async () => {
-    const { walkFeeds } = await import(new URL('../lib/git-walk.mjs', import.meta.url).href)
+    const { walkFeeds } = await import(new URL('./helpers/walk-feeds.mjs', import.meta.url).href)
     const vault = seedSurvivalVault()
     try {
       const { feeds, stats } = buildContent({ env: 'prod', vault })

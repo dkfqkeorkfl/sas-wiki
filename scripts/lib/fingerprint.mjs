@@ -4,7 +4,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { WIKI_PREFIX } from './head-state.mjs'
-import { IGNORE_FEEDS_FILE } from './ignore.mjs'
 
 const DEFAULT_SCRIPTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -29,17 +28,20 @@ export function computeInputsFingerprint({
     updateFile(hash, 'wiki', vaultRoot, file)
   }
 
-  // 억제 목록은 **출력이 달라지는 입력**이다(feeds 에서 항목이 사라진다). 지문 밖에 두면 목록을
-  //   저장해도 아무것도 stale 이 되지 않아 "커밋 없이 저장만 하면 반영된다"(D12)가 성립하지 않는다.
+  // ★ P5 Task 8(D-H·R1) — 억제 목록은 **이 지문의 입력이 아니다**. 이전 주석은 "지문 밖에 두면
+  //   저장해도 stale 이 안 돼 D12 가 성립하지 않는다" 고 적었으나, 그 진술은 **코드로 반증된다**:
+  //   D12("저장만으로 즉시 반영")를 실제로 지탱하는 것은 이 함수의 무효화가 **아니라** `feeds.mjs`
+  //   가 매 요청마다 `loadIgnoreFeeds` 를 **캐시 없이 직접** 읽는다는 사실이다(서빙 시점 필터 ·
+  //   D-A·D-C). 억제는 summary 산출물의 바이트를 바꾸지 않는다(B14 실측 · SU6 이 완전 동일을 고정
+  //   한다) — Gradle Incremental Build 의 규범대로 "산출에 영향을 주지 않는 속성을 입력으로 등록
+  //   하면 안 된다"(등록하면 억제 편집 한 줄이 26초 전량 재생성을 부른다 · B10). 지문에 넣었던
+  //   진짜 이유는 소비자의 post-suppression 인메모리 첫 페이지 캐시였고(P4), 그 캐시가 사라지면
+  //   (Task 8 · `plugin.ts`) 이 입력도 함께 빠져야 한다 — 하나만 하면 "억제가 반영되지 않는다"
+  //   상태로 되돌아간다.
   //
-  // **바이트 그대로 먹고 파싱하지 않는다.** 스키마 검증은 `loadIgnoreFeeds` 소관이고, 지문이 파싱에
-  //   결합되면 억제 목록의 오타 하나가 "안 바뀌었나?" 라는 질문 자체를 죽인다(= 서빙 전면 5xx).
-  //   그래서 **부재 = 빈 입력**이다 — 부재와 `[]` 는 다른 지문이고, 그 대가(파일 최초 생성 시 재생성
-  //   1회)를 치르는 대신 바이트 해시의 단순함을 지킨다. 정규화로 둘을 같게 만들려면 파싱이 필요하다.
-  const ignoreFile = path.join(vaultRoot, IGNORE_FEEDS_FILE)
-  if (fs.statSync(ignoreFile, { throwIfNoEntry: false })?.isFile()) {
-    updateFile(hash, 'ignore', vaultRoot, ignoreFile)
-  }
+  // 수용하는 손실(OQ-P5-6): `summary --status` 가 malformed 억제 목록을 조기 검출하던 층이 사라진다
+  //   (지문 변화 → 재생성 → throw 로 *우연히* 검출하던 것이었다). 검출 책임은 `loadIgnoreFeeds`
+  //   가 계속 진다 — `validate`·`feeds` 는 여전히 fail-loud 다(SU8).
 
   return hash.digest('hex').slice(0, 16)
 }

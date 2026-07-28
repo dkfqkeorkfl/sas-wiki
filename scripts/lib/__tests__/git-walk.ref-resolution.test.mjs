@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { checkFeedResolution } from '../invariants.mjs'
-import { walkFeeds } from '../git-walk.mjs'
+import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import { seedStrayVault } from '../../__tests__/helpers/polluted-vault.mjs'
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
 
