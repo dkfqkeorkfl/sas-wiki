@@ -122,7 +122,7 @@ function documentedArtifactPaths(scope) {
 }
 
 describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
-  it('PT0: README 에 `contract:artifacts` 마커가 열림/닫힘 각 1개이고 구간이 비어 있지 않다 (🔴RED)', () => {
+  it('PT0: README 에 `contract:artifacts` 마커가 열림/닫힘 각 1개이고 구간이 비어 있지 않다', () => {
     // 🔴 왜 지금 red 인가: 마커가 **아직 없다**(Task 3 이 넣는다). 이 케이스가 없으면 이하 결속이
     //   전부 "빈 구간 vs 빈 집합" 으로 **조용히 통과**한다 — 규범 I 부속 규칙의 심장이다.
     const { extractMarkerBlock } = markdownHelpers()
@@ -132,7 +132,7 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     expect(documentedArtifactPaths({ lines: block })).toHaveLength(4)
   })
 
-  it('PT1: 문서화된 산출물 경로 == 경로 헬퍼 4종 == 리터럴 (양방향) (🔴RED(flip))', () => {
+  it('PT1: 문서화된 산출물 경로 == 경로 헬퍼 4종 == 리터럴 (양방향)', () => {
     // 🔴 왜 지금 red 인가: README 는 env 분리 **이전** 경로를 말한다 — `cache/summary.json`(5회) ·
     //   `logs/summary.report.*`. 실제 계약은 `cache/summary.<env>.json` · **`cache/feeds.<env>.json`**
     //   (신규) · `logs/summary.report.<env>.{json,txt}` 다. GREEN: 원장 ⑭ 의 7지점을 마커 구간으로.
@@ -155,7 +155,7 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     )
   })
 
-  it('PT2: 문서화된 스키마 파일 목록 == `scripts/schema/*.json` 7종 (양방향) (🔴RED(flip))', () => {
+  it('PT2: 문서화된 스키마 파일 목록 == `scripts/schema/*.json` 7종 (양방향)', () => {
     // 🔴 왜 지금 red 인가: README:49 는 _"frontmatter 1종 + 산출물 3종 + 억제목록 1종"_ = **5종**이라
     //   적고 **파일 목록이 없다**. 실제는 **7종**이다.
     const onDisk = readdirSync(path.join(REPO_ROOT, 'scripts/schema'))
@@ -174,7 +174,7 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     )
   })
 
-  it('PT3: 문서화된 `producer` == `payloads.mjs` 소스의 3종 (양방향) (🔴RED)', () => {
+  it('PT3: 문서화된 `producer` == `payloads.mjs` 소스의 3종 (양방향)', () => {
     // 🔴 왜 지금 red 인가: README 에 producer 표지가 **한 번도 나오지 않는다**(신규 계약 9개 중 하나).
     //   아티팩트 신선도 판정이 `producer` 불일치를 stale 로 접는데, 그 어휘가 문서에 없다.
     const fromSource = captures(
@@ -191,7 +191,7 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     expect(documented, `문서 결속면(${scope.via})`).toEqual(fromSource)
   })
 
-  it('PT4: 문서화된 `schemaVersion` == 소스 == 리터럴 3 (3중 대조) (🔴RED(flip))', () => {
+  it('PT4: 문서화된 `schemaVersion` == 소스 == 리터럴 3 (3중 대조)', () => {
     // 🔴 왜 지금 red 인가: README:282·361 의 예시 봉투가 **`"schemaVersion": 1`** 이다. 소스는 3.
     // ★ 리터럴 축이 없으면 "문서와 소스가 **함께 2로 틀린**" 상태를 통과시킨다(규범 A).
     const fromSource = captures(readSource('scripts/lib/payloads.mjs'), /SCHEMA_VERSION = (\d+)/g)
@@ -202,7 +202,7 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     expect(documented, `문서 결속면(${scope.via})`).toEqual(['3'])
   })
 
-  it('PT5: README 전문에 env 분리 **이전** 경로가 0회다 (팬텀 방향) (🔴RED)', () => {
+  it('PT5: README 전문에 env 분리 **이전** 경로가 0회다 (팬텀 방향)', () => {
     // 🔴 왜 지금 red 인가: `cache/summary.json` **5회**(:5·:44·:50·:153·:163) + `logs/summary.report.*`
     //   계열 **2회**(:51·:153). 이것들은 P3·P5 가 env 로 갈라놓은 뒤로 **존재하지 않는 경로**다.
     // ★ 앵커가 먼저다: 새 형이 **실재해야** 한다 — 문서에서 경로 서술을 통째로 지워 통과하는 길을 막는다.
@@ -225,20 +225,6 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
 //   (_"엔드포인트는 **8번**(id 유일성)만 검사"_). 재번호매김은 그 상호참조를 **조용히** 무효화한다.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 const EN_MARKERS = ['invariants', 'reason-codes', 'feed-ref-reasons', 'importance', 'exit-codes']
-/** ★ D-F — 6번은 P2 에서 앵커 기능과 함께 제거됐다. **번호는 재사용하지 않는다**(구멍 유지). */
-const EXPECTED_INVARIANT_NUMBERS = [1, 2, 3, 4, 5, 7, 8]
-const EXPECTED_REASON_CODES = [
-  'NO_FRONTMATTER',
-  'MISSING_TYPE',
-  'SCHEMA_VIOLATION',
-  'DUPLICATE_PATH',
-  'DUPLICATE_ID',
-  'ID_TAMPERED',
-  'DELETED_ID_REUSE',
-]
-const EXPECTED_FEED_REF_REASONS = ['deleted', 'draft-excluded', 'invalid-excluded', 'unresolved']
-const EXPECTED_IMPORTANCE = ['normal', 'highlight', 'breaking', 'fix']
-const EXPECTED_EXIT_CODES = ['1', '2', '3']
 
 /** `invariants.mjs` 가 **실제로 방출하는** 불변식 번호(소스 텍스트에서 — import 아님). */
 function emittedInvariantNumbers() {
@@ -247,8 +233,119 @@ function emittedInvariantNumbers() {
     .sort((a, b) => a - b)
 }
 
+const EN_ENUM_CONTRACTS = [
+  {
+    documented: (scope) =>
+      scope.lines
+        .map((line) => line.match(/^\|\s*(\d+)\s*\|/))
+        .filter(Boolean)
+        .map((match) => Number(match[1])),
+    expected: [1, 2, 3, 4, 5, 7, 8],
+    fromCode: () => {
+      const emitted = emittedInvariantNumbers()
+      // 앵커 ①: 코드 집합의 크기가 7. ②: **6이 없다**(구멍이 실재한다 — 표를 7행으로 줄이는 근거).
+      expect(emitted).toHaveLength(7)
+      expect(emitted).not.toContain(6)
+      return emitted
+    },
+    id: 'EN1',
+    locators: ['| 1   |', '| 2   |', '| 3   |'],
+    marker: 'invariants',
+    title: '불변식 번호 == 방출 번호 == 리터럴 [1,2,3,4,5,7,8] (순서까지)',
+  },
+  {
+    documented: (scope) => unique(captures(scopeText(scope), /`([A-Z][A-Z_]{3,})`/g)),
+    expected: [
+      'NO_FRONTMATTER',
+      'MISSING_TYPE',
+      'SCHEMA_VIOLATION',
+      'DUPLICATE_PATH',
+      'DUPLICATE_ID',
+      'ID_TAMPERED',
+      'DELETED_ID_REUSE',
+    ],
+    fromCode: () => {
+      const fromSource = captures(
+        readSource('scripts/lib/doc-gate.mjs').split('export function')[0],
+        /'([A-Z][A-Z_]+)'/g,
+      )
+      // 앵커: `ID_TAMPERED`·`DELETED_ID_REUSE` 가 **마지막 두 개**다(깊은 티어 전용 순서 의미).
+      expect(fromSource.slice(-2)).toEqual(['ID_TAMPERED', 'DELETED_ID_REUSE'])
+      return fromSource
+    },
+    id: 'EN3',
+    locators: ['NO_FRONTMATTER'],
+    marker: 'reason-codes',
+    title: 'README 제외 사유 == `doc-gate.mjs` 의 `REASON_CODES` 7종 순서 (양방향)',
+  },
+  {
+    documented: (scope) =>
+      unique(captures(scopeText(scope), /`([a-z]+(?:-[a-z]+)*)`/g)).filter(
+        (token) => token.includes('-') || token === 'deleted' || token === 'unresolved',
+      ),
+    expected: ['deleted', 'draft-excluded', 'invalid-excluded', 'unresolved'],
+    fromCode: () => {
+      const fromSource = captures(
+        readSource('scripts/lib/feed-survival.mjs'),
+        /'([a-z][a-z-]*)'/g,
+      ).slice(0, 4)
+      // 앵커: `invalid-excluded` 가 포함된다 — fail-open 사유의 이름이 사라지면 극성 서술이 무너진다.
+      expect(fromSource).toContain('invalid-excluded')
+      return fromSource
+    },
+    id: 'EN4',
+    locators: ['`deleted`', '`draft-excluded`', '`invalid-excluded`', '`unresolved`'],
+    marker: 'feed-ref-reasons',
+    title: 'README 피드 참조 생존 사유 == `FEED_REF_REASONS` 4종 순서 (양방향)',
+  },
+  {
+    documented: (scope) => unique(captures(scopeText(scope), /`(normal|highlight|breaking|fix)`/g)),
+    expected: ['normal', 'highlight', 'breaking', 'fix'],
+    fromCode: () => {
+      const schema = loadSchema(path.join(REPO_ROOT, 'scripts/schema/feeds.schema.json'))
+      const fromSchema = schema.definitions.feedItem.properties.importance.enum
+      // ★ 앵커는 **선언이 아니라 거동**이다: 검증기가 `fix` 봉투를 통과시키고 `bogus` 를 거부한다.
+      const envelope = (importance) => ({
+        generatedAt: '2023-11-14T22:13:20.000Z',
+        inputsFingerprint: '0123456789abcdef',
+        items: [{ body: '', docs: [], id: 'abcdef012345', importance, keywords: [], title: 'x', ts: '2026-01-01T00:00:00Z' }], // prettier-ignore
+        nextCursor: null,
+        schemaVersion: 3,
+        sourceCommit: '9e0a3a0c8072f436503c5065ca4b4b863cd434fb',
+      })
+      expect(validateItem(envelope('fix'), schema, '$feeds')).toEqual([])
+      expect(validateItem(envelope('bogus'), schema, '$feeds').length).toBeGreaterThan(0)
+      return fromSchema
+    },
+    id: 'EN5',
+    locators: ['Importance'],
+    marker: 'importance',
+    title: 'README `Importance` 허용값 == `feeds.schema.json` enum 4종 순서',
+  },
+  {
+    documented: (scope) => unique(captures(scopeText(scope), /exit(?:\s+code)?\s+([1-9])/g)).sort(),
+    expected: ['1', '2', '3'],
+    fromCode: () => {
+      const fromSource = unique(
+        ['scripts/feeds.mjs', 'scripts/summary.mjs', 'scripts/validate.mjs', 'scripts/wiki.mjs']
+          .map((rel) => readSource(rel))
+          .flatMap((source) => captures(source, /process\.exit(?:Code)?(?:\(|\s*=\s*)(\d)/g)),
+      ).sort()
+      // 앵커: `2` 가 **세 엔드포인트 전부**에서 나온다(한 파일만 보고 통과하는 것 배제).
+      for (const rel of ['scripts/feeds.mjs', 'scripts/summary.mjs', 'scripts/wiki.mjs']) {
+        expect(readSource(rel), rel).toMatch(/process\.exitCode = 2/)
+      }
+      return fromSource
+    },
+    id: 'EN6',
+    locators: ['exit '],
+    marker: 'exit-codes',
+    title: 'README 종료 코드 == 프로덕션 소스의 종료 코드 집합 {1,2,3}',
+  },
+]
+
 describe('결속 — 열거형 (EN · D-D 유형 2 · 양방향 + 순서)', () => {
-  it('EN0: 열거 마커 5종이 전부 실재하고 각 구간이 비어 있지 않다 (🔴RED)', () => {
+  it('EN0: 열거 마커 5종이 전부 실재하고 각 구간이 비어 있지 않다', () => {
     // 🔴 왜 지금 red 인가: 마커가 아직 없다. **arm 5개를 다 둔다** — 하나만 두면 나머지 4개가
     //   빈 집합으로 통과한다(PT0 과 동형).
     const { extractMarkerBlock } = markdownHelpers()
@@ -261,26 +358,18 @@ describe('결속 — 열거형 (EN · D-D 유형 2 · 양방향 + 순서)', () =
     }
   })
 
-  it('EN1: 불변식 번호 == 방출 번호 == 리터럴 [1,2,3,4,5,7,8] (순서까지) (🔴RED(flip))', () => {
-    // 🔴 왜 지금 red 인가: README 표가 **8행**(6번 = 앵커 정합)인데 코드가 방출하는 번호는 **7종**이다
-    //   — 6번은 D10 이 앵커 기능을 제거하며 함께 사라졌다. GREEN: 6번 행 삭제 + _"번호는 재사용하지
-    //   않는다"_ 명시(원장 ⑧). ★★ 그 순간 `](#불변식-8종)` 링크 **5개**가 깨진다 → AC1 이 잡는다.
-    const emitted = emittedInvariantNumbers()
+  it.each(EN_ENUM_CONTRACTS)(
+    '$id: $title',
+    ({ documented, expected, fromCode, locators, marker }) => {
+      const fromCodeValues = fromCode()
+      expect(fromCodeValues).toEqual(expected)
 
-    // 앵커 ①: 코드 집합의 크기가 7. ②: **6이 없다**(구멍이 실재한다 — 표를 7행으로 줄이는 근거).
-    expect(emitted).toHaveLength(7)
-    expect(emitted).not.toContain(6)
-    expect(emitted).toEqual(EXPECTED_INVARIANT_NUMBERS)
+      const scope = docScope(marker, locators)
+      expect(documented(scope), `문서 결속면(${scope.via})`).toEqual(expected)
+    },
+  )
 
-    const scope = docScope('invariants', ['| 1   |', '| 2   |', '| 3   |'])
-    const documented = scope.lines
-      .map((line) => line.match(/^\|\s*(\d+)\s*\|/))
-      .filter(Boolean)
-      .map((match) => Number(match[1]))
-    expect(documented, `문서 결속면(${scope.via}) — 표의 # 열`).toEqual(EXPECTED_INVARIANT_NUMBERS)
-  })
-
-  it('EN2: `invariants.mjs` 헤더의 "N종" == 방출 번호 개수 == README 제목의 "N종" (🔴RED(flip))', () => {
+  it('EN2: `invariants.mjs` 헤더의 "N종" == 방출 번호 개수 == README 제목의 "N종"', () => {
     // 🔴 왜 지금 red 인가: 코드 헤더도 README 제목도 **"8종"** 인데 실제 방출은 7종이다.
     // ★ 이것이 **결정 가능한 주석**의 유일한 자리다(규범 I 의 경계 사례 — 숫자는 역사 서술이 아니다).
     //   그래서 §10.1-4 의 "코드가 아니라 문서를 고친다" 규칙에서 **EN2 만 예외**다.
@@ -293,91 +382,6 @@ describe('결속 — 열거형 (EN · D-D 유형 2 · 양방향 + 순서)', () =
 
     const inReadme = captures(README, /^#{2,4}\s+불변식 (\d+)종\s*$/gm)
     expect(inReadme).toEqual([String(count)])
-  })
-
-  it('EN3: README 제외 사유 == `doc-gate.mjs` 의 `REASON_CODES` 7종 순서 (양방향) (pin)', () => {
-    // ✅ 오늘도 green(README:234 정합) — **회귀 방지 못**이다. Task 3 이 절을 재작성할 때 사유 하나를
-    //   흘리거나 순서를 뒤집으면 여기서 잡힌다.
-    const fromSource = captures(
-      readSource('scripts/lib/doc-gate.mjs').split('export function')[0],
-      /'([A-Z][A-Z_]+)'/g,
-    )
-
-    // 앵커: 7종이고 `ID_TAMPERED`·`DELETED_ID_REUSE` 가 **마지막 두 개**다(깊은 티어 전용이라는
-    //   순서 의미가 살아 있다 — 알파벳 정렬로 뭉개면 그 뜻이 사라진다).
-    expect(fromSource).toEqual(EXPECTED_REASON_CODES)
-    expect(fromSource.slice(-2)).toEqual(['ID_TAMPERED', 'DELETED_ID_REUSE'])
-
-    const scope = docScope('reason-codes', ['NO_FRONTMATTER'])
-    const documented = unique(captures(scopeText(scope), /`([A-Z][A-Z_]{3,})`/g))
-    expect(documented, `문서 결속면(${scope.via})`).toEqual(EXPECTED_REASON_CODES)
-  })
-
-  it('EN4: README 피드 참조 생존 사유 == `FEED_REF_REASONS` 4종 순서 (양방향) (🔴RED)', () => {
-    // 🔴 왜 지금 red 인가: README 에 이 어휘가 **한 번도 없다**. plan D-G(F-7 예제 규칙)와 D-A(사유별
-    //   판정)가 전부 이 4단어로 서술되는데, 문서에 없으면 그 서술을 쓸 수 없다.
-    const fromSource = captures(
-      readSource('scripts/lib/feed-survival.mjs'),
-      /'([a-z][a-z-]*)'/g,
-    ).slice(0, 4)
-
-    // 앵커: `invalid-excluded` 가 포함된다 — ★ fail-open 사유의 이름이 사라지면 극성 서술이 무너진다.
-    expect(fromSource).toEqual(EXPECTED_FEED_REF_REASONS)
-    expect(fromSource).toContain('invalid-excluded')
-
-    const scope = docScope('feed-ref-reasons', EXPECTED_FEED_REF_REASONS.map((r) => `\`${r}\``)) // prettier-ignore
-    const documented = unique(captures(scopeText(scope), /`([a-z]+(?:-[a-z]+)*)`/g)).filter(
-      (token) => token.includes('-') || token === 'deleted' || token === 'unresolved',
-    )
-    expect(documented, `문서 결속면(${scope.via})`).toEqual(EXPECTED_FEED_REF_REASONS)
-  })
-
-  it('EN5: README `Importance` 허용값 == `feeds.schema.json` enum 4종 순서 (🔴RED(flip))', () => {
-    // 🔴 왜 지금 red 인가: README:560 은 **3종**(`breaking`|`highlight`|`normal`)만 적는다. 스키마는
-    //   **4종**이고 `fix` 가 빠져 있다 — `fix` 는 피드 생존 판정을 바꾸는 값이라(참조가 전부 걷히면
-    //   fix 는 살아남지 않는다) 문서 누락이 곧 오사용을 만든다.
-    const schema = loadSchema(path.join(REPO_ROOT, 'scripts/schema/feeds.schema.json'))
-    const fromSchema = schema.definitions.feedItem.properties.importance.enum
-    expect(fromSchema).toEqual(EXPECTED_IMPORTANCE)
-
-    // ★ 앵커는 **선언이 아니라 거동**이다: 검증기가 `fix` 봉투를 통과시키고 `bogus` 를 거부한다.
-    const envelope = (importance) => ({
-      generatedAt: '2023-11-14T22:13:20.000Z',
-      inputsFingerprint: '0123456789abcdef',
-      items: [{ body: '', docs: [], id: 'abcdef012345', importance, keywords: [], title: 'x', ts: '2026-01-01T00:00:00Z' }], // prettier-ignore
-      nextCursor: null,
-      schemaVersion: 3,
-      sourceCommit: '9e0a3a0c8072f436503c5065ca4b4b863cd434fb',
-    })
-    expect(validateItem(envelope('fix'), schema, '$feeds')).toEqual([])
-    expect(validateItem(envelope('bogus'), schema, '$feeds').length).toBeGreaterThan(0)
-
-    const scope = docScope('importance', ['Importance'])
-    const documented = unique(captures(scopeText(scope), /`(normal|highlight|breaking|fix)`/g))
-    expect(documented.toSorted(), `문서 결속면(${scope.via})`).toEqual(
-      EXPECTED_IMPORTANCE.toSorted(),
-    )
-  })
-
-  it('EN6: README 종료 코드 == 프로덕션 소스의 종료 코드 집합 {1,2,3} (🔴RED)', () => {
-    // 🔴 왜 지금 red 인가: README 는 **1·3 만** 말한다. `2`(인자·`--env` 오류)는 세 CLI 공통인데
-    //   문서화되지 않았다 — 소비자가 2를 "알 수 없는 실패" 로 취급하게 된다.
-    // ★ `0`(성공)은 종료 **코드 표**의 대상이 아니다: 프로덕션은 `exit(0)` 을 부르지 않는다(정상 종료).
-    const fromSource = unique(
-      ['scripts/feeds.mjs', 'scripts/summary.mjs', 'scripts/validate.mjs', 'scripts/wiki.mjs']
-        .map((rel) => readSource(rel))
-        .flatMap((source) => captures(source, /process\.exit(?:Code)?(?:\(|\s*=\s*)(\d)/g)),
-    ).sort()
-
-    // 앵커: 집합 크기 3이고 `2` 가 **세 엔드포인트 전부**에서 나온다(한 파일만 보고 통과하는 것 배제).
-    expect(fromSource).toEqual(EXPECTED_EXIT_CODES)
-    for (const rel of ['scripts/feeds.mjs', 'scripts/summary.mjs', 'scripts/wiki.mjs']) {
-      expect(readSource(rel), rel).toMatch(/process\.exitCode = 2/)
-    }
-
-    const scope = docScope('exit-codes', ['exit '])
-    const documented = unique(captures(scopeText(scope), /exit(?:\s+code)?\s+([1-9])/g)).sort()
-    expect(documented, `문서 결속면(${scope.via})`).toEqual(EXPECTED_EXIT_CODES)
   })
 
   it('EN7: README `--env` 허용값이 dev·prod 2종이고 fail-closed 를 서술한다 (pin)', () => {
@@ -405,13 +409,29 @@ const LABEL_RE = /\[wiki\]\s+([a-z][a-z-]*):/g
 
 const labelsIn = (source) => unique(captures(source, LABEL_RE)).sort()
 
+function withMissingDeadlinkLabelFixture(callback) {
+  const vault = initVault()
+  try {
+    const original = readSource('scripts/validate.mjs')
+    const mutated = original
+      .split('\n')
+      .filter((line) => !line.includes('[wiki]   deadlink:'))
+      .join('\n')
+    const copy = path.join(vault, 'validate.copy.mjs')
+    writeFileSync(copy, mutated, 'utf8')
+    return callback({ copy, original })
+  } finally {
+    cleanup(vault)
+  }
+}
+
 describe('결속 — 경고 라벨 어휘 (LB · D-D 유형 3)', () => {
   it('LB0: `validate.mjs` 소스에서 뽑은 라벨 집합이 비어 있지 않다 (pair · H3)', () => {
     // 추출 정규식이 안 맞아 빈 집합이 되면 LB1 이 `∅ == ∅` 로 통과한다. 그 구멍을 먼저 막는다.
     expect(labelsIn(readSource('scripts/validate.mjs')).length).toBeGreaterThanOrEqual(1)
   })
 
-  it('LB1: 코드 라벨 == README 라벨 == 리터럴 4종 (양방향) (🔴RED(flip))', () => {
+  it('LB1: 코드 라벨 == README 라벨 == 리터럴 4종 (양방향)', () => {
     // 🔴 왜 지금 red 인가: 코드는 **4종**을 방출하는데(`unresolved:`·`unpublished-feed:`·`deadlink:`·
     //   `warning:`) README:242 는 **`off-convention:` + `warning:`** 만 적는다 — **팬텀 1 · 누락 3**.
     //   단방향 검사로는 절반을 놓친다: 포함만 보면 팬텀을 못 잡고, 팬텀만 보면 누락을 못 잡는다.
@@ -422,7 +442,7 @@ describe('결속 — 경고 라벨 어휘 (LB · D-D 유형 3)', () => {
     expect(labelsIn(scopeText(scope)), `문서 결속면(${scope.via})`).toEqual(EXPECTED_LABELS)
   })
 
-  it('LB2: 팬텀 라벨 `off-convention` 이 프로덕션 0회 · README 0회다 (🔴RED)', () => {
+  it('LB2: 팬텀 라벨 `off-convention` 이 프로덕션 0회 · README 0회다', () => {
     // 🔴 왜 지금 red 인가: README **2지점**(:242 라벨 예시 · :528 동작 서술). ★ :528 은 _"어느 것도
     //   아니면 `off-convention` 으로 집계된다"_ 인데 **그 집계 자체를 P2 가 제거**했다 —
     //   라벨 토큰만 지우고 문장을 남기면 **여전히 거짓**이다(원장 ⑬: 문장 전체 삭제).
@@ -445,24 +465,13 @@ describe('결속 — 경고 라벨 어휘 (LB · D-D 유형 3)', () => {
     // ★ Semgrep 은 룰마다 **true positive + true negative 둘 다** 요구한다. 이것이 없으면 LB1 은
     //   "항상 같은 상수 두 개를 비교" 하는 케이스일 수 있다 — 감도가 0이어도 green 이다.
     // ★ **실 소스를 조작하지 않는다**(규범 F): tmp 사본에서만 변이한다.
-    const vault = initVault()
-    try {
-      const original = readSource('scripts/validate.mjs')
-      const mutated = original
-        .split('\n')
-        .filter((line) => !line.includes('[wiki]   deadlink:'))
-        .join('\n')
-      const copy = path.join(vault, 'validate.copy.mjs')
-      writeFileSync(copy, mutated, 'utf8')
-
+    withMissingDeadlinkLabelFixture(({ copy, original }) => {
       const after = labelsIn(readFileSync(copy, 'utf8'))
       expect(after).toEqual(['unpublished-feed', 'unresolved', 'warning'])
       expect(after).not.toContain('deadlink')
       // 앵커: 원본은 여전히 4종이다(변이가 원본을 건드리지 않았다).
       expect(labelsIn(original)).toEqual(EXPECTED_LABELS)
-    } finally {
-      cleanup(vault)
-    }
+    })
   })
 })
 

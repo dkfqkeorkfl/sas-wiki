@@ -245,13 +245,13 @@ function scanTierT() {
 }
 
 /** 예외를 적용해 남은 위반과, 엔트리별 제거 건수를 함께 돌려준다(양방향의 두 입력). */
-function applyExceptions(hits) {
-  const removedById = Object.fromEntries(EXCEPTIONS.map((entry) => [entry.id, 0]))
+function applyExceptions(hits, registry = EXCEPTIONS) {
+  const removedById = Object.fromEntries(registry.map((entry) => [entry.id, 0]))
   const remaining = []
   const linesCache = new Map()
 
   for (const hit of hits) {
-    const entry = EXCEPTIONS.find((candidate) => candidate.path === hit.path)
+    const entry = registry.find((candidate) => candidate.path === hit.path)
     if (entry === undefined) {
       remaining.push(hit)
       continue
@@ -261,6 +261,43 @@ function applyExceptions(hits) {
     else remaining.push(hit)
   }
   return { remaining, removedById }
+}
+
+function expectNoLegacyOutsideRegistry(hits, registry = EXCEPTIONS) {
+  const { remaining } = applyExceptions(hits, registry)
+  expect(
+    remaining.map((hit) => `${hit.path}:${hit.line}`),
+    formatViolations(remaining),
+  ).toEqual([])
+}
+
+function withLegacyOffenderFixture(callback) {
+  const vault = initVault()
+  try {
+    writeFileSync(path.join(vault, 'clean-a.mjs'), "export const a = 'chore: 정상'\n", 'utf8')
+    writeFileSync(path.join(vault, 'clean-b.md'), '# 정상 문서\n', 'utf8')
+    writeFileSync(
+      path.join(vault, 'offender.mjs'),
+      `export const seed = '${LEGACY_TOKENS[0]}: 문서 생성'\n`,
+      'utf8',
+    )
+    commit(vault, 'chore: 감도 증명 픽스처')
+    return callback(vault)
+  } finally {
+    cleanup(vault)
+  }
+}
+
+function withBinaryTrackedFixture(callback) {
+  const vault = initVault()
+  try {
+    writeFileSync(path.join(vault, 'text.mjs'), 'export const a = 1\n', 'utf8')
+    writeFileSync(path.join(vault, 'blob.bin'), Buffer.from([0x41, 0x00, 0x42]))
+    commit(vault, 'chore: 바이너리 포함 픽스처')
+    return callback(vault)
+  } finally {
+    cleanup(vault)
+  }
 }
 
 describe('레거시 스윕 — 코퍼스 비공허 (LS0 · H3)', () => {
@@ -281,7 +318,7 @@ describe('레거시 스윕 — 코퍼스 비공허 (LS0 · H3)', () => {
   })
 })
 
-describe('레거시 스윕 — Tier P: 프로덕션 소스는 주석까지 문다 (LS1 🔴RED · CX-6A)', () => {
+describe('레거시 스윕 — Tier P: 프로덕션 소스는 주석까지 문다 (LS1 · CX-6A)', () => {
   it('LS1: 프로덕션 소스에 레거시 접두사 토큰이 주석 포함 0줄이다(예외 없음)', () => {
     // 🔴 왜 지금 red 인가: 프로덕션 주석 **3줄**이 현재 동작을 틀리게 서술한다 —
     //   `feed.mjs:51`      "`cwiki:`/`uwiki:` 는 **정상 컨벤션**이므로" (D6 이후 정상은 `feed:` 하나)
@@ -315,7 +352,7 @@ describe('레거시 스윕 — Tier P: 프로덕션 소스는 주석까지 문�
   })
 })
 
-describe('레거시 스윕 — Tier T: 추적 전역 − 예외 (LS2 🔴RED · CX-6B)', () => {
+describe('레거시 스윕 — Tier T: 추적 전역 − 예외 (LS2 · CX-6B)', () => {
   it('LS2: 예외 레지스트리 밖에 레거시 접두사 코드 줄이 0건이다', () => {
     // 🔴 왜 지금 red 인가: 픽스처 커밋 메시지·`it` 제목이 **100줄 넘게** 옛 접두사를 입력으로 쓴다
     //   (실측 코드 132줄 중 예외 밖 ≈109 + README 8줄). GREEN: 접두사를 `chore:` 등으로 치환하고
@@ -330,12 +367,7 @@ describe('레거시 스윕 — Tier T: 추적 전역 − 예외 (LS2 🔴RED · 
     expect(scan.scannedLines).toBeGreaterThan(0)
     expect(scan.tierTFiles).toBeGreaterThan(0)
 
-    const { remaining } = applyExceptions(scan.hits)
-
-    expect(
-      remaining.map((hit) => `${hit.path}:${hit.line}`),
-      formatViolations(remaining),
-    ).toEqual([])
+    expectNoLegacyOutsideRegistry(scan.hits, EXCEPTIONS)
   })
 })
 
@@ -444,17 +476,7 @@ describe('스캐너 자기 감도 — 진단 품질과 범위 (LS7·LS8·LS9 · 
     // ★ 감도 증명은 **tmp 사본에서만** 한다(규범 F) — 실 리포에 위반을 주입하면 워킹트리가 더러워지고,
     //   그것이 곧 "테스트가 제품 데이터를 조작했다" 가 된다. 실 리포는 읽기 전용이다.
     const { listTracked, scanTracked } = trackedScan()
-    const vault = initVault()
-    try {
-      writeFileSync(path.join(vault, 'clean-a.mjs'), "export const a = 'chore: 정상'\n", 'utf8')
-      writeFileSync(path.join(vault, 'clean-b.md'), '# 정상 문서\n', 'utf8')
-      writeFileSync(
-        path.join(vault, 'offender.mjs'),
-        `export const seed = '${LEGACY_TOKENS[0]}: 문서 생성'\n`,
-        'utf8',
-      )
-      commit(vault, 'chore: 감도 증명 픽스처')
-
+    withLegacyOffenderFixture((vault) => {
       const scan = scanTracked({
         files: listTracked(vault).files,
         pattern: LEGACY_PREFIX_RE,
@@ -471,9 +493,7 @@ describe('스캐너 자기 감도 — 진단 품질과 범위 (LS7·LS8·LS9 · 
       expect(message).toContain(LEGACY_TOKENS[0])
       expect(message).toContain('치환')
       expect(message).toContain('예외 레지스트리에 등재')
-    } finally {
-      cleanup(vault)
-    }
+    })
   })
 
   it('LS8: 건너뛴 파일을 조용히 버리지 않고 `skipped` 에 실어 돌려준다', () => {
@@ -485,18 +505,11 @@ describe('스캐너 자기 감도 — 진단 품질과 범위 (LS7·LS8·LS9 · 
     expect(listTracked(REPO_ROOT).skipped).toEqual([])
 
     // ② 앵커 — 건너뛸 것이 **있으면 실제로 실린다**(①이 "기능이 죽어서 빈 배열" 인 것을 배제).
-    const vault = initVault()
-    try {
-      writeFileSync(path.join(vault, 'text.mjs'), 'export const a = 1\n', 'utf8')
-      writeFileSync(path.join(vault, 'blob.bin'), Buffer.from([0x41, 0x00, 0x42]))
-      commit(vault, 'chore: 바이너리 포함 픽스처')
-
+    withBinaryTrackedFixture((vault) => {
       const { files, skipped } = listTracked(vault)
       expect(files).toEqual(['text.mjs'])
       expect(skipped).toEqual([{ path: 'blob.bin', why: 'binary' }])
-    } finally {
-      cleanup(vault)
-    }
+    })
   })
 
   it('LS9: 비-git 디렉토리에서는 throw 한다(빈 목록으로 접지 않는다)', () => {
