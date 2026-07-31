@@ -48,7 +48,7 @@ function seedFeedVault() {
   const vault = initVault()
   for (const name of ['알파', '베타', '감마']) {
     writeWikiDoc(vault, `company/${name}`, { title: name })
-    commit(vault, `cwiki: company/${name} 생성`)
+    commit(vault, `chore: company/${name} 생성`)
   }
   for (const name of ['알파', '베타', '감마']) {
     appendDoc(vault, `company/${name}`, `## 소식\n\n${name} 업데이트.`)

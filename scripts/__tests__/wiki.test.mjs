@@ -32,7 +32,7 @@ function seedWorld(vault) {
   writeDoc(vault, PATH_A, { body: '## HBM 사업\n\n삼성 본문.\n', id: ID_A, title: '삼성전자', type: 'company' }) // prettier-ignore
   writeDoc(vault, PATH_B, { body: '## 공급망\n\n공급망 본문.\n', id: ID_B, title: 'HBM', type: 'concept' }) // prettier-ignore
   writeDoc(vault, PATH_DISABLE, { id: ID_D, status: 'disable', title: '온디바이스 AI', type: 'concept' }) // prettier-ignore
-  commit(vault, 'cwiki: active 2 + disable 1 생성')
+  commit(vault, 'chore: active 2 + disable 1 생성')
 }
 
 describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () => {

@@ -23,7 +23,7 @@ describe('R3 build — frontmatter id 없으면 실패한다(git-hash 구제 제
     const out = makeOut()
     try {
       writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // frontmatter 에 id 없음
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
 
       // 현행: git-hash(12-hex) 가 id 로 주입돼 통과 → build 성공(no-throw) → 이 단언이 RED.
       expect(() => buildContent({ out, vault })).toThrow()
@@ -39,7 +39,7 @@ describe('R3 build — frontmatter UUIDv7 id 가 산출물로 흐른다(git-hash
     const out = makeOut()
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' })
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
 
       // 현행: candidate.id 가 git-hash 로 덮여 summary id = git-hash(12-hex) → UUIDV7_A 와 불일치 → RED.
       const { summary } = buildContent({ out, vault })

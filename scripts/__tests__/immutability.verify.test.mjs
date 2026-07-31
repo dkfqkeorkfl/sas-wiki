@@ -23,13 +23,13 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
     const out = makeOut()
     try {
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' })
-      commit(vault, 'cwiki: 온디바이스 AI 문서 생성')
+      commit(vault, 'chore: 온디바이스 AI 문서 생성')
       writeDoc(vault, 'concept/온디바이스-AI', {
         body: '## 정의\n\n갱신된 본문.\n',
         id: UUIDV7_B, // id 는 그대로, 본문만 수정
         title: '온디바이스 AI',
       })
-      commit(vault, 'uwiki: 온디바이스 AI 본문 갱신')
+      commit(vault, 'chore: 온디바이스 AI 본문 갱신')
 
       expect(() => buildContent({ out, vault })).not.toThrow()
     } finally {
@@ -42,9 +42,9 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
     const out = makeOut()
     try {
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' }) // 생성: B
-      commit(vault, 'cwiki: 온디바이스 AI 문서 생성')
+      commit(vault, 'chore: 온디바이스 AI 문서 생성')
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_C, title: '온디바이스 AI' }) // 변조: C
-      commit(vault, 'uwiki: 온디바이스 AI id 변조')
+      commit(vault, 'chore: 온디바이스 AI id 변조')
 
       expect(() => buildContent({ out, vault })).toThrow()
     } finally {
@@ -59,7 +59,7 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
       // 실 마이그레이션 재현: 생성 커밋 blob 에는 id 부재(불변 게이트 null=PASS), working tree 에는
       // 마이그레이션이 넣은 id(미커밋 → 스키마 required PASS). 게이트가 pre-id 를 오판하지 않음을 검증한다.
       writeDoc(vault, 'concept/온디바이스-AI', { title: '온디바이스 AI' }) // 생성 커밋: id 없음
-      commit(vault, 'cwiki: 온디바이스 AI 문서 생성')
+      commit(vault, 'chore: 온디바이스 AI 문서 생성')
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' }) // 마이그레이션: working tree id(미커밋)
 
       expect(() => buildContent({ out, vault })).not.toThrow()

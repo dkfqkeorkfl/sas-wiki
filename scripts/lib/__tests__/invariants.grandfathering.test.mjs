@@ -85,7 +85,8 @@ async function loadVariants() {
 
   // VACUOUS 가드: 앵커가 없으면 하네스가 아무것도 변이하지 못한 채 "차이 없음" 을 낸다.
   const anchorCount = source.split(STATUSES_ANCHOR).length - 1
-  if (anchorCount !== 1) throw new Error(`VACUOUS: statuses 앵커가 ${anchorCount}개다(1개여야 한다)`)
+  if (anchorCount !== 1)
+    throw new Error(`VACUOUS: statuses 앵커가 ${anchorCount}개다(1개여야 한다)`)
 
   const gitUrl = pathToFileURL(path.join(REPO_ROOT, 'scripts/lib/git.mjs')).href
   const rebase = (text) => text.replace("from './git.mjs'", `from '${gitUrl}'`)
@@ -97,9 +98,7 @@ async function loadVariants() {
     .join('\n')
   const withLine = withoutLine
     .split('\n')
-    .flatMap((line) =>
-      line.includes(STATUSES_ANCHOR) ? [line, `    ${EARLY_CONTINUE}`] : [line],
-    )
+    .flatMap((line) => (line.includes(STATUSES_ANCHOR) ? [line, `    ${EARLY_CONTINUE}`] : [line]))
     .join('\n')
 
   if (withLine === withoutLine) throw new Error('VACUOUS: 두 변종이 동일하다(주입 실패)')

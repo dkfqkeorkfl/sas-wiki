@@ -75,7 +75,7 @@ function makeVault() {
   tmps.push(vault)
   writeDoc(vault, ACTIVE_REF, { id: ID_A, title: '삼성전자', type: 'company' })
   writeDoc(vault, 'dev/실험문서', { id: ID_DRAFT, title: '실험 문서' })
-  commit(vault, 'cwiki: 초기 문서 2건')
+  commit(vault, 'chore: 초기 문서 2건')
 
   writeDoc(vault, 'dev/실험문서', { body: '## 정의\n\n실험 갱신.\n', id: ID_DRAFT, title: '실험 문서' }) // prettier-ignore
   feedCommit(vault, { subject: '실험 소식' })

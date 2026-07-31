@@ -72,9 +72,9 @@ function writePlain(vault, relPath, text) {
 
 describe('grandfathering — 이관 이전 커밋은 현행 계약의 심사 대상이 아니다 (CN1·CN2·CN2b)', () => {
   it('CN1: 이관 이전 `cwiki:` 커밋들이 빌드를 죽이지 않는다', () => {
-    // 이관 후 계약 술어는 `wiki/` 를 본다 → 옛 커밋의 statuses 가 **빈다**. 그것을 "cwiki 인데 신규
-    // 0개"로 읽으면 히스토리 재작성이 금지된 이상 **고칠 수도 없는** 위반으로 빌드가 영구히 죽는다.
-    // 실 리포에 `cwiki:` 커밋 7건이 실재한다.
+    // 이관 후 계약 술어는 `wiki/` 를 본다 → 옛 커밋의 statuses 가 **빈다**. 그것을 "레거시 접두사인데
+    // 신규 0개"로 읽으면 히스토리 재작성이 금지된 이상 **고칠 수도 없는** 위반으로 빌드가 영구히 죽는다.
+    // 실 리포 HEAD 도달 히스토리에 `cwiki:` 7건 · `uwiki:` 6건이 실재한다(2026-08-01 · `git log HEAD --format=%s` 실측).
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'vault/wiki' })
@@ -98,7 +98,7 @@ describe('grandfathering — 이관 이전 커밋은 현행 계약의 심사 대
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'vault/wiki' })
-      commitAt(vault, 'cwiki: 삼성 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: 삼성 생성', '2026-01-01T00:00:00Z')
       writeDoc(vault, 'company/삼성', { body: '## 정의\n\n대개편 갱신.\n', id: ID_A, wikiRoot: 'vault/wiki' }) // prettier-ignore
       commitAt(vault, '문서 대개편', '2026-01-02T00:00:00Z')
       git(vault, ['mv', 'vault/wiki', 'wiki'])
@@ -118,7 +118,7 @@ describe('grandfathering — 이관 이전 커밋은 현행 계약의 심사 대
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'vault/wiki' })
-      commitAt(vault, 'cwiki: 삼성 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: 삼성 생성', '2026-01-01T00:00:00Z')
       git(vault, ['mv', 'vault/wiki', 'wiki'])
       commitAt(vault, 'chore: 문서 루트 이관', '2026-06-01T00:00:00Z')
       writeDoc(vault, 'company/삼성', {
@@ -150,7 +150,7 @@ describe('CN3 — 위키 밖에서 삭제된 .md 가 문서 후보 게이트를 
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'wiki' })
-      commitAt(vault, 'cwiki: 삼성 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: 삼성 생성', '2026-01-01T00:00:00Z')
       writePlain(vault, 'docs/폐기.md', '# 폐기 예정 메모\n\n초안이다.\n')
       commitAt(vault, 'chore: 폐기 메모 초안', '2026-01-02T00:00:00Z')
 
@@ -185,7 +185,7 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'wiki' })
-      commitAt(vault, 'cwiki: 삼성 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: 삼성 생성', '2026-01-01T00:00:00Z')
       writePlain(vault, 'docs/old.md', '# 옛 안내\n\n짧은 안내문이다.\n')
       commitAt(vault, 'chore: 안내 문서 추가', '2026-01-02T00:00:00Z')
 
@@ -210,7 +210,7 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'wiki' })
-      commitAt(vault, 'cwiki: 삼성 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: 삼성 생성', '2026-01-01T00:00:00Z')
 
       writeDoc(vault, 'company/삼성', {
         body: '## 정의\n\n소식 갱신.\n',
@@ -229,13 +229,13 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
     }
   })
 
-  it('FP3: `cwiki:` 커밋이 위키 문서 1개 + 위키 밖 `.md` 를 추가해도 위반이 아니다', () => {
-    // `.md` 전량이면 `added.length === 2` 라 "cwiki 는 신규 1개" 규칙 위반이 된다.
+  it('FP3: `chore:` 커밋이 위키 문서 1개 + 위키 밖 `.md` 를 추가해도 위반이 아니다', () => {
+    // `.md` 전량이면 `added.length === 2` 라 위키 문서만 보는 범위 계약을 잃는다.
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot: 'wiki' })
       writePlain(vault, 'README.md', '# sas-wiki\n\n데이터 계약 정본이다.\n')
-      commitAt(vault, 'cwiki: 문서 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: 문서 생성', '2026-01-01T00:00:00Z')
 
       const result = buildContent({ env: 'dev', vault })
 
@@ -252,9 +252,9 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
     const vault = initVault()
     try {
       writeDoc(vault, 'company/a', { id: ID_A, wikiRoot: 'wiki' })
-      commitAt(vault, 'cwiki: a 생성', '2026-01-01T00:00:00Z')
+      commitAt(vault, 'chore: a 생성', '2026-01-01T00:00:00Z')
       writeDoc(vault, 'company/c', { body: BODY_C, id: ID_C, title: 'c', wikiRoot: 'wiki' })
-      commitAt(vault, 'cwiki: c 생성', '2026-01-02T00:00:00Z')
+      commitAt(vault, 'chore: c 생성', '2026-01-02T00:00:00Z')
       const mainBranch = git(vault, ['rev-parse', '--abbrev-ref', 'HEAD'])
 
       git(vault, ['checkout', '-q', '-b', 'topic'])
@@ -262,14 +262,14 @@ describe('오탐 방지 — 평범한 커밋이 빌드를 죽이지 않는다 (F
       //   `--find-renames` 가 A+D 를 단일 `R057` 로 합쳐버리고, 그러면 added=0·deleted=0 이라 이 스펙이
       //   겨냥한 A+D 오탐 조건에 **애초에 도달하지 못한다**(공허 통과). CF10 이 이 함정을 잡아냈다.
       writeDoc(vault, 'company/b', { body: BODY_B, id: ID_B, title: 'b', wikiRoot: 'wiki' })
-      commitAt(vault, 'cwiki: b 생성', '2026-01-03T00:00:00Z')
+      commitAt(vault, 'chore: b 생성', '2026-01-03T00:00:00Z')
       git(vault, ['rm', '-q', 'wiki/company/c.md'])
-      commitAt(vault, 'uwiki: c 삭제', '2026-01-04T00:00:00Z')
+      commitAt(vault, 'chore: c 삭제', '2026-01-04T00:00:00Z')
 
       // 양쪽 브랜치가 **서로 다른 문서**를 건드려 병합이 어느 부모에도 TREESAME 이 아니게 한다(§6.3).
       git(vault, ['checkout', '-q', mainBranch])
       writeDoc(vault, 'company/a', { body: '## 정의\n\n본선 보강.\n', id: ID_A, wikiRoot: 'wiki' })
-      commitAt(vault, 'uwiki: a 보강', '2026-01-05T00:00:00Z')
+      commitAt(vault, 'chore: a 보강', '2026-01-05T00:00:00Z')
       git(vault, ['merge', '--no-ff', 'topic', '-m', 'Merge branch topic'], {
         GIT_AUTHOR_DATE: '2026-01-06T00:00:00Z',
         GIT_COMMITTER_DATE: '2026-01-06T00:00:00Z',

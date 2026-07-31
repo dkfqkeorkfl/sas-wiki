@@ -7,7 +7,7 @@
 // 그래서 결정성(고정 6필드 + --no-gpg-sign)과 안전 가드(비-git·dirty·main·재시딩 거부)는
 // 품질 문제가 아니라 **안전장치**다.
 //
-// 사용: node scripts/wiki/seed-example-vault.mjs --repo sas-wiki --branch test
+// 사용: node scripts/__tests__/helpers/seed-example-vault.mjs --repo sas-wiki --branch test
 // 이 스크립트는 **절대 push 하지 않는다.** push 는 사람이 명시적으로 한다.
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -532,7 +532,7 @@ function tryGit(repoDir, args) {
 }
 
 function usage() {
-  return 'node scripts/wiki/seed-example-vault.mjs --repo <path> [--branch test]'
+  return 'node scripts/__tests__/helpers/seed-example-vault.mjs --repo <path> [--branch test]'
 }
 
 // 엔트리가드(`build.mjs:268` 선례) — import 시에는 실행되지 않는다.

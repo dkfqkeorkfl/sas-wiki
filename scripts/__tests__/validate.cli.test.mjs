@@ -119,7 +119,7 @@ beforeAll(() => {
   git(ctx.vault, ['init', '-q'])
 
   writeDoc(ctx.vault, 'concept/foo', '삼성전자')
-  commit(ctx.vault, 'cwiki: 삼성전자 문서 생성')
+  commit(ctx.vault, 'chore: 삼성전자 문서 생성')
 
   writeFileSync(
     path.join(ctx.vault, 'wiki', 'concept', 'foo.md'),
@@ -132,21 +132,21 @@ beforeAll(() => {
 
   // prune 시나리오 — 삭제될 문서 + 그 문서를 가리키는 피드
   writeDoc(ctx.vault, 'misc/del-me', '폐기문서')
-  commit(ctx.vault, 'cwiki: 폐기문서 문서 생성')
+  commit(ctx.vault, 'chore: 폐기문서 문서 생성')
   writeFileSync(
     path.join(ctx.vault, 'wiki', 'misc', 'del-me.md'),
     `${readFileSync(path.join(ctx.vault, 'wiki', 'misc', 'del-me.md'), 'utf8')}\n정리 대상이다.\n`,
   )
   commit(ctx.vault, 'feed: 폐기문서 관련 소식\n\n본문.\n\nKeywords: 정리\nImportance: normal')
   git(ctx.vault, ['rm', '-q', 'wiki/misc/del-me.md'])
-  commit(ctx.vault, 'uwiki: 폐기문서 삭제')
+  commit(ctx.vault, 'chore: 폐기문서 삭제')
 
   // 해석 불가(unresolved) 시나리오는 **별도 vault** 다 — 본 vault 에 섞으면 컨벤션 가드가 먼저 죽인다.
   ctx.unresolvedVault = path.join(ctx.tmp, 'unresolved-repo')
   mkdirSync(ctx.unresolvedVault, { recursive: true })
   git(ctx.unresolvedVault, ['init', '-q'])
   writeDoc(ctx.unresolvedVault, 'concept/foo', '삼성전자')
-  commit(ctx.unresolvedVault, 'cwiki: 삼성전자 문서 생성')
+  commit(ctx.unresolvedVault, 'chore: 삼성전자 문서 생성')
   writeStray(ctx.unresolvedVault, '# 메모\n\n프론트매터가 없는 임시 메모다.')
   commit(ctx.unresolvedVault, 'chore: 임시 메모 추가')
   writeStray(ctx.unresolvedVault, '# 메모\n\n갱신된 메모다.')

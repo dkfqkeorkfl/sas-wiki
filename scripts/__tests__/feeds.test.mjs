@@ -43,7 +43,7 @@ function seedFeed(vault, { date, subject }) {
 /** 4 feed(ts T1..T4, 제목 n1..n4). */
 function seedFour(vault) {
   writeDoc(vault, 'company/삼성', { id: ID_A })
-  commit(vault, 'cwiki: 삼성 생성')
+  commit(vault, 'chore: 삼성 생성')
   seedFeed(vault, { date: T1, subject: 'n1' })
   seedFeed(vault, { date: T2, subject: 'n2' })
   seedFeed(vault, { date: T3, subject: 'n3' })
@@ -93,7 +93,7 @@ describe('endpoints.feeds — 억제·정렬 재구현 안 함(pageFeeds 위임)
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
-      commit(vault, 'cwiki: 삼성 생성')
+      commit(vault, 'chore: 삼성 생성')
       seedFeed(vault, { date: T1, subject: 'n1' })
       seedFeed(vault, { date: T3, subject: 'n3-남음' })
       const suppressed = seedFeed(vault, { date: T2, subject: 'n2-억제' })

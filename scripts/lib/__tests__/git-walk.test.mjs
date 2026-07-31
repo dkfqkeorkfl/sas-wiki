@@ -52,10 +52,10 @@ const titlesOf = (items) => items.map((item) => item.title)
 const tsOf = (items) => items.map((item) => item.ts)
 const idsOf = (items) => items.map((item) => item.id)
 
-/** cwiki 생성 커밋 — 문서 하나를 frontmatter id 와 함께 만든다. */
+/** 문서 생성 커밋 — 문서 하나를 frontmatter id 와 함께 만든다. */
 function seedDoc(vault, rel, id) {
   writeDoc(vault, rel, { id })
-  commit(vault, `cwiki: ${rel} 생성`)
+  commit(vault, `chore: ${rel} 생성`)
 }
 
 /**
@@ -80,13 +80,13 @@ describe('walkFeeds — 모듈·subject 필터 (GW1·GW2 🔴RED)', () => {
     expect(typeof walkFeeds).toBe('function')
   })
 
-  it('GW2: `feed:` 커밋만 피드가 된다 (cwiki·uwiki·chore 는 제외)', () => {
+  it('GW2: `feed:` 커밋만 피드가 된다 (feed: 아닌 subject 는 제외)', () => {
     const vault = initVault()
     try {
       seedDoc(vault, 'company/삼성', ID_A)
       // 비-feed 커밋들 — vault 를 건드려도 피드가 아니다.
       writeDoc(vault, 'company/삼성', { body: '## 정의\n\n일반 갱신.\n', id: ID_A })
-      commit(vault, 'uwiki: 삼성 본문 보강')
+      commit(vault, 'chore: 삼성 본문 보강')
       // wiki 밖 파일만 바꾸는 관리용 커밋 — 실제 변경이 있어야 git 이 커밋을 만든다(빈 커밋 거부
       // 회피). wiki 는 그대로라 "feed: 만 피드가 된다" 단언 의미는 불변이다.
       writeFileSync(path.join(vault, 'notes.txt'), '잡무 메모\n', 'utf8')
@@ -153,7 +153,7 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
       seedFeed(vault, 'company/옛경로', ID_A, { date: T2, subject: '과거 소식' }) // 당시경로 company/옛경로
       // 문서를 새 경로로 이동(rename) — HEAD 는 company/새경로.
       git(vault, ['mv', 'wiki/company/옛경로.md', 'wiki/company/새경로.md'])
-      commit(vault, 'uwiki: 문서 이동 옛경로→새경로')
+      commit(vault, 'chore: 문서 이동 옛경로→새경로')
 
       const items = walkFeeds(vault, { count: 10 })
       const past = items.find((item) => item.title === '과거 소식')
@@ -177,7 +177,7 @@ describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RE
       seedDoc(vault, 'company/삭제될', ID_B)
       seedFeed(vault, 'company/삭제될', ID_B, { date: T2, subject: '삭제될 소식' })
       git(vault, ['rm', 'wiki/company/삭제될.md'])
-      commit(vault, 'cwiki: 삭제될 문서 제거')
+      commit(vault, 'chore: 삭제될 문서 제거')
 
       const items = walkFeeds(vault, { count: 10 })
       const orphan = items.find((item) => item.title === '삭제될 소식')
@@ -319,7 +319,7 @@ describe('walkFeeds — 경계·스케일 (GW13·GW14)', () => {
   it('GW13: `feed:` 0 → [] · throw 없음 (🟢GFS)', () => {
     const vault = initVault()
     try {
-      seedDoc(vault, 'company/삼성', ID_A) // cwiki 만
+      seedDoc(vault, 'company/삼성', ID_A) // 문서 생성만
       expect(walkFeeds(vault, { count: 10 })).toEqual([])
     } finally {
       cleanup(vault)
@@ -360,13 +360,13 @@ describe('walkFeeds — pre-D1 blob(id 부재) 폴백 resolve (GW15 🔴RED)', (
     try {
       // id 없이 생성(pre-id 생성 blob) — tmp-git-vault writeDoc 은 id 생략 시 pre-id 문서를 만든다.
       writeDoc(vault, 'company/삼성', {})
-      commit(vault, 'cwiki: 삼성 생성 (D1 이전)')
+      commit(vault, 'chore: 삼성 생성 (D1 이전)')
       // 여전히 id 없는 채로 피드 — 그 시점 blob frontmatter 에 id 부재.
       writeDoc(vault, 'company/삼성', { body: '## 정의\n\npre-D1 소식 본문.\n' })
       const feedHash = feedCommit(vault, { date: T3, subject: 'pre-D1 소식' })
       // 나중에 id 부여(D1 마이그레이션) — HEAD 에만 id 가 생긴다.
       writeDoc(vault, 'company/삼성', { body: '## 정의\n\npre-D1 소식 본문.\n', id: ID_A })
-      commit(vault, 'uwiki: 삼성 id 부여 (D1 마이그레이션)')
+      commit(vault, 'chore: 삼성 id 부여 (D1 마이그레이션)')
 
       const items = walkFeeds(vault, { count: 10 })
       const feed = items.find((item) => item.title === 'pre-D1 소식')

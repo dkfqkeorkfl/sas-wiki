@@ -108,7 +108,7 @@ describe('C2 — --vault override 존중 (🟢 회귀)', () => {
   it('summary --vault <tmp seed(ID_A)> --env dev → exit0 · docs 에 ID_A', () => {
     const vault = makeVault()
     writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'company' })
-    commit(vault, 'cwiki: 삼성전자 생성')
+    commit(vault, 'chore: 삼성전자 생성')
 
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
 
@@ -125,7 +125,7 @@ describe('C3 — env 기본값(prod) 무변경 · draft 필터 (🟢 회귀)', (
     const vault = makeVault()
     writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'company' })
     writeDoc(vault, 'dev/실험문서', { id: ID_DRAFT, title: '실험 문서', type: 'concept' })
-    commit(vault, 'cwiki: active + draft 생성')
+    commit(vault, 'chore: active + draft 생성')
 
     const prod = runCli(SUMMARY, ['--vault', vault]) // --env 생략 → parseArgs default 'prod'
     expect(prod.status).toBe(0)

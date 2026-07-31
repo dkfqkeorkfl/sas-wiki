@@ -101,7 +101,7 @@ describe('H3 walkFeeds — dev 가 아닌 env 는 전부 draft 를 숨긴다', (
   function seedDraftOnlyFeed() {
     const vault = initVault()
     writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
-    commit(vault, 'cwiki: HBM 문서 생성')
+    commit(vault, 'chore: HBM 문서 생성')
     writeRawDoc(
       vault,
       'tech/비밀',
@@ -162,7 +162,7 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
       writeRawDoc(vault, 'tech/맨몸', '# 제목만 있고 frontmatter 가 없다\n\n본문.\n')
-      commit(vault, 'cwiki: 문서 2건 생성')
+      commit(vault, 'chore: 문서 2건 생성')
 
       expect(() => buildContent({ env: 'prod', vault })).toThrow(/맨몸/u)
     } finally {
@@ -175,7 +175,7 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
       writeRawDoc(vault, 'tech/맨몸', '# frontmatter 없음\n\n본문.\n')
-      commit(vault, 'cwiki: 문서 2건 생성')
+      commit(vault, 'chore: 문서 2건 생성')
 
       expect(() => parseVault(vault, 'prod', SCHEMA_DIR)).not.toThrow()
     } finally {
@@ -187,7 +187,7 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
     const vault = initVault()
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
 
       expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
     } finally {
@@ -207,11 +207,11 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     const vault = initVault()
     try {
       writeDoc(vault, 'company/구문서', { id: UUIDV7_PUBLIC, title: '구문서' })
-      commit(vault, 'cwiki: 구문서 생성')
+      commit(vault, 'chore: 구문서 생성')
       git(vault, ['rm', '-q', 'wiki/company/구문서.md'])
-      commit(vault, 'uwiki: 구문서 삭제')
+      commit(vault, 'chore: 구문서 삭제')
       writeDoc(vault, 'tech/새문서', { id: UUIDV7_PUBLIC, title: '새문서' }) // 같은 id 재사용
-      commit(vault, 'cwiki: 새문서 생성')
+      commit(vault, 'chore: 새문서 생성')
 
       // 진단이 세 가지를 모두 담아야 조치가 가능하다 — 재사용된 id · 삭제된 경로 · 현재 경로.
       //   느슨한 `/구문서|재사용/` 은 셋 중 하나만 있어도 통과해 약한 진단을 눈감아준다.
@@ -242,9 +242,9 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     try {
       git(vault, ['config', 'diff.renames', 'false'])
       writeDoc(vault, 'company/구경로', { id: UUIDV7_PUBLIC, title: '문서' })
-      commit(vault, 'cwiki: 문서 생성')
+      commit(vault, 'chore: 문서 생성')
       git(vault, ['mv', 'wiki/company/구경로.md', 'wiki/company/새경로.md'])
-      commit(vault, 'uwiki: 문서 이동')
+      commit(vault, 'chore: 문서 이동')
 
       expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
     } finally {
@@ -261,11 +261,11 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     const vault = initVault()
     try {
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' })
-      commit(vault, 'cwiki: 문서 생성')
+      commit(vault, 'chore: 문서 생성')
       git(vault, ['rm', '-q', 'wiki/company/문서.md'])
-      commit(vault, 'uwiki: 문서 삭제')
+      commit(vault, 'chore: 문서 삭제')
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '전혀 다른 신규 문서' })
-      commit(vault, 'cwiki: 같은 경로에 신규 문서 생성')
+      commit(vault, 'chore: 같은 경로에 신규 문서 생성')
 
       let detail = ''
       expect(() => {
@@ -288,11 +288,11 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     const vault = initVault()
     try {
       writeDoc(vault, 'company/문서', { id: UUIDV7_PUBLIC, title: '문서' })
-      commit(vault, 'cwiki: 문서 생성')
+      commit(vault, 'chore: 문서 생성')
       git(vault, ['rm', '-q', 'wiki/company/문서.md'])
-      commit(vault, 'uwiki: 문서 삭제')
+      commit(vault, 'chore: 문서 삭제')
       writeDoc(vault, 'company/문서', { id: UUIDV7_DRAFT, title: '신규 문서' })
-      commit(vault, 'cwiki: 같은 경로에 신규 문서 생성')
+      commit(vault, 'chore: 같은 경로에 신규 문서 생성')
 
       expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
     } finally {
@@ -312,7 +312,7 @@ describe('H6 readIdAtCreation — git 실패를 삼키지 않는다', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
 
       const real = makeGitRunner(vault)
       const showFails = (args) => {
@@ -330,7 +330,7 @@ describe('H6 readIdAtCreation — git 실패를 삼키지 않는다', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // id 없이 생성
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
 
       expect(readIdAtCreation(makeGitRunner(vault), 'wiki/tech/HBM.md')).toBeNull()
     } finally {

@@ -16,7 +16,7 @@
 //   태우기 위함(build.smoke.test.mjs §11 관례). CLI end-to-end 는 build.cli.test.mjs 소관.
 //
 // **정본 문서 수 하드코딩 금지**(MEMORY: tests-decoupled-from-canonical-data) — 전부 합성 tmp-vault 로
-//   로직만 검증한다. 각 문서는 유효 UUIDv7 id·cwiki 1파일 커밋으로 시딩(컨벤션 가드 통과).
+//   로직만 검증한다. 각 문서는 유효 UUIDv7 id·chore 커밋으로 시딩한다.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -60,13 +60,13 @@ function writeWikiDoc(
   return docId
 }
 
-/** 문서 배열을 각각 cwiki(신규 1파일) 커밋으로 시딩하고 vault 경로를 돌려준다. */
+/** 문서 배열을 각각 chore 커밋으로 시딩하고 vault 경로를 돌려준다. */
 function seedVault(docs) {
   const vault = initVault()
   for (const doc of docs) {
     const docId = writeWikiDoc(vault, doc.rel, doc)
     doc.id = docId
-    commit(vault, `cwiki: ${doc.rel} 생성`)
+    commit(vault, `chore: ${doc.rel} 생성`)
   }
   return vault
 }
@@ -341,9 +341,9 @@ describe('draft feed 필터 — prod prune / dev 노출 (통합 feed 해석)', (
   beforeAll(() => {
     const vault = initVault()
     ctx.ids.keep = writeWikiDoc(vault, 'concept/keep') // 공개 앵커(prod docs 가 0 이 아니게)
-    commit(vault, 'cwiki: keep 생성')
+    commit(vault, 'chore: keep 생성')
     ctx.ids.secret = writeWikiDoc(vault, 'concept/secret', { draft: true })
-    commit(vault, 'cwiki: secret 생성')
+    commit(vault, 'chore: secret 생성')
     // feed: 커밋이 draft(secret)를 건드린다 → prod 에서 이 feed 는 prune 대상이다.
     appendDoc(vault, 'concept/secret', '비공개 소식이 추가됐다.')
     commit(vault, 'feed: secret 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
@@ -379,16 +379,16 @@ describe('이동한 draft feed — 과거경로도 prune (rename 좌표)', () =>
   beforeAll(() => {
     const vault = initVault()
     writeWikiDoc(vault, 'concept/keep')
-    commit(vault, 'cwiki: keep 생성')
+    commit(vault, 'chore: keep 생성')
     writeWikiDoc(vault, 'concept/movable', { draft: true })
-    commit(vault, 'cwiki: movable 생성')
+    commit(vault, 'chore: movable 생성')
     appendDoc(vault, 'concept/movable', '이동 전 소식.') // feed at 과거경로 concept/movable
     commit(vault, 'feed: movable 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
     // 순수 rename(내용 수정 없음) 단독 커밋 → git 이 R 로 감지(D 아님). 이동+재작성 혼합은
     // 커밋 컨벤션 가드가 막으므로(build 은 R 만 허용) 여기서도 pure mv 만 한다.
     mkdirSync(path.join(vault, 'wiki', 'tech'), { recursive: true })
     git(vault, ['mv', 'wiki/concept/movable.md', 'wiki/tech/movable.md'])
-    commit(vault, 'uwiki: movable 을 tech/ 로 이동')
+    commit(vault, 'chore: movable 을 tech/ 로 이동')
     ctx.vault = vault
     ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
   })
@@ -412,9 +412,9 @@ describe('draft+public 혼합 feed — per-ref prune', () => {
   beforeAll(() => {
     const vault = initVault()
     ctx.ids.pub = writeWikiDoc(vault, 'concept/pub')
-    commit(vault, 'cwiki: pub 생성')
+    commit(vault, 'chore: pub 생성')
     ctx.ids.secret = writeWikiDoc(vault, 'concept/secret', { draft: true })
-    commit(vault, 'cwiki: secret 생성')
+    commit(vault, 'chore: secret 생성')
     // 한 feed 커밋이 pub·secret 둘 다 건드린다(다중 문서 피드).
     appendDoc(vault, 'concept/pub', '공개 소식.')
     appendDoc(vault, 'concept/secret', '비공개 소식.')

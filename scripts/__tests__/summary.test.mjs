@@ -58,7 +58,7 @@ const ACTIVE_DOC_KEYS = [
 function seedMixed(vault) {
   writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'company' })
   writeDoc(vault, 'dev/실험문서', { id: ID_DRAFT, title: '실험 문서', type: 'concept' })
-  commit(vault, 'cwiki: 삼성전자 + dev 실험문서 생성')
+  commit(vault, 'chore: 삼성전자 + dev 실험문서 생성')
 }
 
 describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)', () => {
@@ -103,7 +103,7 @@ describe('endpoints.summary — 경계 (E-S3 🔴RED)', () => {
     try {
       writeDoc(vault, 'dev/실험1', { id: ID_A, title: '실험1', type: 'concept' })
       writeDoc(vault, 'dev/실험2', { id: ID_DRAFT, title: '실험2', type: 'concept' })
-      commit(vault, 'cwiki: dev 전용 문서만 생성')
+      commit(vault, 'chore: dev 전용 문서만 생성')
 
       const out = summary(vault, 'prod')
 

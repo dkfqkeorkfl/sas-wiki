@@ -308,7 +308,10 @@ describe('레거시 스윕 — Tier P: 프로덕션 소스는 주석까지 문�
       stripComments: false,
     })
 
-    expect(hits.map((hit) => `${hit.path}:${hit.line}`), formatViolations(hits)).toEqual([])
+    expect(
+      hits.map((hit) => `${hit.path}:${hit.line}`),
+      formatViolations(hits),
+    ).toEqual([])
   })
 })
 
@@ -329,9 +332,10 @@ describe('레거시 스윕 — Tier T: 추적 전역 − 예외 (LS2 🔴RED · 
 
     const { remaining } = applyExceptions(scan.hits)
 
-    expect(remaining.map((hit) => `${hit.path}:${hit.line}`), formatViolations(remaining)).toEqual(
-      [],
-    )
+    expect(
+      remaining.map((hit) => `${hit.path}:${hit.line}`),
+      formatViolations(remaining),
+    ).toEqual([])
   })
 })
 

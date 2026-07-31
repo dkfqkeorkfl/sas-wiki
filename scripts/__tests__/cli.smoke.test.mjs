@@ -17,7 +17,7 @@ const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 function seed() {
   const vault = initVault()
   writeDoc(vault, 'company/삼성', { id: ID_A })
-  commit(vault, 'cwiki: 삼성 생성')
+  commit(vault, 'chore: 삼성 생성')
   writeDoc(vault, 'company/삼성', { body: '## 정의\n\n갱신.\n', id: ID_A })
   feedCommit(vault, { date: '2026-01-05T00:00:00Z', subject: '삼성 소식' })
   return vault

@@ -23,9 +23,9 @@ describe('R5 build 불변 게이트 — 사후 id 변조 차단', () => {
     const out = makeOut()
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' }) // 생성: id=A
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_B, title: 'HBM' }) // 변조: id=B
-      commit(vault, 'uwiki: HBM id 변조')
+      commit(vault, 'chore: HBM id 변조')
 
       // 현행: 게이트 부재 + git-hash 주입 → 변조가 통과 → build 성공(no-throw) → 이 단언이 RED.
       expect(() => buildContent({ out, vault })).toThrow()
@@ -45,7 +45,7 @@ describe('R5 경계(green-stay) — pre-id 문서는 게이트를 통과한다',
       // pre-id 를 "차이"로 오판하지 않는지를 실제로 검증한다(원래 셋업은 스키마 required 에서 먼저 죽어
       // 게이트에 닿지도 못했다). 단언은 그대로 not.toThrow — 약화가 아니라 시나리오 정정이다.
       writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // 생성 커밋: id 없음(pre-id era)
-      commit(vault, 'cwiki: HBM 문서 생성')
+      commit(vault, 'chore: HBM 문서 생성')
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' }) // 마이그레이션: working tree id(미커밋)
 
       expect(() => buildContent({ out, vault })).not.toThrow()

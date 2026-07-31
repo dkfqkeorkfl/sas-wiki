@@ -41,9 +41,9 @@ function commitAt(vault, message, date) {
 function seedEnvVault(wikiRoot) {
   const vault = initVault()
   writeDoc(vault, 'company/삼성', { id: ID_A, wikiRoot })
-  commitAt(vault, 'cwiki: 삼성 생성', '2026-01-01T00:00:00Z')
+  commitAt(vault, 'chore: 삼성 생성', '2026-01-01T00:00:00Z')
   writeDoc(vault, 'dev/실험', { id: ID_B, wikiRoot })
-  commitAt(vault, 'cwiki: 실험 생성', '2026-01-02T00:00:00Z')
+  commitAt(vault, 'chore: 실험 생성', '2026-01-02T00:00:00Z')
 
   writeDoc(vault, 'company/삼성', { body: '## 정의\n\n공개 갱신.\n', id: ID_A, wikiRoot })
   feedCommit(vault, { date: '2026-01-03T00:00:00Z', subject: '공개 소식' })

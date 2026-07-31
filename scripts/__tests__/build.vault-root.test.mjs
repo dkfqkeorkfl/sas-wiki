@@ -99,7 +99,7 @@ function seedDeletionVault() {
   feedCommit(vault, { date: '2026-01-03T00:00:00Z', subject: '폐기 소식' })
 
   git(vault, ['rm', '-q', 'vault/wiki/concept/폐기예정.md'])
-  commitAt(vault, 'uwiki: 폐기 메모 삭제', '2026-01-04T00:00:00Z')
+  commitAt(vault, 'chore: 폐기 메모 삭제', '2026-01-04T00:00:00Z')
 
   git(vault, ['mv', 'vault/wiki', 'wiki'])
   commitAt(vault, 'chore: 문서 루트 이관', '2026-06-01T00:00:00Z')

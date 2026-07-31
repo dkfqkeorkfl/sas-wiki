@@ -66,7 +66,7 @@ describe('endpoints.feeds.verify — 억제 ⟂ 슬라이스 위임 (V1 🔴RED)
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
-      commit(vault, 'cwiki: 생성')
+      commit(vault, 'chore: 생성')
       seedFeed(vault, { date: T1, subject: 'n1' })
       seedFeed(vault, { date: T2, subject: 'n2' })
       seedFeed(vault, { date: T3, subject: 'n3' })
@@ -91,7 +91,7 @@ describe('endpoints.feeds.verify — 정렬 위임 (V2 🔴RED)', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
-      commit(vault, 'cwiki: 생성')
+      commit(vault, 'chore: 생성')
       seedFeed(vault, { date: T2, subject: '최고참' })
       seedFeed(vault, { date: T5, subject: '최신' })
       seedFeed(vault, { date: T3, subject: '중간' })
@@ -112,7 +112,7 @@ describe('endpoints.feeds.verify — offset 무드리프트 (V3 🔴RED)', () =>
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
-      commit(vault, 'cwiki: 생성')
+      commit(vault, 'chore: 생성')
       seedFeed(vault, { date: T1, subject: 'n1' })
       seedFeed(vault, { date: T2, subject: 'n2' })
       const suppressed = seedFeed(vault, { date: T3, subject: 'n3' }) // top-3 창 안 억제

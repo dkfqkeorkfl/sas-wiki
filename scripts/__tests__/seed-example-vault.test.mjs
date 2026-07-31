@@ -16,8 +16,8 @@
 //      → in-process import 로 호출해 계측되게 한다(CLI 경로는 subprocess 1건으로만 확인).
 //   ② 가드·결정성을 stderr 문자열 매칭이 아니라 **예외·반환값**으로 직접 단언할 수 있다.
 //
-// 이 스크립트가 만드는 히스토리는 **되돌릴 수 없다**(문서 id = 생성 커밋 해시, 피드 1건 = 커밋 1건,
-// force-push·squash 금지). 그래서 결정성과 안전 가드가 품질 문제가 아니라 **안전장치**다.
+// 이 스크립트가 만드는 히스토리는 **되돌릴 수 없다**(피드 id = 커밋 해시 12자, 피드 1건 = 커밋 1건,
+// 문서 id = frontmatter UUIDv7, force-push·squash 금지). 그래서 결정성과 안전 가드가 품질 문제가 아니라 **안전장치**다.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -96,7 +96,7 @@ afterAll(() => {
 
 describe('seedVault — 결정성', () => {
   it('서로 다른 두 클론에 시딩하면 test 브랜치가 동일 SHA 다', () => {
-    // 문서 id = 생성 커밋 해시. 시딩이 결정적이지 않으면 "예제 문서 id" 라는 개념이 성립하지 않고,
+    // 문서 id = frontmatter UUIDv7, 피드 id = 커밋 해시 12자. 시딩이 결정적이지 않으면
     // 재현·재시딩이 불가능해진다(이 vault 를 참조하는 P2 기대값이 전부 무의미해진다).
     const first = freshClone('det-a')
     const second = freshClone('det-b')
@@ -253,7 +253,7 @@ describe('seedVault — 시딩 결과가 vault 계약을 만족한다(드라이�
     expect(offenders.map((commit) => commit.subject)).toEqual([])
   })
 
-  it('cwiki 커밋은 신규 파일을 정확히 1개 만든다(문서 id 충돌 차단)', () => {
+  it('커밋은 신규 파일을 정확히 1개 만든다(문서 id 충돌 차단)', () => {
     const cwiki = seeded.examples.filter((commit) => commit.subject.startsWith('cwiki: '))
     expect(cwiki.length).toBeGreaterThanOrEqual(7)
 

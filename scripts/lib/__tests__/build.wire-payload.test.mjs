@@ -26,15 +26,15 @@ const SHAPE_KEYS = ['bodies', 'docs', 'generatedAt', 'ignore', 'items', 'sourceC
 
 /** active 1(prod 가시) + draft 1(dev/ 폴더) + feed 1(active 문서 대상). */
 function seedVault(vault) {
-  // cwiki 는 신규 vault 문서 1개만 추가해야 한다(컨벤션) → 두 문서를 **각각** cwiki 커밋으로 시드한다.
+  // 두 문서를 **각각** chore 커밋으로 시드한다.
   // WP3 은 buildContent(전량 검증)를 직접 호출해 parseVault(...).wire 와 대조하므로, 시드가 컨벤션을
-  // 지켜야 검증을 통과한다. 문서 집합·draft 구성은 불변(단일 cwiki 2-add 는 그 자체가 위반이었다).
+  // 문서 집합·draft 구성은 불변이다.
   // type 은 concept 로 둔다 — company 는 스키마상 meta(ticker·sector·exchange)를 요구하는데 시딩
   // 헬퍼가 meta 를 내지 못해 buildContent 검증이 막힌다(WP 는 type·meta 를 단언하지 않는다).
   writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'concept' })
-  commit(vault, 'cwiki: 삼성전자 생성')
+  commit(vault, 'chore: 삼성전자 생성')
   writeDoc(vault, 'dev/실험문서', { id: ID_DRAFT, title: '실험 문서', type: 'concept' })
-  commit(vault, 'cwiki: dev 실험문서 생성')
+  commit(vault, 'chore: dev 실험문서 생성')
   writeDoc(vault, 'company/삼성전자', { body: '## 정의\n\n갱신.\n', id: ID_A, title: '삼성전자', type: 'concept' }) // prettier-ignore
   feedCommit(vault, { date: '2026-01-05T00:00:00Z', subject: '삼성 HBM 소식' })
 }

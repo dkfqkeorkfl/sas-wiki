@@ -114,17 +114,17 @@ beforeAll(() => {
   ctx.vault = vault
   git(vault, ['init', '-q'])
 
-  // 1 · 문서 생성(cwiki — 신규 파일 정확히 1개. id = frontmatter 저작 UUIDv7)
+  // 1 · 문서 생성(chore — id = frontmatter 저작 UUIDv7)
   ctx.ids.foo = writeDoc(vault, 'concept/foo', '삼성전자')
-  commit(vault, 'cwiki: 삼성전자 문서 생성')
+  commit(vault, 'chore: 삼성전자 문서 생성')
 
   // 2 · 삭제 후 재생성될 문서 — **옛 id**(부활하면 안 된다)
   ctx.ids.rebornOld = writeDoc(vault, 'concept/reborn', '부활문서')
-  commit(vault, 'cwiki: 부활문서 문서 생성')
+  commit(vault, 'chore: 부활문서 문서 생성')
 
   // 3 · 삭제될 문서
   writeDoc(vault, 'misc/del-me', '폐기문서')
-  commit(vault, 'cwiki: 폐기문서 문서 생성')
+  commit(vault, 'chore: 폐기문서 문서 생성')
 
   // 4 · feed — 살아남는 피드(anchor = 바뀐 섹션)
   appendDoc(vault, 'concept/foo', 'HBM4 양산 로드맵을 공개했다.')
@@ -134,36 +134,36 @@ beforeAll(() => {
   appendDoc(vault, 'misc/del-me', '정리 대상으로 분류됐다.')
   commit(vault, 'feed: 폐기문서 관련 소식\n\n본문.\n\nKeywords: 정리\nImportance: normal')
 
-  // 6 · uwiki — 피드 미발행 수정(재생성 준비: 삭제)
+  // 6 · chore — 피드 미발행 수정(재생성 준비: 삭제)
   git(vault, ['rm', '-q', 'wiki/concept/reborn.md'])
-  commit(vault, 'uwiki: 부활문서 삭제')
+  commit(vault, 'chore: 부활문서 삭제')
 
-  // 7 · uwiki — 삭제(→ 5번 피드가 prune 된다)
+  // 7 · chore — 삭제(→ 5번 피드가 prune 된다)
   git(vault, ['rm', '-q', 'wiki/misc/del-me.md'])
-  commit(vault, 'uwiki: 폐기문서 삭제')
+  commit(vault, 'chore: 폐기문서 삭제')
 
-  // 8 · cwiki — **같은 경로에 재생성 → 새 문서(새 id)**  (README · 문서 id)
+  // 8 · chore — **같은 경로에 재생성 → 새 문서(새 id)**  (README · 문서 id)
   ctx.ids.rebornNew = writeDoc(vault, 'concept/reborn', '부활문서')
-  commit(vault, 'cwiki: 부활문서 재생성')
+  commit(vault, 'chore: 부활문서 재생성')
 
   // 9~13 · **경로 재사용 함정** — 살아 있는 문서의 과거 피드가 사라지면 안 된다.
   //   문서 A 를 x 에 만들고 → A 를 가리키는 feed → A 를 y 로 이동 → **다른 문서 B 가 빈 x 를 재사용**
   //   → B 삭제. 이때 x 는 "삭제된 경로" 지만, 그 feed 의 diff 가 가리키는 x 는 **그 시점의 A** 이고
   //   A 는 y 로 멀쩡히 살아 있다. 경로만 보고 prune 하면 A 의 뉴스가 통째로 증발한다.
   ctx.ids.mover = writeDoc(vault, 'company/reuse-x', '이사간문서')
-  commit(vault, 'cwiki: 이사간문서 문서 생성')
+  commit(vault, 'chore: 이사간문서 문서 생성')
 
   appendDoc(vault, 'company/reuse-x', '신제품 라인업을 공개했다.')
   commit(vault, 'feed: 이사간문서 신제품 공개\n\n본문.\n\nKeywords: 신제품\nImportance: normal')
 
   git(vault, ['mv', 'wiki/company/reuse-x.md', 'wiki/company/reuse-y.md'])
-  commit(vault, 'uwiki: 이사간문서를 reuse-y 로 이동')
+  commit(vault, 'chore: 이사간문서를 reuse-y 로 이동')
 
   writeDoc(vault, 'company/reuse-x', '경로재사용문서')
-  commit(vault, 'cwiki: 경로재사용문서 생성')
+  commit(vault, 'chore: 경로재사용문서 생성')
 
   git(vault, ['rm', '-q', 'wiki/company/reuse-x.md'])
-  commit(vault, 'uwiki: 경로재사용문서 삭제')
+  commit(vault, 'chore: 경로재사용문서 삭제')
 
   ctx.prevEpoch = process.env.SOURCE_DATE_EPOCH
   process.env.SOURCE_DATE_EPOCH = EPOCH

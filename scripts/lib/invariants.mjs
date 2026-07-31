@@ -1,4 +1,5 @@
-// 불변식 8종 (README · 불변식 8종) — 위반 시 **build fail**.
+// 불변식 7종 (README · 불변식 7종) — 위반 시 **build fail**.
+// 6번은 P2 에서 앵커 기능과 함께 제거됐다. 번호는 재사용하지 않는다.
 //
 // 세 페이로드가 따로 배포되면 아래는 더 이상 자명하지 않다. 지금 성립하는 건 "빌드가 한 번에
 // 만들기 때문"이라는 우연이고, 그 우연이 깨지는 첫 순간이 서버 연동이다.
@@ -8,18 +9,19 @@
 
 import { getCommitDocStatuses, underWikiPrefix } from './git.mjs'
 
-/** 커밋 subject 규약이 문서 id 안정성을 깨뜨리는 파일 상태를 만들면 build fail 한다. */
+/**
+ * A+D 동시 발생(문서 id 소실 시그니처)을 접두사 무관하게 잡는다.
+ *
+ * 이관 이전 커밋은 statuses 가 비어 있다(그때 경로가 지금 계약 밖). 빈 statuses 는 added/deleted 가
+ * 모두 비어 자연히 심사 대상이 아니다. 이 grandfathering 근거는 CN1·FO7 이 지킨다.
+ */
 export function checkCommitConventions(commits, runGit, wikiPrefix) {
   const violations = []
   for (const commit of commits) {
     // D26: 접두어 없는 커밋도 A+D(문서 id 소실 시그니처)를 검사해야 하므로 statuses 를 모든
     // 커밋에 대해 구한다(이전엔 접두어 커밋만). 마진 비용은 non-vault(툴링) 커밋 수에 한정된다 —
-    // vault 커밋(cwiki/uwiki/feed)은 원래도 여기서 git show 됐다. sha 가 달라 커밋마다 1회 spawn.
+    // vault 문서를 건드리는 커밋은 원래도 여기서 git show 됐다. sha 가 달라 커밋마다 1회 spawn.
     const statuses = getCommitDocStatuses(runGit, commit.hash, underWikiPrefix(wikiPrefix))
-    // 이관 이전 커밋은 statuses 가 비어 있다(그때 경로가 지금 계약 밖). 그것을 "cwiki 인데 신규 0개"
-    // 같은 위반으로 읽으면 옛 커밋 7건이 전부 빌드를 죽인다 — 히스토리 재작성이 금지된 이상 고칠 수도
-    // 없는 위반이다. 계약 검사는 현행 계약이 보이는 커밋만 심사한다.
-    if (statuses.length === 0) continue
     const added = statuses.filter((entry) => entry.status === 'A')
     const deleted = statuses.filter((entry) => entry.status === 'D')
 

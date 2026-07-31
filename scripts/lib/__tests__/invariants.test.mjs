@@ -168,7 +168,7 @@ describe('불변식 7 — 3 페이로드의 sourceCommit 이 동일', () => {
   })
 })
 
-describe('불변식 8 — summary.docs[].id 가 유일 (cwiki 1파일 규칙의 최후 방어선)', () => {
+describe('불변식 8 — summary.docs[].id 가 유일 (문서 id 유일성의 최후 방어선)', () => {
   it('같은 id 를 가진 문서가 2건이면 throw 한다', () => {
     // 한 커밋이 문서 2개를 만들면 둘이 같은 생성 해시를 갖는다 →
     // byId Map 이 하나를 덮어써 참조가 **틀린 문서**를 가리킨다(비는 게 아니라 틀린다).
@@ -192,7 +192,7 @@ describe('불변식 8 — summary.docs[].id 가 유일 (cwiki 1파일 규칙의 
 // 현행: 접두어(cwiki|uwiki|feed) 없는 subject 는 `if (!match) continue` 로 통째로 검사 스킵된다.
 // D26: 접두어 없는 커밋도 검사해, 한 커밋 안에서 vault 문서 A(추가)+D(삭제)가 동시 발생하면 fail.
 //   근거 — getCommitDocStatuses 는 `--find-renames` 를 쓰므로 정당한 이동은 R 로 흡수된다. 그 뒤에도
-//   남는 A+D = git 이 rename 으로 못 붙인 이동 = 문서 id(=생성 커밋 해시)가 소실되는 시그니처다.
+//   남는 A+D = git 이 rename 으로 못 붙인 이동 = 문서 id 연결을 잃는 시그니처다.
 //   접두어가 있으면 per-kind 규칙(cwiki 1-add / uwiki·feed no-add)을 그대로 둔다.
 //
 // stub 계약(git.test.mjs 의 getCommitDocStatuses stub 패턴 재사용): checkCommitConventions 는 커밋마다

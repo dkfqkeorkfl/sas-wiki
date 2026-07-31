@@ -2,7 +2,8 @@ node_modules
 logs
 pnpm-lock.yaml
 
-# Wiki entries are append-only data whose commit hashes are document ids.
+# Wiki entries are append-only data. Document ids live in frontmatter UUIDv7, while commit
+# hashes remain feed ids and history anchors.
 wiki
 
 # Deliberately malformed artifact fixture (P4 · RD2). It must break JSON.parse to be worth

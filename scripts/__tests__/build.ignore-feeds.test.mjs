@@ -43,12 +43,12 @@ function appendDoc(root, rel, paragraph) {
   writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
 }
 
-/** cwiki 3문서 + feed 3커밋(알파·베타·감마). ts 오름차순 커밋 → items 는 ts 내림차순 정렬(감마·베타·알파). */
+/** chore 3문서 + feed 3커밋(알파·베타·감마). ts 오름차순 커밋 → items 는 ts 내림차순 정렬(감마·베타·알파). */
 function seedFeedVault() {
   const vault = initVault()
   for (const name of ['알파', '베타', '감마']) {
     writeWikiDoc(vault, `company/${name}`, { title: name })
-    commit(vault, `cwiki: company/${name} 생성`)
+    commit(vault, `chore: company/${name} 생성`)
   }
   for (const name of ['알파', '베타', '감마']) {
     appendDoc(vault, `company/${name}`, `## 소식\n\n${name} 업데이트.`)

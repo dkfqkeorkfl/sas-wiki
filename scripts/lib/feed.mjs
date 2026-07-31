@@ -46,10 +46,9 @@ export function extractTrailers(body) {
 }
 
 /**
- * subject 3종 분기 — `feed:` 만 피드를 발행한다.
+ * `feed:` subject 만 피드를 발행한다.
  *
- * `cwiki:`/`uwiki:` 는 **정상 컨벤션**이므로 null 을 내되 warning 을 남기지 않는다(정상을 warning
- * 으로 오염시키면 진짜 신호가 묻힌다). 그 외 subject 의 규약 위반 집계는 diff 를 보는 호출자가 한다
+ * `feed:` 가 아닌 subject 는 전부 조용히 null 을 낸다. 그 외 subject 의 규약 위반 집계는 diff 를 보는 호출자가 한다
  * — vault 를 건드렸는지는 diff 를 봐야 알 수 있고, 커밋 객체엔 그 정보가 없다.
  *
  * 이름 유지: `build.entry-guard.test.mjs` 가 이 export 를 단언한다.
