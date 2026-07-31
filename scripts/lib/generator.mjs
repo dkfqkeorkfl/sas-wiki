@@ -59,69 +59,25 @@ export async function runSummaryGenerator({
   writeSideEffects = true,
 }) {
   const vaultDir = path.resolve(vault)
-  const effectiveArtifactPath = artifactPathOverride ?? artifactPath(vaultDir, env)
-  // ★ GN5 sibling-path 판정(메인 세션 승인 · 원장에 없던 결정이므로 사유를 여기 남긴다):
-  //   feeds 아티팩트는 summary 와 **한 세트로 co-derive** 된다(D-C) — 기본은 vault 기준 경로다.
-  //   `--out`(artifactPath override)으로 summary 를 vault 밖 임의 경로에 쓰게 하면, feeds 도 그
-  //   **형제 경로**(같은 디렉토리)에 나란히 쓴다 — vault 밖으로 재배치된 산출물 세트가 vault/cache
-  //   에 반쪽(feeds 만)을 남기지 않게 하기 위해서다. 이 규칙이 없으면 override 요청이 있어도 매번
-  //   `<vaultDir>/cache/` 를 건드리게 되어, "이 요청은 산출물을 딴 곳에 두고 싶다" 는 호출자 의도와
-  //   `<vault>/cache/` 를 만들지 않는다는 기존 계약(P3-era GN5)이 동시에 깨진다. report 는 `reportDir`
-  //   이 이미 같은 패턴(override 시 그 디렉토리, 아니면 vault 기준)을 쓰므로 대칭이다.
-  const effectiveFeedsArtifactPath = artifactPathOverride
-    ? path.join(path.dirname(effectiveArtifactPath), `feeds.${env}.json`)
-    : feedsArtifactPath(vaultDir, env)
-  const reportJsonPath = reportDir
-    ? path.join(reportDir, `summary.report.${env}.json`)
-    : reportPath(vaultDir, env, 'json')
-  const reportTxtPath = reportDir
-    ? path.join(reportDir, `summary.report.${env}.txt`)
-    : reportPath(vaultDir, env, 'txt')
-  const effectiveReportDir = path.dirname(reportJsonPath)
+  const paths = resolvePaths({ artifactPathOverride, env, reportDir, vaultDir })
   const git = runGit ?? makeGitRunner(vaultDir)
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
   const inputsFingerprint = computeInputsFingerprint({ env, sourceCommit, vaultDir })
 
-  // 스킵은 **세 산출물이 전부** 이 지문의 것일 때만 한다(D-D 확장).
-  //
-  // 산출물 하나라도 없거나 어긋나면 제외 건수·feeds 항목을 알 방법이 없는데, 예전에는(P3) 리포트
-  // 부재를 `?? 0` 으로 메워 `status: 'clean'` 을 돌려줬다 — 문서 2건이 제외된 vault 가 "깨끗함" 으로
-  // 보고되고 `--max-excluded 0` 게이트가 exit 3 → exit 0 으로 뒤집혔다(실측). "모르면 다시 만든다."
   if (writeSideEffects && !force) {
-    const expectSummary = {
-      env,
-      inputsFingerprint,
-      producer: ARTIFACT_PRODUCER,
-      schemaVersion: SCHEMA_VERSION,
-    }
-    const artifact = readArtifact({ expect: expectSummary, path: effectiveArtifactPath })
-    const feedsArtifact = readArtifact({
-      expect: { ...expectSummary, producer: FEEDS_ARTIFACT_PRODUCER },
-      path: effectiveFeedsArtifactPath,
-    })
-    // 리포트도 **같은 독자**(`readArtifact`)를 탄다(F-27) — "실패를 stale 로 접는" 규율이 세 곳에서
-    //   각자 살지 않는다.
-    const reportArtifact =
-      artifact.fresh && feedsArtifact.fresh
-        ? readArtifact({
-            expect: { ...expectSummary, producer: REPORT_PRODUCER },
-            path: reportJsonPath,
-          })
-        : { fresh: false, reason: 'skipped' }
-
-    if (artifact.fresh && feedsArtifact.fresh && reportArtifact.fresh) {
-      const report = reportArtifact.payload
-      const excludedCount = report.summary?.excluded ?? 0
+    const freshSet = readFreshSet({ env, inputsFingerprint, paths })
+    if (freshSet.fresh) {
+      const report = freshSet.report
       return {
-        artifactPath: effectiveArtifactPath,
-        excluded: report.excluded ?? [],
-        excludedCount,
+        artifactPath: paths.effectiveArtifactPath,
+        excluded: report.excluded,
+        excludedCount: report.excludedCount,
         inputsFingerprint,
-        payload: artifact.payload,
+        payload: report.payload,
         regenerated: false,
-        report: { error: null, jsonPath: reportJsonPath, txtPath: reportTxtPath },
+        report: { error: null, jsonPath: paths.reportJsonPath, txtPath: paths.reportTxtPath },
         sourceCommit,
-        status: excludedCount > 0 ? 'partial' : 'clean',
+        status: report.status,
       }
     }
   }
@@ -150,7 +106,7 @@ export async function runSummaryGenerator({
   })
   const excluded = parsed.stats.excluded ?? []
   const result = {
-    artifactPath: effectiveArtifactPath,
+    artifactPath: paths.effectiveArtifactPath,
     excluded,
     excludedCount: excluded.length,
     inputsFingerprint,
@@ -162,13 +118,6 @@ export async function runSummaryGenerator({
   }
 
   if (!writeSideEffects) return result
-
-  // ★ 쓰기 순서는 계약이다: summary → feeds → report. 크래시(또는 feeds 쓰기 실패)가 나면 (신 summary,
-  //   구/부재 feeds) 조합만 발생하고, 위 3중 신선도 판정이 그 조합을 stale 로 접어 다음 호출이 다시
-  //   만든다. **feeds 쓰기 실패는 여기서 흡수하지 않는다** — OQ-P5-5: feeds 는 서빙 데이터라 산출물
-  //   실패(throw)와 같은 극성이어야 한다. 리포트만 아래에서 예외로 흡수한다.
-  writeFileAtomic(effectiveArtifactPath, `${JSON.stringify(payload)}\n`)
-  writeFileAtomic(effectiveFeedsArtifactPath, `${JSON.stringify(feedsPayload)}\n`)
 
   const report = buildReport({
     env,
@@ -184,19 +133,103 @@ export async function runSummaryGenerator({
     total: parsed.gate.visibleDocs.length + excluded.length,
     unresolvedPaths: parsed.stats.unresolvedPaths ?? [],
   })
+  result.report = publishSet({ feedsPayload, paths, payload, report })
+  return result
+}
+
+function resolvePaths({ artifactPathOverride, env, reportDir, vaultDir }) {
+  const effectiveArtifactPath = artifactPathOverride ?? artifactPath(vaultDir, env)
+  // ★ GN5 sibling-path 판정(메인 세션 승인 · 원장에 없던 결정이므로 사유를 여기 남긴다):
+  //   feeds 아티팩트는 summary 와 **한 세트로 co-derive** 된다(D-C) — 기본은 vault 기준 경로다.
+  //   `--out`(artifactPath override)으로 summary 를 vault 밖 임의 경로에 쓰게 하면, feeds 도 그
+  //   **형제 경로**(같은 디렉토리)에 나란히 쓴다 — vault 밖으로 재배치된 산출물 세트가 vault/cache
+  //   에 반쪽(feeds 만)을 남기지 않게 하기 위해서다. 이 규칙이 없으면 override 요청이 있어도 매번
+  //   `<vaultDir>/cache/` 를 건드리게 되어, "이 요청은 산출물을 딴 곳에 두고 싶다" 는 호출자 의도와
+  //   `<vault>/cache/` 를 만들지 않는다는 기존 계약(P3-era GN5)이 동시에 깨진다. report 는 `reportDir`
+  //   이 이미 같은 패턴(override 시 그 디렉토리, 아니면 vault 기준)을 쓰므로 대칭이다.
+  const effectiveFeedsArtifactPath = artifactPathOverride
+    ? path.join(path.dirname(effectiveArtifactPath), `feeds.${env}.json`)
+    : feedsArtifactPath(vaultDir, env)
+  const reportJsonPath = reportDir
+    ? path.join(reportDir, `summary.report.${env}.json`)
+    : reportPath(vaultDir, env, 'json')
+  const reportTxtPath = reportDir
+    ? path.join(reportDir, `summary.report.${env}.txt`)
+    : reportPath(vaultDir, env, 'txt')
+
+  return {
+    effectiveArtifactPath,
+    effectiveFeedsArtifactPath,
+    effectiveReportDir: path.dirname(reportJsonPath),
+    reportJsonPath,
+    reportTxtPath,
+  }
+}
+
+function readFreshSet({ env, inputsFingerprint, paths }) {
+  // 스킵은 **세 산출물이 전부** 이 지문의 것일 때만 한다(D-D 확장).
+  //
+  // 산출물 하나라도 없거나 어긋나면 제외 건수·feeds 항목을 알 방법이 없는데, 예전에는(P3) 리포트
+  // 부재를 `?? 0` 으로 메워 `status: 'clean'` 을 돌려줬다 — 문서 2건이 제외된 vault 가 "깨끗함" 으로
+  // 보고되고 `--max-excluded 0` 게이트가 exit 3 → exit 0 으로 뒤집혔다(실측). "모르면 다시 만든다."
+  const expectSummary = {
+    env,
+    inputsFingerprint,
+    producer: ARTIFACT_PRODUCER,
+    schemaVersion: SCHEMA_VERSION,
+  }
+  const artifact = readArtifact({ expect: expectSummary, path: paths.effectiveArtifactPath })
+  const feedsArtifact = readArtifact({
+    expect: { ...expectSummary, producer: FEEDS_ARTIFACT_PRODUCER },
+    path: paths.effectiveFeedsArtifactPath,
+  })
+  // 리포트도 **같은 독자**(`readArtifact`)를 탄다(F-27) — "실패를 stale 로 접는" 규율이 세 곳에서
+  //   각자 살지 않는다.
+  const reportArtifact =
+    artifact.fresh && feedsArtifact.fresh
+      ? readArtifact({
+          expect: { ...expectSummary, producer: REPORT_PRODUCER },
+          path: paths.reportJsonPath,
+        })
+      : { fresh: false, reason: 'skipped' }
+
+  if (!artifact.fresh || !feedsArtifact.fresh || !reportArtifact.fresh) {
+    return { fresh: false, report: null }
+  }
+
+  const report = reportArtifact.payload
+  const excludedCount = report.summary?.excluded ?? 0
+  return {
+    fresh: true,
+    report: {
+      excluded: report.excluded ?? [],
+      excludedCount,
+      payload: artifact.payload,
+      status: excludedCount > 0 ? 'partial' : 'clean',
+    },
+  }
+}
+
+function publishSet({ feedsPayload, paths, payload, report }) {
+  // ★ 쓰기 순서는 계약이다: summary → feeds → report. 크래시(또는 feeds 쓰기 실패)가 나면 (신 summary,
+  //   구/부재 feeds) 조합만 발생하고, 위 3중 신선도 판정이 그 조합을 stale 로 접어 다음 호출이 다시
+  //   만든다. **feeds 쓰기 실패는 여기서 흡수하지 않는다** — OQ-P5-5: feeds 는 서빙 데이터라 산출물
+  //   실패(throw)와 같은 극성이어야 한다. 리포트만 아래에서 예외로 흡수한다.
+  writeFileAtomic(paths.effectiveArtifactPath, `${JSON.stringify(payload)}\n`)
+  writeFileAtomic(paths.effectiveFeedsArtifactPath, `${JSON.stringify(feedsPayload)}\n`)
+
   try {
-    fs.mkdirSync(effectiveReportDir, { recursive: true })
-    writeFileAtomic(reportJsonPath, `${JSON.stringify(report, null, 2)}\n`)
-    writeFileAtomic(reportTxtPath, formatReportText(report))
-    result.report = { error: null, jsonPath: reportJsonPath, txtPath: reportTxtPath }
+    fs.mkdirSync(paths.effectiveReportDir, { recursive: true })
+    writeFileAtomic(paths.reportJsonPath, `${JSON.stringify(report, null, 2)}\n`)
+    writeFileAtomic(paths.reportTxtPath, formatReportText(report))
+    return { error: null, jsonPath: paths.reportJsonPath, txtPath: paths.reportTxtPath }
   } catch (error) {
-    result.report = {
+    return {
       error: error instanceof Error ? error.message : String(error),
       jsonPath: null,
       txtPath: null,
     }
   }
-  return result
 }
 
 /**

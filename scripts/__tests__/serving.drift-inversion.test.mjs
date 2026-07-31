@@ -80,7 +80,8 @@ const track = (seeded) => {
 }
 
 /** 깊은 티어 wire — 생성기가 `buildSummary` 로 **그대로** 아티팩트에 스탬프하는 그 값이다. */
-const deepWire = (vault, env) => parseVault(vault, env, SCHEMA_DIR, { deepDocGate: true }).wire
+// P5 D-I: deepDocGate 는 근절됐다(무시되는 인자였다).
+const deepWire = (vault, env) => parseVault(vault, env, SCHEMA_DIR).wire
 
 const itemByTitle = (page, title) => page.items.find((item) => item.title === title)
 const docIdsOf = (item) => (item?.docs ?? []).map((doc) => doc.id)
@@ -194,7 +195,8 @@ describe('두 번째 깊은 사유도 같은 반전 (DR6 · 🔴RED flip)', () =
     const reuse = track(seedIdReuseVault())
 
     // 앵커: 깊은 티어가 실제로 그 사유로 제외한다(픽스처가 겨냥한 조건에 도달했다).
-    const state = loadHeadDocState(reuse.vault, 'dev', { deepDocGate: true })
+    // P5 D-I: deepDocGate 는 근절됐다(무시되는 인자였다).
+    const state = loadHeadDocState(reuse.vault, 'dev')
     expect(state.excluded.map((entry) => entry.reasonCode)).toEqual([DELETED_ID_REUSE])
 
     const page = await feeds(reuse.vault, 'dev', {})

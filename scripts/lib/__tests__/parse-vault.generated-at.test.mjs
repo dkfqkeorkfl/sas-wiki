@@ -81,7 +81,8 @@ function seedAsymmetricVault() {
   return { feedId: feedSha.slice(0, 12), vault }
 }
 
-const parseDeep = (vault) => parseVault(vault, 'dev', SCHEMA_DIR, { deepDocGate: true }).wire
+// P5 D-I: deepDocGate 는 근절됐다(무시되는 인자였다).
+const parseDeep = (vault) => parseVault(vault, 'dev', SCHEMA_DIR).wire
 const maxOf = (values) => values.toSorted().at(-1)
 
 describe('deriveGeneratedAt 시그니처 — items 는 인자에서 사라진다 (GA1 · 🔴RED 오늘 2인자)', () => {
