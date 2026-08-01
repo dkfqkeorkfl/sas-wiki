@@ -362,11 +362,16 @@ summary 와 feeds 는 같은 `sourceCommit`(= 그 응답을 만든 커밋의 40�
 
 ### summary 반환값
 
+<!-- contract:summary-payload -->
+
 ```jsonc
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-07-23T05:11:49.000Z",
-  "sourceCommit": "5e3efb0071149ccb5e507cf2a1d5c2fff2a00546",
+  "producer": "sas-wiki/summary",
+  "schemaVersion": 3,
+  "env": "dev",
+  "generatedAt": "2026-07-26T03:35:20.000Z",
+  "inputsFingerprint": "b6afe39057a3ee47",
+  "sourceCommit": "5a624e1b9c2d0f3e8a71c4b5d6e2f9a0c8b3d417",
   "docs": [/* … */],
   "tree": [/* … */],
   "tags": {/* … */},
@@ -375,12 +380,24 @@ summary 와 feeds 는 같은 `sourceCommit`(= 그 응답을 만든 커밋의 40�
 
 | 키              | 타입                 | 설명                                                                                                                                                                                           |
 | --------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemaVersion` | `number`             | 계약 버전. 파괴적 교체에만 +1 (필드 추가로는 안 올린다)                                                                                                                                        |
+| `producer`      | `string`             | 발행자 표지. 독자는 이 값이 다르면 남의 산출물로 보고 불신한다 — [산출물](#산출물) 표가 정본                                                                                                   |
+| `schemaVersion` | `number`             | **내부 wire 계약 버전** — 릴리즈 버전이 아니다. 아래 「계약 버전의 의미」 참조                                                                                                                 |
+| `env`           | `string`             | `dev` \| `prod`. 경로·지문과 **독립으로** 대조하기 위해 파일 안에도 싣는다                                                                                                                     |
+| `inputsFingerprint` | `string`         | 생성기 소스·문서 내용·env·sourceCommit 을 해시한 16자리. 신선도 2축 중 하나                                                                                                                    |
 | `generatedAt`   | `string`             | **실행 시각이 아니다.** 가장 최근 문서 `updated`/피드 `ts` 에서 유도한 결정적 값(`SOURCE_DATE_EPOCH` 가 있으면 그것). vault 가 그대로면 몇 번을 돌려도 같은 값이라 신선도·캐시 키로 쓸 수 없다 |
 | `sourceCommit`  | `string`             | 이 응답을 만든 커밋의 40자 해시. **세대 식별자**                                                                                                                                               |
 | `docs`          | `SummaryDoc[]`       | 문서 목록. status 로 모양이 갈린다                                                                                                                                                             |
 | `tree`          | `TreeNode[]`         | 폴더 트리 (재귀)                                                                                                                                                                               |
 | `tags`          | `Record<태그, id[]>` | 태그 → 문서 id 역색인. active 문서만                                                                                                                                                           |
+
+#### 계약 버전의 의미
+
+`schemaVersion` 은 **이 리포 안에서만 쓰는 wire 계약 번호**다. 패키지 릴리즈 버전이 아니고, semver 도 아니다.
+
+- **읽는 법은 등가 비교 하나뿐이다.** 소비자는 `===` 로 같은지만 본다 — 크다/작다를 따지는 코드는 어디에도 없고, "이 버전 이상이면 호환" 같은 규칙도 없다. 값이 다르면 **해석하지 않고 통째로 stale 로 접는다**(옛 계약과 새 계약을 동시에 지원하지 않는다).
+- **그래서 minor/patch 로 쪼개지 않는다.** 응답은 strict 로 검증하므로(`additionalProperties: false`) 필드를 **하나 추가하는 것도 소비자에겐 파괴적**이다. "안전한 추가" 라는 등급이 성립하지 않으니 나눌 축이 없다. 실제로 `inputsFingerprint` 를 추가했을 때 번호를 올렸다.
+- **지금 값이 3인 것은 출시를 세 번 했다는 뜻이 아니다.** 아직 외부 소비자가 0 명이고, 개발 중 계약이 세 번 바뀌었다는 뜻일 뿐이다. **첫 소비자가 붙는 시점에 1 로 리셋**한다(그 전의 번호는 아무도 본 적이 없으므로 이력으로서 의미가 없다).
+- 캐시 신선도 판정은 이 번호가 아니라 `sourceCommit` + `inputsFingerprint` 2 축이 한다. 번호는 **계약 모양이 바뀌었음을 사람이 명시하는 표지**다.
 
 **`docs[]` — status 로 갈리는 유니온.**
 
@@ -439,13 +456,18 @@ active 문서는 10키다.
 
 태그의 정본은 문서 frontmatter 다. 피드에는 태그가 없다(피드는 `keywords` 를 따로 갖는다).
 
+<!-- /contract:summary-payload -->
+
 ### feeds 반환값
+
+<!-- contract:feeds-payload -->
 
 ```jsonc
 {
-  "schemaVersion": 1,
-  "generatedAt": "2026-07-23T05:11:49.000Z",
-  "sourceCommit": "5e3efb00…",
+  "schemaVersion": 3,
+  "generatedAt": "2026-07-26T03:35:20.000Z",
+  "sourceCommit": "5a624e1b…",
+  "inputsFingerprint": "b6afe39057a3ee47",
   "items": [/* … */],
   "nextCursor": null,
 }
@@ -460,24 +482,18 @@ active 문서는 10키다.
   "title": "삼성전자, HBM3E 12단 양산 승인", // 커밋 제목의 "feed: " 뒤
   "body": "삼성전자가 HBM3E 12단 제품의 양산 승인을 획득했다. 하반기 공급이 시작된다.", // 커밋 본문(트레일러 줄 제외 — 아래 피드 발행법)
   "keywords": ["HBM", "양산", "삼성전자"], // Keywords: 트레일러
-  "importance": "breaking", // normal | highlight | breaking
-  "docs": [{ "id": "01088d26-ee68-7a11-b53c-398f328d520e", "anchor": null, "anchorText": null }],
+  "importance": "breaking", // normal | highlight | breaking | fix
+  "docs": [{ "id": "01088d26-ee68-7a11-b53c-398f328d520e" }],
 }
 ```
 
-**`docs[]` — 이 커밋이 고친 문서.**
+**`docs[]` — 이 커밋이 고친 문서. 정확히 1키.**
 
-| 키           | 타입             | 설명                                                           |
-| ------------ | ---------------- | -------------------------------------------------------------- |
-| `id`         | `string`         | 문서 id. **경로가 아니다** — 문서가 이동해도 안 깨진다         |
-| `anchor`     | `string \| null` | 변경이 걸린 heading 의 URL 슬러그. **현재 항상 `null`** — 아래 |
-| `anchorText` | `string \| null` | 그 heading 의 표시용 원문(카드 점프 칩 라벨). 동상             |
+| 키   | 타입     | 설명                                                   |
+| ---- | -------- | ------------------------------------------------------ |
+| `id` | `string` | 문서 id. **경로가 아니다** — 문서가 이동해도 안 깨진다 |
 
-> **앵커는 현재 채워지지 않는다.** 계약과 스키마에는 `anchor`·`anchorText` 가 있고 `validate` 쪽 파생 경로에는 유도 로직(diff hunk 를 heading 구간에 매핑)이 구현돼 있지만, `feeds` 엔드포인트가 쓰는 경로는 두 값을 항상 `null` 로 넣는다. 예제 vault 의 피드 5건·문서 참조 6건 전부 `null` 이다. 소비자는 `anchor` 를 **선택적 값으로 다뤄야** 하며, 점프 칩은 문서 단위로만 만들 수 있다.
-
-`anchorText` 가 문서 본문에만 있는 정보인데도 피드 쪽에 자리를 잡고 있는 이유: 피드 화면이 라벨 하나 때문에 본문 페이로드를 당겨오면 "부팅 페이로드에 본문 없음" 이라는 설계가 무너지기 때문이다. 그래서 값이 채워질 때는 비정규화해 싣는다.
-
-`anchor` 가 `null` 이면 `anchorText` 도 반드시 `null` 이다([불변식](#불변식-7종) 6).
+> **피드는 문서를 가리킬 뿐, 문서 안의 위치는 가리키지 않는다.** 카드의 점프는 문서 단위다 — 문서 안쪽으로 들어가는 링크는 [위키링크](#위키링크) 가 담당한다.
 
 **`nextCursor` — 커서 페이징.**
 
@@ -487,7 +503,11 @@ active 문서는 10키다.
 
 다음 페이지가 있을 때만 값이 있고, 마지막 페이지면 `null` 이다. 값은 **이번 페이지 마지막 항목**의 좌표이며, 그대로 다음 호출의 `--after` 에 넣으면 된다. 오프셋이 아니라 (시각, id) 좌표라서 그 사이에 피드가 늘어도 밀리거나 중복되지 않는다.
 
+<!-- /contract:feeds-payload -->
+
 ### wiki 반환값
+
+<!-- contract:wiki-payload -->
 
 `--path` 가 무엇을 가리키느냐에 따라 셋 중 하나다.
 
@@ -523,6 +543,8 @@ active 문서는 10키다.
 **② disable 문서 — summary 스텁 4키 그대로.** `id`·`breadcrumb`·`title`·`status`.
 
 **③ 없는 경로 — `null`.** 에러가 아니라 `null` 이 stdout 에 찍히고 exit 0 이다.
+
+<!-- /contract:wiki-payload -->
 
 ---
 
@@ -592,6 +614,15 @@ git commit -m "chore: CXL 문서 추가"
 
 대상이나 앵커가 없으면 `validate` 가 데드링크로 잡는다.
 
+> **앵커가 나오는 자리는 둘뿐이고, 둘 다 문서 안쪽을 가리킨다.**
+>
+> | 어디                                        | 무엇                                                        | 만드는 곳                       |
+> | ------------------------------------------- | ----------------------------------------------------------- | ------------------------------- |
+> | [wiki 반환값](#wiki-반환값) `headings[]`    | 문서 heading 의 URL 슬러그 — 목차 항목이 가리키는 목적지    | `slugifyHeading` (md → html)    |
+> | 위키링크 `[[대상#앵커]]`                    | 다른 문서의 특정 heading 으로 가는 링크                     | 같은 슬러그 함수 (lockstep)     |
+>
+> 렌더된 본문의 `<h2 id="…">` 와 `headings[].anchor` 는 **같은 함수로 만들어져** 항상 일치한다. 반면 **피드**(`feeds` 의 `docs[]`)는 문서만 가리키고 위치는 가리키지 않는다 — 거기엔 앵커가 없다.
+
 ---
 
 ## 피드 발행법
@@ -624,7 +655,6 @@ Importance: breaking
 | `Keywords:` 트레일러      | `keywords[]`                         |
 | `Importance:` 트레일러    | `importance`                         |
 | diff 가 건드린 vault 문서 | `docs[].id`                          |
-| diff hunk ↔ heading 매핑  | `docs[].anchor`, `docs[].anchorText` |
 
 ### 트레일러 규칙
 
