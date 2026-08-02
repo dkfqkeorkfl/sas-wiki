@@ -30,12 +30,11 @@ const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
  * (webfront `dev/wiki-backend/__tests__/dev-api.contract.test.ts` 가 봉투 계약으로 문다), 쪼개면
  * `summary.schema.json`(strict)이 두 벌 필요해진다 = 「호환 분기」.
  */
+// 🔴 v3 P1(§4.3 ③ · D28): 발행자 표지·상관 토큰이 사라져 **7키**가 된다.
 const ENVELOPE_KEYS = [
   'docs',
   'env',
   'generatedAt',
-  'inputsFingerprint',
-  'producer',
   'schemaVersion',
   'sourceCommit',
   'tags',
@@ -62,7 +61,7 @@ function seedMixed(vault) {
 }
 
 describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)', () => {
-  it('E-S1: summary(vault, "prod") → 봉투 9키·schemaVersion 3·draft 제외·본문 키 0', () => {
+  it('E-S1: summary(vault, "prod") → 봉투 7키·schemaVersion 1·draft 제외·본문 키 0', () => {
     const vault = initVault()
     try {
       seedMixed(vault)
@@ -70,10 +69,10 @@ describe('endpoints.summary — on-demand git 파싱 (E-S1·E-S2 🔴RED 전환)
       const out = summary(vault, 'prod')
 
       expect(Object.keys(out).toSorted()).toEqual(ENVELOPE_KEYS)
-      // §4 원장 ⑥ — 봉투가 7키 → **9키**로 늘었으므로(`producer`·`env` 가산) 계약 버전이
-      //   1 → 2(D-D (b)) → **3**(P5 · D-G — 발행물 3종 + wire 3 페이로드 공용). 단언이 약해진 것이
+      // 🔴 v3 P1 · D29(§4.3 ②) — 내부 wire 계약 번호를 **1 로 리셋**한다. 리터럴 복제는 **복제로
+      //   유지**한다(import 로 바꾸면 구현이 어떤 값이든 통과한다 · 규범 A). 단언이 약해진 것이
       //   아니라 **계약이 바뀐** 자리다.
-      expect(out.schemaVersion).toBe(3)
+      expect(out.schemaVersion).toBe(1)
       expect(out.docs.map((doc) => doc.id)).toContain(ID_A)
       expect(out.docs.map((doc) => doc.id)).not.toContain(ID_DRAFT) // draft 제외
       const active = out.docs.find((doc) => doc.id === ID_A)

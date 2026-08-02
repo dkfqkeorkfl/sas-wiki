@@ -105,7 +105,8 @@ export function aFeeds() {
       generatedAt: GENERATED_AT,
       inputsFingerprint: INPUTS_FINGERPRINT,
       items: [],
-      schemaVersion: 3,
+      // v3 P1 · D29(§4.3 ②) — 계약 번호 리셋. 리터럴 유지는 규범 A 다.
+      schemaVersion: 1,
       sourceCommit: SOURCE_COMMIT,
     },
     { withItem: (value, item) => ({ ...value, items: [...value.items, unwrap(item)] }) },

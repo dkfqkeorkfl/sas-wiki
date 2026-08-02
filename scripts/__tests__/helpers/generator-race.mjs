@@ -26,7 +26,9 @@ const PUBLICATIONS = [
   { kind: 'report', producer: 'sas-wiki/report', rel: ['logs', 'summary.report.<env>.json'] },
 ]
 
-const SCHEMA_VERSION = 3
+// v3 P1 · D29 — 내부 wire 계약 번호를 1 로 리셋한다(§4.3 ②). 소비자 자식 템플릿(`${SCHEMA_VERSION}`)이
+//   같은 값을 쓰므로 **한 곳만 고치면 두 자리가 함께 간다**. 리터럴 유지는 규범 A 다.
+const SCHEMA_VERSION = 1
 
 /** 소비자 자식 — 생산자들이 갈아끼우는 동안 세 산출물을 **프로덕션 독자**로 반복해 읽는다. */
 const CONSUMER_SOURCE = `
@@ -173,12 +175,25 @@ function runChild(scriptPath, args, timeoutMs) {
   })
 }
 
+/**
+ * 발행물 1건의 **세대 좌표**를 캔다(판정하지 않는다).
+ *
+ * ★ v3 P1(§3.12 · §4.3 ⑥): 상관 토큰 축이 사라지면 `new Set(...).size === 1` 이 값 전부 `null` 로
+ *   **공허 통과**한다(`Set{null}.size === 1`). 그래서 이 하네스가 **`sourceCommit`·`generatedAt`
+ *   두 축을 함께** 실어 보낸다 — 옛 축은 GREEN 원자 커밋이 걷어낼 때까지 그대로 둔다(규범 L).
+ *   두 축이 "판정" 이 아니라 **관측**이라는 점이 v3 D1 과 충돌하지 않는 이유다(§3.12 주석 계약).
+ */
 function readPublication(file) {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
-    return { fingerprint: parsed?.inputsFingerprint ?? null, parsed }
+    return {
+      fingerprint: parsed?.inputsFingerprint ?? null,
+      generatedAt: parsed?.generatedAt ?? null,
+      parsed,
+      sourceCommit: parsed?.sourceCommit ?? null,
+    }
   } catch {
-    return { fingerprint: null, parsed: null }
+    return { fingerprint: null, generatedAt: null, parsed: null, sourceCommit: null }
   }
 }
 

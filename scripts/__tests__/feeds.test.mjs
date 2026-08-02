@@ -30,8 +30,13 @@ const T2 = '2026-01-02T00:00:00Z'
 const T3 = '2026-01-03T00:00:00Z'
 const T4 = '2026-01-04T00:00:00Z'
 
-/** P5 · D-G — `inputsFingerprint` 가 가산돼 5키가 된다(§4 원장 ⑮). */
-const ENVELOPE_KEYS = ['generatedAt', 'inputsFingerprint', 'items', 'schemaVersion', 'sourceCommit']
+/**
+ * wire feeds 봉투 — **4키**.
+ *
+ * 🔴 v3 P1(§4.3 ③ · KY4 · D28): 상관 토큰이 wire 에서 빠진다. ★ `env` 는 **여기 신설되지 않는다** —
+ *   그것은 파이프라인 P2 소관이고, 이 배열은 "지금 상태" 이지 미래 계약이 아니다(tdd §9).
+ */
+const ENVELOPE_KEYS = ['generatedAt', 'items', 'schemaVersion', 'sourceCommit']
 const titlesOf = (page) => page.items.map((item) => item.title)
 const idsOf = (page) => page.items.map((item) => item.id)
 
@@ -51,7 +56,7 @@ function seedFour(vault) {
 }
 
 describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환)', () => {
-  it('E-F1: feeds(vault, {count}) → 최신순 count건·유효 봉투(schemaVersion=3)', async () => {
+  it('E-F1: feeds(vault, {count}) → 최신순 count건·유효 봉투(schemaVersion=1)', async () => {
     const vault = initVault()
     try {
       seedFour(vault)
@@ -59,9 +64,9 @@ describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환
       const page = await feeds(vault, 'dev', { count: 3 })
 
       expect(titlesOf(page)).toEqual(['n4', 'n3', 'n2'])
-      // §4 원장 ⑦·⑭ — `SCHEMA_VERSION` 은 3 페이로드 **공용**이다(P2 확정: 쪼개면 `WikiDataProvider`
-      //   부팅 게이트가 영구 false). P4 가 1 → 2, P5(D-G)가 2 → **3** 으로 올린다.
-      expect(page.schemaVersion).toBe(3)
+      // 🔴 v3 P1 · D29(§4.3 ②) — `SCHEMA_VERSION` 은 3 페이로드 **공용**이다(P2 확정: 쪼개면
+      //   `WikiDataProvider` 부팅 게이트가 영구 false). 그 공용 상수를 **1 로 리셋**한다.
+      expect(page.schemaVersion).toBe(1)
       expect(Object.keys(page).toSorted()).toEqual(expect.arrayContaining(ENVELOPE_KEYS))
     } finally {
       cleanup(vault)

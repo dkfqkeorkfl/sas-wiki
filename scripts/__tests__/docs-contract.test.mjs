@@ -191,15 +191,35 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     expect(documented, `문서 결속면(${scope.via})`).toEqual(fromSource)
   })
 
-  it('PT4: 문서화된 `schemaVersion` == 소스 == 리터럴 3 (3중 대조)', () => {
-    // 🔴 왜 지금 red 인가: README:282·361 의 예시 봉투가 **`"schemaVersion": 1`** 이다. 소스는 3.
-    // ★ 리터럴 축이 없으면 "문서와 소스가 **함께 2로 틀린**" 상태를 통과시킨다(규범 A).
+  it('PT4(=CV1·CV2): 문서화된 `schemaVersion` == 소스 == 리터럴 1 (3중 대조)', () => {
+    // 🔴 왜 지금 red 인가(v3 P1 · D29 · §4.3 ②·④): 내부 wire 계약 번호를 **1 로 리셋**한다. 소스는
+    //   아직 3이고 README 서술도 3이다 — 둘이 **함께** 내려와야 이 케이스가 green 이 된다.
+    // ★ 리터럴 축이 없으면 "문서와 소스가 **함께 틀린**" 상태를 통과시킨다(규범 A).
     const fromSource = captures(readSource('scripts/lib/payloads.mjs'), /SCHEMA_VERSION = (\d+)/g)
-    expect(fromSource).toEqual(['3'])
+    // 앵커: 추출 결과가 **정확히 1건**이다(정규식이 죽어 빈 배열이 된 채 통과하는 것을 배제).
+    expect(fromSource).toHaveLength(1)
+    expect(fromSource).toEqual(['1'])
 
     const scope = docScope('artifacts', ['schemaVersion'])
     const documented = unique(captures(scopeText(scope), /schemaVersion["`]?\s*[:=]\s*`?(\d+)/g))
-    expect(documented, `문서 결속면(${scope.via})`).toEqual(['3'])
+    expect(documented, `문서 결속면(${scope.via})`).toEqual(['1'])
+  })
+
+  it('CV3: README 「계약 버전의 의미」 절에 **뒤집힌 발동 조건 문장이 없다**', () => {
+    // 🔴 왜 지금 red 인가: README 가 _"첫 소비자가 붙는 시점에"_ 리셋한다고 적는다 — **D29 는 그
+    //   전에, 지금** 리셋한다. 발동 조건이 정반대라 그대로 두면 문서가 결정을 거스른다(D42 대상).
+    // ★ 규범 I — 산문은 결속하지 않는다. 여기서 무는 것은 **이 한 토큰**뿐이고, 절의 나머지 서술은
+    //   §4 원장과 리뷰가 진다.
+    const start = README_LINES.findIndex((line) => /^#+\s*계약 버전의 의미/.test(line))
+    const rest = README_LINES.slice(start + 1)
+    const end = rest.findIndex((line) => /^#{1,4}\s/.test(line))
+    const section = rest.slice(0, end === -1 ? rest.length : end).join('\n')
+
+    // 앵커: 그 절이 **실제로 파싱됐다**(못 찾아서 빈 문자열로 통과하는 것을 배제).
+    expect(start, 'README 「계약 버전의 의미」 절 제목을 찾지 못했다').toBeGreaterThan(-1)
+    expect(section.trim().length, '절 본문이 비었다').toBeGreaterThan(0)
+
+    expect(section, '뒤집힌 발동 조건 서술이 남아 있다').not.toContain('첫 소비자가 붙는 시점에')
   })
 
   it('PT5: README 전문에 env 분리 **이전** 경로가 0회다 (팬텀 방향)', () => {
@@ -310,7 +330,8 @@ const EN_ENUM_CONTRACTS = [
         inputsFingerprint: '0123456789abcdef',
         items: [{ body: '', docs: [], id: 'abcdef012345', importance, keywords: [], title: 'x', ts: '2026-01-01T00:00:00Z' }], // prettier-ignore
         nextCursor: null,
-        schemaVersion: 3,
+        // v3 P1 · D29 — 계약 번호 리셋(§4.3 ②). 스키마는 값을 pin 하지 않는다(`minimum: 1`).
+        schemaVersion: 1,
         sourceCommit: '9e0a3a0c8072f436503c5065ca4b4b863cd434fb',
       })
       expect(validateItem(envelope('fix'), schema, '$feeds')).toEqual([])

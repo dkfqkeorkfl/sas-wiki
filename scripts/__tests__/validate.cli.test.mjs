@@ -305,3 +305,132 @@ describe('validate CLI — 통계 stdout (조용한 유실 종료)', () => {
     expect(result.stdout).toContain('prune=1')
   })
 })
+
+// ────────────────────────────────────────────────────────────────────────────
+// RP(이사분) — 리포트 소유권이 생성기에서 **게이트로 되돌아온다** (v3 P1 Task 7 · D5·D24 · §4.3 ⑦)
+//
+// 이 다섯 케이스는 `summary.generator.test.mjs` 의 RP1~RP5 가 **검사하던 것을 그대로** 검사한다 —
+//   바뀌는 것은 **호출 대상**뿐이다(생성기 → `validate.mjs --report`). 삭제가 아니라 이사이므로,
+//   원본 RP1~RP5 의 제거는 **GREEN 원자 커밋의 몫**이다(규범 L: RED 커밋에 삭제 0건).
+//   ☞ 그때까지 두 벌이 공존하고, 그 공존 자체가 "옮겼다" 의 증거다.
+//
+// ★ RP2 는 **축 교체**다: 옛 케이스는 _"두 리포트가 캐시와 같은 상관 토큰을 담는다"_ 를 물었는데
+//   그 축이 사라진다. 같은 질문("이 리포트가 저 산출물의 것인가")을 `sourceCommit` 으로 다시 묻는다 —
+//   **판정이 아니라 관측**이므로 v3 D1 위반이 아니다(§3.12 와 같은 계약).
+//
+// ★ 왜 exit code 를 여기서 단언하지 않는가: 게이트 판정 축은 `validate.exclusion.test.mjs`(VD2·VD3)와
+//   위의 CLI 절이 소유한다. 여기서 무는 것은 **관측 채널이 실제로 발행되는가** 뿐이고, 그 둘은 서로
+//   독립이어야 한다 — _"관측 실패를 산출물 실패로 승격하지 않는다"_(D-F)의 반대 방향이 곧 이것이다.
+//
+// 🔴 전 케이스 RED 사유(**미구현**): `validate.mjs` 에 `--report` 인수가 없다(Task 7).
+// 규범 A: 경로 조각·파일명은 **리터럴**이다(plan Task 7 이 확정한 형태 그대로).
+// 규범 F: 실 vault 를 건드리지 않는다 — 이 절의 vault 는 전부 tmp 다.
+// ────────────────────────────────────────────────────────────────────────────
+
+const reportJsonIn = (dir, env) => path.join(dir, `summary.report.${env}.json`)
+const reportTxtIn = (dir, env) => path.join(dir, `summary.report.${env}.txt`)
+const readReport = (file) => JSON.parse(readFileSync(file, 'utf8'))
+
+function freshReportDir() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'wiki-report-'))
+  reportDirs.push(dir)
+  return dir
+}
+
+const reportDirs = []
+afterAll(() => {
+  for (const dir of reportDirs) rmSync(dir, { force: true, recursive: true })
+})
+
+describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)', () => {
+  it('RP1: `--report <dir>` 가 json·txt **2파일**을 만든다', () => {
+    const dir = freshReportDir()
+    // 앵커: 실행 **전에는 없다**(원래 있던 파일을 보고 통과하는 것을 배제).
+    expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(false)
+
+    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', dir])
+
+    expect(existsSync(reportJsonIn(dir, 'dev')), `${result.stderr}${result.stdout}`).toBe(true)
+    expect(existsSync(reportTxtIn(dir, 'dev'))).toBe(true)
+  })
+
+  it('RP2: 두 리포트가 **산출물과 같은 `sourceCommit`** 을 담는다 (세대 어긋남 방어 · 축 교체)', () => {
+    const dir = freshReportDir()
+
+    runCli(['--vault', ctx.vault, '--env', 'dev', '--report', dir])
+
+    expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(true) // 앵커 ①: 파일이 실재한다
+    const report = readReport(reportJsonIn(dir, 'dev'))
+    // 앵커 ②: 값이 **40자 hex** 다(빈 문자열끼리 일치하는 공허 통과 배제).
+    expect(report.sourceCommit).toMatch(/^[0-9a-f]{40}$/)
+    expect(report.sourceCommit).toBe(git(ctx.vault, ['rev-parse', 'HEAD']))
+    expect(readFileSync(reportTxtIn(dir, 'dev'), 'utf8')).toContain(report.sourceCommit)
+  })
+
+  it('RP3: 제외가 있는 vault 의 리포트가 excluded 를 담고 카운터와 정합한다', async () => {
+    // 앵커: 이 vault 는 **실제로** 제외 문서를 갖는다(0 == 0 으로 공허 통과하는 것을 배제) —
+    //   `validate.exclusion.test.mjs` VD2 가 같은 픽스처로 그 사실을 이미 못박는다.
+    const { seedPollutedVault } = await import(
+      new URL('./helpers/polluted-vault.mjs', import.meta.url).href
+    )
+    const polluted = seedPollutedVault()
+    reportDirs.push(polluted.vault)
+    const dir = freshReportDir()
+
+    runCli(['--vault', polluted.vault, '--env', 'dev', '--max-excluded', '2', '--report', dir])
+
+    expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(true)
+    const report = readReport(reportJsonIn(dir, 'dev'))
+    expect(report.excluded).toHaveLength(2)
+    for (const entry of report.excluded) {
+      expect(Object.keys(entry).toSorted()).toEqual(['id', 'message', 'path', 'reasonCode'])
+    }
+    // 배열 길이와 카운터의 **정합**까지 본다 — 둘이 갈리면 리포트를 믿을 수 없다.
+    expect(report.summary.excluded).toBe(2)
+  })
+
+  it('RP4: 리포트를 못 써도 **게이트 판정 자체는 살아 있다**', () => {
+    // ★ D-F "관측 실패를 산출물 실패로 승격하지 않는다" 의 게이트 판(版). 로그를 못 썼다고 검증
+    //   결과를 버리는 것은 우선순위가 뒤집힌 것이다.
+    const blocker = path.join(ctx.tmp, 'report-blocker')
+    writeFileSync(blocker, 'not a directory')
+
+    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', blocker])
+
+    // 앵커: 같은 vault 가 정상 `--report` 에서는 통과한다(vault 자체가 깨져서 통과하는 것 배제).
+    const control = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', freshReportDir()])
+    expect(control.status, control.stderr).toBe(0)
+
+    // 판정은 그대로 0 이고, **무엇이 왜** 실패했는지는 stderr 가 말한다.
+    expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
+    expect(`${result.stderr}${result.stdout}`).toMatch(/report|리포트/i)
+  })
+
+  it('RP5: 생성된 report.json 이 `report.schema.json` 을 통과한다', async () => {
+    const { loadSchema, validateItem } = await import(
+      new URL('../lib/schema-validator.mjs', import.meta.url).href
+    )
+    const schemaPath = path.join(REAL_SCHEMA_DIR, 'report.schema.json')
+    const dir = freshReportDir()
+
+    runCli(['--vault', ctx.vault, '--env', 'dev', '--report', dir])
+
+    expect(existsSync(schemaPath)).toBe(true) // 앵커: 스키마가 실재한다(자기 스키마 드리프트 차단)
+    expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(true)
+    expect(
+      validateItem(readReport(reportJsonIn(dir, 'dev')), loadSchema(schemaPath), 'report.json'),
+    ).toEqual([])
+  })
+
+  it('RP6: `--report` 는 D24 경로 제한을 받는다 (vault 밖은 거부)', () => {
+    // plan Task 7 — 경로 제한은 `--out` 과 `--report` **둘 다**에 건다. 한쪽만 걸면 나머지가 우회로다.
+    // 앵커: vault **안쪽** 디렉토리는 정상 동작한다(전부 거부하는 구현 배제).
+    const inside = path.join(ctx.vault, 'logs')
+    const okay = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', inside])
+    expect(okay.status, okay.stderr).toBe(0)
+
+    const outside = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', path.join(ctx.tmp, '..')]) // prettier-ignore
+
+    expect(outside.status).not.toBe(0)
+  })
+})

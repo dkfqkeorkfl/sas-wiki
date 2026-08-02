@@ -74,11 +74,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SUMMARY_SOURCE = path.resolve(HERE, '..', 'generator.mjs')
 
 // ── 커밋 픽스처가 선언한 값 — 전부 **리터럴**이다(규범 A) ──────────────────────────────────────
-// P5 · D-G — 발행물 3종 + wire 3 페이로드 공용 SCHEMA_VERSION 이 2 → 3 이 됐다(§4 원장 ⑭).
-//   RD10 이 이 드리프트를 실제로 잡았다 — 픽스처(`scripts/__tests__/fixtures/artifact/*.json`)와
-//   함께 갱신한다(`schema-version-next.json` 은 **항상 "다음 버전"** 이어야 하므로 4로 올린다).
+// v3 P1 · D29 — 내부 wire 계약 번호를 **1 로 리셋**한다(§4.3 ② · plan Task 2). 이 값은 발행물 3종 +
+//   wire 3 페이로드 공용이며, 리터럴 복제는 **복제로 유지한다**(import 로 바꾸면 구현이 어떤 값이든
+//   통과한다 — 규범 A). RD10 이 이 드리프트를 실제로 잡는다: 픽스처
+//   (`scripts/__tests__/fixtures/artifact/*.json`)를 함께 갱신하는 것은 GREEN(C3)의 몫이고,
+//   `schema-version-next.json` 은 **항상 "다음 버전"** 이어야 하므로 2로 내린다.
 const PRODUCER = 'sas-wiki/summary'
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 1
 const ENV = 'dev'
 const FINGERPRINT = 'b5f0c1d2e3a49876'
 /** `fingerprint-tampered.json` 의 값 — 유효본과 **마지막 한 글자**만 다르다(부분 비교 우회 배제). */
@@ -283,14 +285,18 @@ describe('readArtifact — 버전·지문·env (RD5~RD7 · 🔴RED 미구현)', 
   })
 })
 
-describe('readArtifact — 진단 채널 (RD9 · pair)', () => {
-  it('RD9: 서로 다른 실패 모드는 서로 다른 `reason` 을 낸다 (전부 `stale` 로 뭉개지 않는다)', () => {
+describe('readArtifact — 진단 채널 (RD9 · 🔴RED(flip) 7 → 5)', () => {
+  it('RD9: 서로 다른 실패 모드 **5종**이 서로 다른 `reason` 을 낸다 (전부 `stale` 로 뭉개지 않는다)', () => {
     // ★ 사유를 뭉개면 "왜 재생성됐는지" 를 영원히 모른다 — P3 F5(제외 사유의 관측 채널)와 같은 축이고,
     //   REFACTOR 때 `readArtifact` 를 평평한 early-return 사슬로 두라는 이유이기도 하다(§10.3-3).
     //
-    // ☞ RD3·RD4 는 **같은 사유가 계약**이므로(위조·부재 둘 다 producer-mismatch) 여기서 제외한다 —
+    // ☞ RD3·RD4 는 **같은 사유가 계약**이므로(위조·부재 둘 다 같은 사유) 여기서 제외한다 —
     //   tdd §3.4 의 "RD1~RD8 중복 0" 을 문자 그대로 읽으면 RD4 와 모순된다.
-    //   `unreadable` 은 **EISDIR**(RD8b)로 관측한다 — root 에서도 실행돼야 7개가 항상 7개다.
+    //   `unreadable` 은 **EISDIR**(RD8b)로 관측한다 — root 에서도 실행돼야 개수가 항상 같다.
+    //
+    // 🔴 v3 P1(§4.3 ① · plan Task 4): 판별층 두 개가 사라지면서 실패 모드가 **7 → 5** 로 줄고,
+    //   입력도 함께 바뀐다 — 삭제되는 3픽스처 중 2개를 여기서 쓰고 있었다. 파일만 지우면
+    //   `missing` 3중복으로 집합 크기가 어긋난다. **개수만 내리지 않고 집합을 함께 못박는다**(규범 N).
     expectSeamPresent()
     const dir = makeTmp()
 
@@ -298,15 +304,66 @@ describe('readArtifact — 진단 채널 (RD9 · pair)', () => {
       read({ expect: EXPECT_DEV, path: path.join(dir, 'no-such.json') }).reason,
       read({ expect: EXPECT_DEV, path: dir }).reason,
       readFixture('truncated.json').reason,
-      readFixture('producer-forged.json').reason,
       readFixture('schema-version-next.json').reason,
-      readFixture('fingerprint-tampered.json').reason,
       readFixture('env-mismatch.json').reason,
     ]
 
     expect(reasons).not.toContain(undefined)
-    expect(reasons).toHaveLength(7) // 실패 모드 7종이 환경과 무관하게 항상 관측된다
+    expect(reasons).toHaveLength(5) // 실패 모드 5종이 환경과 무관하게 항상 관측된다
     expect(new Set(reasons).size).toBe(reasons.length)
+    // 규범 N — *어느* 5종인지까지 못박는다. 개수만 두면 엉뚱한 사유가 하나 들어오고 하나 빠져도 통과한다.
+    expect([...reasons].sort()).toEqual([
+      ENV_MISMATCH,
+      MALFORMED,
+      MISSING,
+      SCHEMA_VERSION_MISMATCH,
+      UNREADABLE,
+    ])
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// NB — 비객체 JSON 승계 (v3 P1 Task 3 · tdd §3.3 · **CX3 의 선행 조건**)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('readArtifact — 비객체 JSON (NB1~NB4 · 🔴RED 픽스처·승계 미구현)', () => {
+  // 🔴 왜 지금 red 인가: 현행 첫 검사가 발행자 표지 층이라 세 픽스처가 **그 사유**로 걸린다. 두 층이
+  //   사라지면 `payload?.schemaVersion !== expected.schemaVersion` 이 **첫 검사**가 되고, `[]`·
+  //   `"nope"`·`null` 이 전부 거기서 `undefined !== 1` 로 걸려야 한다.
+  // ★ 이 세 케이스가 없으면 `artifact.mjs` 의 `?.` 승계를 빠뜨려도 아무도 모른다 — 현행 픽스처 7종이
+  //   **전부 객체 JSON** 이라 `?.` 를 지워도 red 가 되지 않는다(다이제스트 §2-E 실측). 승계를 빠뜨리면
+  //   `null.schemaVersion` 이 **throw** 하는데, 그 함수의 계약은 _"throw 하지 않는다"_(`artifact.mjs:61`)다.
+  // ☞ webfront 쪽은 조치 불요다 — `plugin.ts:432-435` 가 payload 를 `{}` 폴백으로 캐스팅한다.
+  //   **두 리포의 방어 형태가 다르다**는 사실 자체를 여기 남긴다.
+  it.each([
+    ['NB1', 'non-object-array.json', '[]'],
+    ['NB2', 'non-object-string.json', '"nope"'],
+    ['NB3', 'non-object-null.json', 'null'],
+  ])('%s: `%s`(%s) → throw 없이 stale(`schema-version-mismatch`)', (_id, fixture, literal) => {
+    expectSeamPresent()
+    // 앵커: 그 픽스처가 **실제로 그 리터럴**이다(엉뚱한 파일을 읽고 통과하는 것을 배제).
+    expect(readArtifactFixtureText(fixture).trim()).toBe(literal)
+
+    let result
+    expect(() => {
+      result = readFixture(fixture)
+    }, 'readArtifact 는 모든 실패를 stale 로 접는다 — throw 하지 않는다').not.toThrow()
+
+    expect(result.fresh).toBe(false)
+    expect(result.reason).toBe(SCHEMA_VERSION_MISMATCH)
+  })
+
+  it('NB4: 같은 독자가 **정상 입력에서는 fresh** 를 낸다 (전부 stale 로 접는 구현 배제)', () => {
+    // ★ 짝 가드다. NB1~NB3 만 두면 "무조건 stale" 인 구현이 셋을 전부 통과한다.
+    // ☞ 이 케이스는 C2(RED 커밋) 시점에 **red** 다 — 같은 파일의 계약 버전 리터럴이 1 로 flip 됐고
+    //   커밋 픽스처는 아직 옛 값을 담고 있기 때문이다(픽스처 갱신은 C3 · §4.3 ②). C3 이후 green 이
+    //   되고, 그때부터는 회귀 못으로 산다.
+    expectSeamPresent()
+
+    const result = readFixture('valid.json')
+
+    expect(result.fresh).toBe(true)
+    expect(result.payload.docs.map((doc) => doc.id)).toEqual([DOC_ID])
   })
 })
 

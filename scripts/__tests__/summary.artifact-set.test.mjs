@@ -51,7 +51,8 @@ const reportTextFile = (vault, env) => path.join(vault, 'logs', `summary.report.
 const SUMMARY_PRODUCER = 'sas-wiki/summary'
 const FEEDS_PRODUCER = 'sas-wiki/feeds'
 const REPORT_PRODUCER = 'sas-wiki/report'
-const SCHEMA_VERSION = 3
+/** 🔴 v3 P1 · D29(§4.3 ②) — 계약 번호 리셋. 리터럴 복제는 **복제로 유지**한다(규범 A). */
+const SCHEMA_VERSION = 1
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
@@ -224,8 +225,8 @@ describe('리포트 경로 env 분리 (FA9 · 🔴RED 단일 슬롯)', () => {
   })
 })
 
-describe('버전은 하나다 — 5 산출물 공용 (FA10 · 🔴RED flip: 오늘 2 · 리포트만 1)', () => {
-  it('FA10: `SCHEMA_VERSION === 3` 이고 다섯 산출물의 버전이 서로 같다', async () => {
+describe('버전은 하나다 — 5 산출물 공용 (FA10 · 🔴RED(flip) v3 P1 · D29 리셋)', () => {
+  it('FA10: `SCHEMA_VERSION === 1` 이고 다섯 산출물의 버전이 서로 같다', async () => {
     // ★ 분리 금지 pin 의 확장. 페이로드별로 쪼개면 소비자 `WikiDataProvider` 부팅 게이트가
     //   **영구 false** 가 된다(P2 확정 · 재론 금지). §4 원장 ⑭~⑱ 이 뒤집히는 리터럴을 지목한다.
     const { vault } = seedVault()

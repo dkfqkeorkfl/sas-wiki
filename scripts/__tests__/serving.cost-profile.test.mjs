@@ -45,6 +45,14 @@ const SCRIPTS_DIR = path.resolve(HERE, '..')
 /** 히트 경로의 git 호출 계약 — **리터럴 argv**다(규범 A: 프로덕션 상수로 기대값을 만들지 않는다). */
 const HIT_GIT_CALLS = [['rev-parse', 'HEAD']]
 
+/**
+ * v3 P1(Task 6) 이후의 조회 경로 git 호출 계약 — **빈 multiset**이다.
+ *
+ * 신선도 판정이 사라지면 `rev-parse HEAD` 를 낼 이유도 사라진다(D1). 조회 도구는 **캐시 파일을 읽기만**
+ * 한다 — git 을 한 번이라도 부르면 그 자체가 "판정이 남아 있다" 는 신호다.
+ */
+const READ_ONLY_GIT_CALLS = []
+
 /** 로드 관측 좌표 — 경로 조각 리터럴. */
 const RENDER = '/lib/render.mjs'
 const DERIVE = '/lib/derive.mjs'
@@ -59,26 +67,40 @@ const tmps = []
 afterAll(() => cleanup(...tmps))
 
 let coldFeeds
+let coldWiki
 let hitFeeds
 let hitWiki
 let warm
+let warmFeeds
 
 beforeAll(async () => {
   // 워밍 vault — 드리프트 없는 대조 vault(문서 2건 + 피드 1건). 아티팩트를 먼저 발행해 둔다.
+  //
+  // ★ v3 P1: 워밍을 `--status` 가 아니라 `--out` 으로 낸다. `--status` 는 Task 7 이 없애는 플래그라
+  //   그대로 두면 착륙 즉시 **이 파일 전체가 준비 단계에서 죽는다**(exit 2). `--out` 은 오늘도 있고
+  //   착륙 뒤에도 남는 **양 시대 공통 통로**다(D2).
+  // ★ `feeds.mjs --out` 은 **오늘은 알 수 없는 인자**라 실패한다 — 오늘은 summary 실행이 feeds
+  //   아티팩트를 함께 발행하므로 히트 arm 이 성립하고, Task 7 이후에는 이 줄이 그 자리를 잇는다.
+  //   그래서 이 준비 단계의 exit code 는 **단언하지 않는다**(관측일 뿐이다).
   const control = seedControlVault()
   tmps.push(control.vault)
-  warm = runCliWithLoadLog('summary.mjs', ['--env', 'dev', '--status'], { vault: control.vault })
+  const summaryOut = path.join(control.vault, 'cache', 'summary.dev.json')
+  const feedsOut = path.join(control.vault, 'cache', 'feeds.dev.json')
+  warm = runCliWithLoadLog('summary.mjs', ['--env', 'dev', '--out', summaryOut], { vault: control.vault }) // prettier-ignore
+  warmFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--out', feedsOut], { vault: control.vault }) // prettier-ignore
 
   hitFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev'], { vault: control.vault })
   hitWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL], {
     vault: control.vault,
   })
 
-  // 콜드 arm — 아티팩트가 **없는** vault. 재생성 경로가 실제로 무엇을 하는지의 대조군이다.
+  // 콜드 arm — 아티팩트가 **없는** vault. 오늘은 "재생성 경로가 무엇을 하는가" 의 대조군이고,
+  //   Task 6 이후에는 **fail-loud 가 실제로 일어나는가**(PU6)의 관측 대상이 된다.
   const cold = seedControlVault()
   tmps.push(cold.vault)
   coldFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev'], { vault: cold.vault })
-}, 240_000)
+  coldWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL], { vault: cold.vault }) // prettier-ignore
+}, 420_000)
 
 const countUrls = (observation, fragment) =>
   observation.loadedUrls.filter((url) => url.includes(fragment)).length
@@ -116,20 +138,29 @@ function testSources() {
   return chunks.join('\n')
 }
 
-describe('히트 경로 git 프로파일 (TR1·TR2 · 🔴RED flip: 오늘 매 요청 재파싱)', () => {
-  it('TR1: `feeds.mjs` 히트 실행의 git 호출 multiset === `[["rev-parse","HEAD"]]`', () => {
-    // 앵커: 같은 하네스의 **콜드 실행**에서는 `log`·`show`·`rev-list` 가 실제로 나온다 — shim 이
-    //   죽어서 0건인 것이 아니다(부재 단언 앞의 위험 실재 · 규범 B).
-    expect(warm.exitCode).toBe(0)
-    expect(coldFeeds.exitCode).toBe(0)
-    expect(coldFeeds.gitCalls.length).toBeGreaterThan(HIT_GIT_CALLS.length)
-    expect(gitVerbs(coldFeeds).some((verb) => verb.startsWith('rev-list'))).toBe(true)
-    expect(gitVerbs(coldFeeds).some((verb) => verb.startsWith('log'))).toBe(true)
+describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip): 오늘 판정이 `rev-parse` 를 낸다)', () => {
+  it('PU4(구 TR1): `feeds.mjs` 조회 실행의 git 호출 multiset === `[]`', () => {
+    // 🔴 v3 P1 Task 6(§3.9 · §4.6 ①): 신선도 판정이 사라지므로 조회 도구는 git 을 **한 번도** 부르지
+    //   않는다. 오늘의 기대(`[['rev-parse','HEAD']]`)는 판정이 살아 있다는 사실 그 자체였다.
+    //
+    // ★ 앵커 교체가 이 케이스의 핵심이다(§4.1 변이 ⑤). 옛 앵커는 `coldFeeds`(아티팩트 부재 →
+    //   **재생성**)였는데 Task 6 이후 그 실행은 **throw** 한다 — 앵커가 무너지면 "0건" 이 관측기 사망과
+    //   구분되지 않는다. 그래서 위험 실재 앵커를 **`summary.mjs` 실행**으로 옮긴다: 생성기는 항상
+    //   히스토리를 훑으므로 같은 shim 에서 `log`·`rev-list` 가 실제로 나온다.
+    expect(warm.exitCode, warm.stderr).toBe(0)
+    expect(warm.gitCalls.length).toBeGreaterThan(HIT_GIT_CALLS.length)
+    expect(gitVerbs(warm).some((verb) => verb.startsWith('rev-list'))).toBe(true)
+    expect(gitVerbs(warm).some((verb) => verb.startsWith('log'))).toBe(true)
 
-    expect(hitFeeds.exitCode).toBe(0)
-    expect(hitFeeds.gitCalls).toEqual(HIT_GIT_CALLS)
+    expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
+    expect(hitFeeds.gitCalls).toEqual(READ_ONLY_GIT_CALLS)
   })
 
+  // ★ PU5(구 TR2) — **확정대기**(tdd §3.9). `wiki.mjs` 가 렌더 외에 git 을 부르는 자리가 남는지는
+  //   §8-③ 실측으로 **먼저 재고**한 뒤 기대값을 확정한다. 확정 전에 구현 판단으로 채우지 않는다
+  //   (tdd §10.1 작업규칙 9) — 그래서 아래 TR2 의 기대는 **오늘 값 그대로** 둔다.
+  //   ☞ 메인 세션 확정 후 `HIT_GIT_CALLS` → `READ_ONLY_GIT_CALLS` 로 flip 하거나, 남는 호출을
+  //     리터럴 multiset 으로 다시 적는다.
   it('TR2: `wiki.mjs` 히트 실행도 동상 (두 CLI 를 **각각** 문다)', () => {
     // 하나만 고친 구현을 배제한다 — D-E 와 D-F 는 서로 다른 Task 다.
     expect(hitWiki.exitCode).toBe(0)
@@ -137,8 +168,36 @@ describe('히트 경로 git 프로파일 (TR1·TR2 · 🔴RED flip: 오늘 매 �
   })
 })
 
+describe('생성기 결속 0 — 정적 그래프 (PU1 · 🔴RED 미구현)', () => {
+  it('PU1: `feeds.mjs`·`wiki.mjs` 의 정적 import 폐포에 `lib/generator.mjs` 가 **0회**다', async () => {
+    // 🔴 두 조회 도구가 오늘은 `runSummaryGenerator` 를 **정적으로** 물고 있다(`feeds.mjs:13`·
+    //   `wiki.mjs:13`). 런타임 관측(PU2)과 층이 다르다 — 정적 결속이 남아 있으면 "지금은 안 부른다"
+    //   가 한 줄 수정으로 되살아난다.
+    const { staticImportClosure } = await import(
+      new URL('./helpers/static-import-graph.mjs', import.meta.url).href
+    )
+    const generator = path.join(SCRIPTS_DIR, 'lib', 'generator.mjs')
+
+    for (const entry of ['feeds.mjs', 'wiki.mjs']) {
+      const closure = staticImportClosure(path.join(SCRIPTS_DIR, entry))
+
+      // ★ 앵커: 폐포가 비어 있지 않고 **살아남는 모듈 2종을 실제로 담는다**.
+      //   `helpers/static-import-graph.mjs:50-51` 이 _"읽을 수 없는 파일은 폐쇄에서 조용히 빠진다"_
+      //   를 자인하므로, 크기와 실재를 함께 못박지 않으면 부재 단언이 파서 사망과 구분되지 않는다.
+      expect(closure.files.length, entry).toBeGreaterThan(1)
+      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'artifact.mjs'))
+      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'payloads.mjs'))
+
+      expect(closure.files, `${entry} 가 생성기를 정적으로 문다`).not.toContain(generator)
+    }
+  })
+})
+
 describe('런타임 로드 관측 — 규범 G (TR3·TR5 · 🔴RED 오늘 툴체인을 실행한다 · CX-J′·CX-K)', () => {
-  it('TR3: `feeds.mjs` 히트 실행이 렌더·파생·파싱 툴체인을 **실행하지 않는다**', () => {
+  // ★ v3 P1 에서 이 케이스가 **PU2**(§3.9)를 겸한다 — 계약도 관측 기법도 그대로이고, 달라지는 것은
+  //   "왜 로드하지 않는가" 의 사유뿐이다(오늘: 히트 스킵 / Task 6 이후: **생성기를 아예 안 부른다**).
+  //   짝(PU3)의 대상이 `coldFeeds` → `summary.mjs` 로 옮겨간 것이 이 절의 유일한 구조 변경이다.
+  it('TR3(=PU2): `feeds.mjs` 히트 실행이 렌더·파생·파싱 툴체인을 **실행하지 않는다**', () => {
     // ★ 앵커(CX-K 대응): 같은 하네스가 `wiki.mjs` 히트 실행에서는 `lib/render.mjs` 를 **실제로
     //   관측한다**. 관측기가 항상 빈 집합을 내면 이 부재 단언은 장식이다.
     expect(hitWiki.loadedUrls.length).toBeGreaterThan(0)
@@ -159,13 +218,39 @@ describe('런타임 로드 관측 — 규범 G (TR3·TR5 · 🔴RED 오늘 툴�
   })
 })
 
-describe('짝 가드 — 재생성 경로는 반대 방향이다 (TR4 · 🟩pair)', () => {
-  it('TR4: 콜드(아티팩트 부재) 실행에서는 `parse-vault`·`render` 를 **로드한다**', () => {
-    // "아예 재생성을 못 하는 구현" 배제 + **동적 import 가 실제로 열린다는 증거**. TR3 과 정확히
-    //   반대 방향이다(P4 REFACTOR 가 찾은 구멍 ① — 되돌림 방향을 한쪽만 보는 CX 를 구조로 막는다).
-    expect(countUrls(coldFeeds, PARSE_VAULT)).toBeGreaterThan(0)
-    expect(countUrls(coldFeeds, RENDER)).toBeGreaterThan(0)
-    expect(countUrls(coldFeeds, NODE_MODULES)).toBeGreaterThan(0)
+describe('짝 가드 — 생성 경로는 반대 방향이다 (PU3 · 🟩pair)', () => {
+  it('PU3(구 TR4): `summary.mjs` 실행은 `parse-vault`·`render`·패키지를 **로드한다**', () => {
+    // "아예 만들지 못하는 구현" 배제 + **동적 import 가 실제로 열린다는 증거**. PU2 와 정확히 반대
+    //   방향이다(P4 REFACTOR 가 찾은 구멍 ① — 되돌림 방향을 한쪽만 보는 CX 를 구조로 막는다).
+    //
+    // ★ 대상 교체(§3.9 · §4.6 ①): 옛 짝은 `coldFeeds`(아티팩트 부재 → 재생성)였는데 Task 6 이후
+    //   그 실행은 **throw** 해서 아무것도 로드하지 않는다 — 그러면 이 짝이 통째로 죽고, PU2 의
+    //   "로드하지 않는다" 가 **관측기 사망과 구분 불가**가 된다. 항상 파싱하는 `summary.mjs` 로 옮긴다.
+    expect(countUrls(warm, PARSE_VAULT)).toBeGreaterThan(0)
+    expect(countUrls(warm, RENDER)).toBeGreaterThan(0)
+    expect(countUrls(warm, NODE_MODULES)).toBeGreaterThan(0)
+  })
+})
+
+describe('캐시 부재는 fail-loud 다 (PU6 · 🔴RED 미구현)', () => {
+  it('PU6: 아티팩트가 없는 vault 에서 `feeds.mjs`·`wiki.mjs` 가 죽고 stdout 을 흘리지 않는다', () => {
+    // ★ 이 상태는 **오늘 성립하지 않는다** — 재생성이 먼저라 부재가 관측될 수 없었다. Task 6 이
+    //   그 폴백을 끊으면서 「캐시 부재」가 처음으로 실재한다. plan Task 6 은 _"fail-loud throw 는
+    //   유지하되 메시지를 바꾼다"_ 로만 적었고 **그것을 무는 케이스가 없었다**.
+    // 앵커: 같은 CLI 가 **아티팩트가 있으면 exit 0 이고 파싱 가능한 JSON 을 낸다**(PU4·TR2 의 arm).
+    expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
+    expect(hitWiki.exitCode, hitWiki.stderr).toBe(0)
+    expect(() => JSON.parse(hitFeeds.stdout)).not.toThrow()
+
+    for (const [name, cold] of [
+      ['feeds.mjs', coldFeeds],
+      ['wiki.mjs', coldWiki],
+    ]) {
+      expect(cold.exitCode, `${name}: 준비 단계 feeds --out exit=${warmFeeds.exitCode}`).not.toBe(0)
+      expect(cold.stdout, name).toBe('')
+      // 메시지가 **무엇을 하라는지** 말한다 — "실패했다" 만으로는 사람이 다음 행동을 모른다.
+      expect(cold.stderr, name).toMatch(/빌드|build/i)
+    }
   })
 })
 

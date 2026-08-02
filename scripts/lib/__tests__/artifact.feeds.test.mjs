@@ -40,19 +40,16 @@ const SUMMARY_PRODUCER = 'sas-wiki/summary'
 const FEEDS_PRODUCER = 'sas-wiki/feeds'
 const REPORT_PRODUCER = 'sas-wiki/report'
 
-/** feeds 아티팩트 봉투 — **정확 7키**(tdd §12 ⑨ · plan D-C). `items` 가 빠지면 봉투가 아니라 스탬프다. */
-const FEEDS_ARTIFACT_KEYS = [
-  'env',
-  'generatedAt',
-  'inputsFingerprint',
-  'items',
-  'producer',
-  'schemaVersion',
-  'sourceCommit',
-]
+/**
+ * feeds 아티팩트 봉투 — **정확 5키**. `items` 가 빠지면 봉투가 아니라 스탬프다.
+ *
+ * 🔴 v3 P1(§4.3 ③ · KY2 · D28): 발행자 표지·상관 토큰이 사라진다. ★ `env` 는 **아티팩트에 남는다** —
+ *   D22 상 그것이 잔여 판별층 중 **유일하게 실질 판별력을 갖는 축**이다.
+ */
+const FEEDS_ARTIFACT_KEYS = ['env', 'generatedAt', 'items', 'schemaVersion', 'sourceCommit']
 
-/** 계약 버전 — 리터럴 **3**(2 → 3 · wire `feeds.schema.json` 이 required 키를 얻는다 · D-G). */
-const SCHEMA_VERSION = 3
+/** 계약 버전 — 리터럴 **1**(v3 P1 · D29 · §4.3 ②). 리터럴 복제는 복제로 유지한다(규범 A). */
+const SCHEMA_VERSION = 1
 
 /** 스키마에 먹일 유효 feed item(정확 7키 · feeds.schema.json feedItem 과 같은 모양) — 리터럴이다. */
 const SAMPLE_ITEM = {
@@ -137,8 +134,8 @@ describe('발행 표지 3종 — 셋이 서로 다르다 (FA2 · 🔴RED 상수 
   })
 })
 
-describe('feeds 아티팩트 봉투 — 정확 7키 (FA3 · 🔴RED 함수 부재)', () => {
-  it('FA3: top-level 키가 **정확히 7키**이고 `items` 를 그대로 싣는다', () => {
+describe('feeds 아티팩트 봉투 — 정확 5키 (FA3 · 🔴RED(flip) v3 P1 · 7 → 5)', () => {
+  it('FA3: top-level 키가 **정확히 5키**이고 `items` 를 그대로 싣는다', () => {
     // **정확 일치**다(하한이 아니다) — 필드를 흘리는 구현을 배제한다. `items` 는 `toEqual` 로 물어
     //   "봉투를 씌우면서 항목을 깎지 않았다" 를 함께 고정한다(파일을 자르면 필터가 조용히 틀어진다).
     const built = buildFeedsArtifact({

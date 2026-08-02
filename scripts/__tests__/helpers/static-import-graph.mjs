@@ -34,7 +34,7 @@ const STATIC_IMPORT_RE = /^import\s+(?:[^'"()]*?\s+from\s+)?['"](\.[^'"]+)['"]/g
  * 소스 텍스트에서 **정적** 상대 import 지정자를 등장 순서대로 모은다(중복 제거).
  *
  * @param {string} source 모듈 소스 텍스트
- * @returns {string[]} 예: `['./lib/atomic.mjs', './lib/fingerprint.mjs']`
+ * @returns {string[]} 예: `['./lib/atomic.mjs', './lib/payloads.mjs']`
  */
 export function staticRelativeImports(source) {
   const out = []

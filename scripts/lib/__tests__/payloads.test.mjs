@@ -68,7 +68,7 @@ function summaryOf(docs) {
 }
 
 describe('buildSummary', () => {
-  it('봉투 키 집합이 정확하다 — 아티팩트 헤더 2키 포함 9키', () => {
+  it('봉투 키 집합이 정확하다 — **정확히 7키**(v3 P1 · 죽은 값 2키 소거)', () => {
     // §4 원장 ⑤ (OQ-P4-4 = **A**): 아티팩트 파일 = stdout payload = HTTP 응답이 **같은 9키**다.
     //   `buildSummary` 를 7키로 두면 형태가 둘이 된다 — `summary()`(얕은 티어)는 7키를 내는데 실제로
     //   서빙되는 파일은 9키가 되고, webfront `dev-api.contract.test.ts` 가 **실제 계약과 다른 모양**을
@@ -79,12 +79,13 @@ describe('buildSummary', () => {
     //   **발행 계약**이지 페이로드 장식이 아니다.
     const summary = summaryOf([aDoc().build()])
 
-    expect(Object.keys(summary).toSorted()).toEqual([
+    // 🔴 v3 P1(§4.3 ③ · KY3 · D28): 발행자 표지·상관 토큰이 사라져 **7키**가 된다.
+    const keys = Object.keys(summary).toSorted()
+    expect(keys).toHaveLength(7) // 규범 N — 개수는 진단, 집합이 계약
+    expect(keys).toEqual([
       'docs',
       'env',
       'generatedAt',
-      'inputsFingerprint',
-      'producer',
       'schemaVersion',
       'sourceCommit',
       'tags',
@@ -101,14 +102,12 @@ describe('buildSummary', () => {
     expect(buildSummary({ docs: [], env: 'prod', generatedAt: GENERATED_AT, inputsFingerprint: '0123456789abcdef', sourceCommit: SOURCE_COMMIT, tags: TAGS, tree: TREE }).env).toBe('prod') // prettier-ignore
   })
 
-  it('schemaVersion 은 정수 3이다(문자열 "3" 금지)', () => {
-    // §4 원장 ⑨ — P4 가 아티팩트 헤더 2키(`producer`·`env`)를 더하면서 1 → 2(D-D (b)).
-    //   P5(§4 원장 ⑭) 가 발행물 3종 + wire 3 페이로드 공용으로 2 → **3** 을 더 올렸다(D-G).
-    //   옛 아티팩트는 "미지 버전" 이 아니라 **구 버전**이라 독자가 stale 로 떨어뜨리고 재생성한다
-    //   (마이그레이션 없음 — 파생 데이터다 · D-D (b)).
+  it('schemaVersion 은 정수 1이다(문자열 "1" 금지)', () => {
+    // 🔴 v3 P1 · D29(§4.3 ②) — 내부 wire 계약 번호를 **1 로 리셋**한다. 옛 아티팩트는 "미지 버전" 이
+    //   아니라 **구 버전**이라 독자가 stale 로 떨어뜨리고, 빌드 1회로 완전 복원된다(마이그레이션 없음).
     const summary = summaryOf([aDoc().build()])
 
-    expect(summary.schemaVersion).toBe(3)
+    expect(summary.schemaVersion).toBe(1)
     expect(Number.isInteger(summary.schemaVersion)).toBe(true)
   })
 
@@ -149,7 +148,7 @@ describe('buildSummary', () => {
 })
 
 describe('buildFeeds', () => {
-  it('봉투 키 집합이 정확하고 items 를 그대로 싣는다 (P5 · §4 원장 ⑮ · inputsFingerprint 가산)', () => {
+  it('봉투 키 집합이 정확하고 items 를 그대로 싣는다 (v3 P1 · wire **정확히 4키**)', () => {
     const item = aFeedItem().build()
     const feeds = buildFeeds({
       generatedAt: GENERATED_AT,
@@ -158,16 +157,13 @@ describe('buildFeeds', () => {
       sourceCommit: SOURCE_COMMIT,
     })
 
-    expect(Object.keys(feeds).toSorted()).toEqual([
-      'generatedAt',
-      'inputsFingerprint',
-      'items',
-      'schemaVersion',
-      'sourceCommit',
-    ])
+    // 🔴 v3 P1(§4.3 ③ · KY4 · D28): wire 봉투가 **4키**가 된다. ★ `env` 신설은 파이프라인 P2 소관이다.
+    const wireKeys = Object.keys(feeds).toSorted()
+    expect(wireKeys).toHaveLength(4) // 규범 N
+    expect(wireKeys).toEqual(['generatedAt', 'items', 'schemaVersion', 'sourceCommit'])
     expect(feeds.items).toEqual([item])
-    // §4 원장 ⑩·⑭ — 3 페이로드 **공용** 상수라 feeds 도 함께 3 이 된다(쪼개지 않는다 · AR7 이 pin).
-    expect(feeds.schemaVersion).toBe(3)
+    // 🔴 v3 P1 · D29 — 3 페이로드 **공용** 상수라 feeds 도 함께 1 이 된다(쪼개지 않는다 · AR7 이 pin).
+    expect(feeds.schemaVersion).toBe(1)
   })
 
   it('`inputsFingerprint` 스탬프가 실제 값을 싣는다(키만 있고 undefined 인 상태 배제)', () => {

@@ -68,18 +68,19 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
 
 /**
- * 발행 아티팩트 봉투 **9키** — 7키(P3) + `producer`·`env`(P4 가산). **리터럴**이며 정확 일치로 문다.
+ * 발행 아티팩트 봉투 **7키** — **리터럴**이며 정확 일치로 문다(긍정형 완전 열거).
  *
- * P4 원장 §4.2 ⑤ (OQ-P4-4 = **A**): 아티팩트 = stdout payload = HTTP 응답, **셋이 같은 9키**다.
- * 파일만 9키로 두고 stdout 을 7키로 쪼개면 `summary.schema.json`(strict)도 두 벌이 필요해지고,
+ * P4 원장 §4.2 ⑤ (OQ-P4-4 = **A**): 아티팩트 = stdout payload = HTTP 응답, **셋이 같은 형태**다.
+ * 파일과 stdout 을 다른 형태로 쪼개면 `summary.schema.json`(strict)도 두 벌이 필요해지고,
  * 그것이 이 PRD 가 금지한 「호환 분기」다. 소비 zod 는 tolerant 라 **클라이언트 변경은 0** 이다.
+ *
+ * 🔴 v3 P1(§4.3 ③ · plan Task 3·4): 발행자 표지와 상관 토큰이 **아무도 읽지 않는 값**이라 사라진다
+ *   (D28). 9키 → **7키**이고, 개수 단언만 내리지 않고 이 **집합**을 계약으로 둔다(규범 N).
  */
 const ENVELOPE_KEYS = [
   'docs',
   'env',
   'generatedAt',
-  'inputsFingerprint',
-  'producer',
   'schemaVersion',
   'sourceCommit',
   'tags',
@@ -134,12 +135,16 @@ describe('runSummaryGenerator — 캐시 발행 (GN1~GN3 · 🔴RED 미구현)',
     expect(errors).toEqual([])
   })
 
-  it('GN2: 아티팩트 봉투 키가 **정확히** 9키다 (필드를 흘리는 구현 배제)', async () => {
+  it('GN2: 아티팩트 봉투 키가 **정확히** 7키다 (필드를 흘리는 구현 배제)', async () => {
     const vault = freshClean()
 
     await generate({ env: 'dev', vault })
 
-    expect(Object.keys(readJson(artifactFile(vault))).toSorted()).toEqual(ENVELOPE_KEYS)
+    const keys = Object.keys(readJson(artifactFile(vault))).toSorted()
+    // 규범 N — 개수는 빠른 진단, **집합이 계약**이다. 개수만 두면 엉뚱한 키가 하나 들어오고 하나
+    //   빠져도 통과한다.
+    expect(keys).toHaveLength(7)
+    expect(keys).toEqual(ENVELOPE_KEYS)
   })
 
   it('GN3: 클린 vault → status "clean" · excludedCount 0 · regenerated true', async () => {
@@ -425,6 +430,87 @@ describe('신선도 스킵 (FR1~FR6 · 🔴RED 미구현)', () => {
     expect((await generate({ env: 'dev', vault })).regenerated).toBe(false) // 앵커: 원래는 스킵된다
 
     expect((await generate({ env: 'dev', force: true, vault })).regenerated).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// RG — **항상 생성한다** (v3 P1 Task 5 · tdd §3.8 · CX4 의 대상)
+//
+// 위 FR 블록의 **계약 반전**이다. FR1·FR2 는 "두 번째는 스킵된다" 를 물었고, 여기는 "두 번째도
+//   갱신한다" 를 문다 — 같은 관측 기법, 반대 기대(§4.2 승계표). FR 블록의 삭제는 **GREEN 원자
+//   커밋(C3)의 몫**이다(규범 L: RED 커밋에 삭제 0건).
+//
+// ★ 층을 셋으로 나눈 이유(tdd §3.8): 층이 하나면 그 층을 우회하는 구현이 통과한다. 그리고
+//   _"2회 다 갱신한다"_ 만 단언하면 **매번 다른 값을 만드는 구현**(비결정적 생성기)도 통과한다 —
+//   결정성 축(RG3)을 함께 물어야 "항상 생성 = 항상 같은 것을 생성" 이라는 진짜 계약이 선다.
+//   그것이 D3 의 `build` 가 성립하는 전제다.
+// ☞ 프로세스 층(RG4 stdout 결정성 · RG5 `--force` exit 2)은 **`summary.cli-exit.test.mjs`** 가
+//   진다 — 이 파일은 헤더가 선언한 대로 **반환 객체와 파일만** 본다(GN6 ↔ PC3 가 이미 그 쌍이었다).
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
+  it('RG1: 2회차 실행이 산출물 mtime 을 **갱신한다** (FR2 의 계약 반전)', async () => {
+    const vault = freshClean()
+
+    const first = await generate({ env: 'dev', vault })
+    // 앵커 ①: 1회차가 **실제로 파일을 만들었다**(아무것도 안 만들고 mtime 비교가 무의미해지는 것 배제).
+    expect(existsSync(artifactFile(vault))).toBe(true)
+    // 앵커 ②: payload 가 비어 있지 않다(빈 산출물을 두 번 쓰는 것으로 통과하는 것 배제).
+    expect(first.payload.docs.length).toBeGreaterThan(0)
+    const before = statSync(artifactFile(vault)).mtimeMs
+
+    await generate({ env: 'dev', vault })
+
+    expect(statSync(artifactFile(vault)).mtimeMs).not.toBe(before)
+  })
+
+  it('RG2: 반환 객체에 `regenerated` 키가 **없다** (항상 참인 플래그는 정보가 없다)', async () => {
+    const vault = freshClean()
+
+    const result = await generate({ env: 'dev', vault })
+
+    // 앵커: 나머지 반환 키는 **여전히 있다**(반환이 통째로 비어서 통과하는 것을 배제).
+    for (const key of ['payload', 'sourceCommit', 'excludedCount', 'status']) {
+      expect(result, key).toHaveProperty(key)
+    }
+
+    expect('regenerated' in result).toBe(false)
+  })
+
+  it('RG3: 두 **독립 계산**의 payload 가 직렬화 바이트까지 동일하다 (GN6 승계·강화)', async () => {
+    // ★ GN6 은 "캐시 hit 이 캐시 내용을 그대로 echo 한다" 를 물었다 — 두 번째 값이 첫 번째의
+    //   **복사본**이라 결정성을 증명하지 못한다. 여기서는 두 실행이 **각각 계산**했음을 앵커로
+    //   못박은 뒤 바이트 동일을 요구한다.
+    // ★ 앵커(벽시계 무관 근거): payload 의 `generatedAt` 은 `parse-vault.mjs` 의
+    //   `deriveGeneratedAt(docs)` = `max(doc.updated)` 라 **시계를 읽지 않는다**. 이 앵커가 없으면
+    //   GREEN 이 결정성 상실을 flaky 로 오진한다.
+    const vault = freshClean()
+
+    const first = await generate({ env: 'dev', vault })
+    const before = statSync(artifactFile(vault)).mtimeMs
+    const second = await generate({ env: 'dev', vault })
+
+    // 앵커: 2회차가 **캐시 에코가 아니라 재계산**이었다.
+    expect(statSync(artifactFile(vault)).mtimeMs).not.toBe(before)
+
+    expect(JSON.stringify(second.payload)).toBe(JSON.stringify(first.payload))
+  })
+
+  it('RG3b: 생성기 시그니처에 `force` 파라미터가 없다 (⑥ · 거짓 인상 금지)', () => {
+    // `generator.mjs:42-45` 가 이미 세운 규범 — 본문에서 안 쓰는 구조분해 인자를 남기면 "이 함수가
+    //   임계를 강제한다" 는 **거짓 인상**만 준다. 스킵 블록이 사라지면 `force` 가 정확히 그 형태가 된다.
+    const source = readFileSync(path.resolve(HERE, '..', 'lib', 'generator.mjs'), 'utf8')
+    const signature = source.slice(
+      source.indexOf('export async function runSummaryGenerator({'),
+      source.indexOf('}) {', source.indexOf('export async function runSummaryGenerator({')),
+    )
+
+    // 앵커: 시그니처 구간을 **실제로 찾았고** 살아남는 파라미터가 그 안에 있다(빈 문자열 통과 배제).
+    expect(signature.length).toBeGreaterThan(0)
+    expect(signature).toContain('vault')
+    expect(signature).toContain('env')
+
+    expect(signature).not.toMatch(/\bforce\b/u)
   })
 })
 

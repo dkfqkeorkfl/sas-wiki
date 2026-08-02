@@ -307,22 +307,36 @@ describe('결속 — summary 반환값 (SP)', () => {
     //   (`inputsFingerprint`)이 통째로 빠졌다. 실측: `node scripts/summary.mjs --env dev --stdout`.
     const schema = readSchema('summary.schema.json')
     // 앵커: 스키마 쪽이 비어 있지 않다(빈 required 와의 `[] === []` 통과를 배제).
-    expect(schema.required).toHaveLength(9)
+    // 🔴 v3 P1(§4.3 ① · KY5): 발행자 표지와 상관 토큰이 사라져 **9 → 7** 이 된다.
+    // ★ 규범 N — 개수 단독은 *어느* 7키인지 말하지 않는다. **정렬 집합을 함께** 못박는다.
+    expect(schema.required).toHaveLength(7)
+    expect([...schema.required].sort()).toEqual([
+      'docs',
+      'env',
+      'generatedAt',
+      'schemaVersion',
+      'sourceCommit',
+      'tags',
+      'tree',
+    ])
 
     const scope = docScope('summary-payload')
-    const documented = sorted(Object.keys(exampleObject(scope, 'summary-payload', '"schemaVersion"')))
+    const documented = sorted(
+      Object.keys(exampleObject(scope, 'summary-payload', '"schemaVersion"')),
+    )
 
     expect(documented.length, `문서 결속면(${scope.via}) — 예시가 비었다`).toBeGreaterThan(0)
     const diff = keyDiff(documented, schema)
     expect(diff, diffMessage(`summary 봉투 예시(${scope.via})`, diff)).toEqual(NO_DIFF)
   })
 
-  it('SP2: 봉투 예시의 `schemaVersion` == `payloads.mjs` 소스 == 리터럴 3 (3중 대조)', () => {
-    // 🔴 왜 지금 red 인가: README 예시가 **1**, 소스는 **3**이다(P4 가 1→2, P5 가 2→3).
-    // ★ 리터럴 축이 없으면 "문서와 소스가 **함께 2로 틀린**" 상태를 통과시킨다(규범 A ·
+  it('SP2(=CV2): 봉투 예시의 `schemaVersion` == `payloads.mjs` 소스 == 리터럴 1 (3중 대조)', () => {
+    // 🔴 왜 지금 red 인가(v3 P1 · D29 · §4.3 ②·④): 계약 번호를 **1 로 리셋**한다 — 소스가 아직 3이다.
+    // ★ 리터럴 축이 없으면 "문서와 소스가 **함께 틀린**" 상태를 통과시킨다(규범 A ·
     //   `docs-contract.test.mjs` PT4 와 같은 3중 대조).
     const fromSource = schemaVersionFromSource()
-    expect(fromSource).toEqual(['3'])
+    expect(fromSource).toHaveLength(1) // 앵커: 정규식이 죽어 빈 배열이 된 것을 배제
+    expect(fromSource).toEqual(['1'])
 
     const scope = docScope('summary-payload')
     const envelope = exampleObject(scope, 'summary-payload', '"schemaVersion"')
@@ -372,10 +386,11 @@ describe('결속 — feeds 반환값 (FP)', () => {
     expect(diff, diffMessage(`feeds 봉투 예시(${scope.via})`, diff)).toEqual(NO_DIFF)
   })
 
-  it('FP2: 봉투 예시의 `schemaVersion` == `payloads.mjs` 소스 == 리터럴 3 (3중 대조)', () => {
-    // 🔴 왜 지금 red 인가: SP2 와 같은 드리프트가 feeds 절에도 있다(**1** vs 3).
+  it('FP2(=CV2): 봉투 예시의 `schemaVersion` == `payloads.mjs` 소스 == 리터럴 1 (3중 대조)', () => {
+    // 🔴 왜 지금 red 인가: SP2 와 같은 리셋이 feeds 절에도 적용된다(v3 P1 · D29 · §4.3 ②·④).
     const fromSource = schemaVersionFromSource()
-    expect(fromSource).toEqual(['3'])
+    expect(fromSource).toHaveLength(1) // 앵커: 정규식이 죽어 빈 배열이 된 것을 배제
+    expect(fromSource).toEqual(['1'])
 
     const scope = docScope('feeds-payload')
     const envelope = exampleObject(scope, 'feeds-payload', '"schemaVersion"')

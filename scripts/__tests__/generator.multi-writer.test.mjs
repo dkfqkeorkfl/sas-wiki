@@ -85,6 +85,72 @@ describe('동시 생성기 — 찢어진 세트 0건 (MW1 · 🔴RED feeds 아�
   )
 })
 
+// ────────────────────────────────────────────────────────────────────────────
+// SG — 「한 세대」의 새 정의 (v3 P1 Task 4 · tdd §3.12 · **가장 위험한 변이 #1**)
+//
+// 문제: MW1·MW3 의 `new Set(artifacts.map(a => a.fingerprint)).size === 1` 은 그 축이 사라지면 값이
+//   전부 `null` 이 되어 **`Set{null}.size === 1` 로 공허 통과**한다 — 두 케이스가 **조용히 죽는데
+//   green** 이다. 이 절이 축을 교체하고, **값 존재 앵커(SG2)** 가 같은 함정의 재발을 막는다.
+//
+// ★ `sourceCommit` 을 쓰는 것이 **v3 D1 위반이 아닌 이유**: plan 결정 ① 이 기각한 것은 그 값을
+//   *신선도 판정 축으로 승격*하는 것이다(`readArtifact` 의 판정 경로에 넣는 것). 여기 용도는
+//   **동시 쓰기가 세대를 찢지 않았는지 관측**하는 것뿐이고, 판정 경로에는 넣지 않는다. 이 주석을
+//   지우면 다음 독자가 "결정 ① 을 어겼다" 고 읽는다.
+//
+// ☞ 옛 축(MW1·MW3 의 `fingerprint`) 제거는 **GREEN 원자 커밋의 몫**이다(규범 L: RED 커밋에 삭제 0건).
+//   그때까지 두 축이 공존하고, 그 공존 자체가 "교체됐다" 의 증거다.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('한 세대의 새 정의 — 축 교체 (SG1~SG4)', () => {
+  it(
+    'SG1~SG4: 세 산출물의 `sourceCommit`·`generatedAt` 이 세대를 찢지 않는다',
+    { timeout: 300_000 },
+    async () => {
+      const vault = seedVault()
+
+      const race = await runGeneratorRace({
+        children: [GENERATOR, GENERATOR],
+        env: 'dev',
+        vault,
+      })
+
+      // ── SG4: MW1 의 앵커 3종을 그대로 물려받는다(①②는 무변경 · ③은 계약 반전) ──────────────
+      // 앵커 ①: 두 자식 다 정상 종료했다(둘 다 죽어서 "아무도 안 썼다" 가 통과하는 것을 배제).
+      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0])
+      // 앵커 ②: 세 파일이 **전부 존재한다**(파싱 성공 = null 이 아니다).
+      expect(race.artifacts.map((artifact) => artifact.parsed === null)).toEqual([false, false, false]) // prettier-ignore
+      // 앵커 ③: MW1 은 _"최소 1개가 `regenerated === true`"_ 를 봤다 — 그 필드가 사라지므로
+      //   **"stdout 이 파싱 가능한 payload 다"** 로 교체한다(§4.3 표 SG4).
+      expect(race.producers.map((producer) => parseStdout(producer) === null)).not.toContain(true)
+
+      const sourceCommits = race.artifacts.map((artifact) => artifact.sourceCommit)
+      const generatedAts = race.artifacts.map((artifact) => artifact.generatedAt)
+
+      // ── SG2: ★ **값 존재 앵커** — `Set{null}` 함정의 직접 해독제다 ────────────────────────────
+      //   축을 바꿔도 값 존재를 먼저 못박지 않으면 같은 함정이 그대로 재발한다.
+      for (const value of sourceCommits) expect(value).toMatch(/^[0-9a-f]{40}$/u)
+      for (const value of generatedAts) {
+        expect(typeof value).toBe('string')
+        expect(value.length).toBeGreaterThan(0)
+      }
+
+      // ── SG1: 세 산출물이 같은 커밋에서 나왔다 ────────────────────────────────────────────────
+      expect(new Set(sourceCommits).size).toBe(1)
+
+      // ── SG3: 두 번째 축 — 한 축이 죽어도 다른 축이 문다 ──────────────────────────────────────
+      // ★ 리포트는 이 축에서 **제외한다**: `generator.mjs` 의 `buildReport` 가 `generatedAt` 을
+      //   `new Date().toISOString()`(**벽시계**)로 찍는다 — summary·feeds 아티팩트의
+      //   `parse-vault` 파생값(`max(doc.updated)`, 결정적)과 좌표계가 다르다. 셋을 한 집합으로 묶으면
+      //   이 케이스는 **영원히 red** 이거나 조용히 완화된다(tdd §2.5 ④ 가 이 차이를 놓쳤다 — 보고 대상).
+      const artifactGeneratedAts = race.artifacts
+        .filter((artifact) => artifact.kind !== 'report')
+        .map((artifact) => artifact.generatedAt)
+      expect(artifactGeneratedAts).toHaveLength(2) // 앵커: 두 발행물이 실제로 관측됐다
+      expect(new Set(artifactGeneratedAts).size).toBe(1)
+    },
+  )
+})
+
 describe('경합 중 소비자 관측 (MW2 · 🔴RED feeds·report 가 영원히 missing)', () => {
   it(
     'MW2: `malformed` 0건 · `producer-mismatch` 0건 (missing·fingerprint-mismatch 는 허용)',

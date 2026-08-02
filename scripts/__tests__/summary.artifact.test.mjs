@@ -70,24 +70,23 @@ const IGNORE_FILE = 'ignore-feeds.json'
 const IGNORE_ENTRY = '[{"id":"0123456789ab","when":"2026-07-27T00:00:00Z"}]'
 
 /**
- * 아티팩트 봉투 **9키** — 리터럴이고 **정확 일치**로 문다(하한이 아니다).
+ * 아티팩트 봉투 **7키** — 리터럴이고 **정확 일치**로 문다(하한이 아니다).
  *
- * 7키(P3) + `producer`·`env`(P4 · OQ-P4-4=A). 정확 일치여야 "필드를 흘리는" 구현이 배제된다.
+ * 🔴 v3 P1(§4.3 ③ · plan Task 3·4): 발행자 표지와 상관 토큰은 **아무도 읽지 않는 값**이라 사라진다
+ *   (D28). 정확 일치여야 "필드를 흘리는" 구현이 배제된다.
  */
 const ARTIFACT_KEYS = [
   'docs',
   'env',
   'generatedAt',
-  'inputsFingerprint',
-  'producer',
   'schemaVersion',
   'sourceCommit',
   'tags',
   'tree',
 ]
 
-/** 계약 버전 — **리터럴 3**(P5 · D-G · tdd §4.2 ⑭). 발행물 3종 + wire 3 페이로드 공용. */
-const SCHEMA_VERSION = 3
+/** 계약 버전 — **리터럴 1**(v3 P1 · D29 · §4.3 ②). 발행물 3종 + wire 3 페이로드 공용. */
+const SCHEMA_VERSION = 1
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -103,7 +102,7 @@ const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 describe('억제 저장은 재생성을 유발하지 않는다 (FP7 · 🟩flip · P5 Task 8(D-H) · SU5 로 대체)', () => {
   // ★ Rewrite(메인 세션 판정 · tdd §4 원장 ⑦·§4.5 ㉑) — P4 시절 이 케이스는 "억제가 지문 입력이라
   //   저장만 해도 재생성된다" 를 세워 D12("저장만으로 즉시 반영")를 지켰다. P5 Task 8(D-H)로 억제는
-  //   지문의 입력에서 **빠졌다**(`fingerprint.mjs`) — 그 결과 이 파일 저장은 더 이상 재생성을 유발하지
+  //   지문의 입력에서 **빠졌다**(계산 모듈은 v3 P1 이 통째로 없앤다 · §4.3 ⑤) — 그 결과 이 파일 저장은 더 이상 재생성을 유발하지
   //   않는다. D12 자체는 죽지 않았다 — 그 종단 증거는 `summary.suppression-independence.test.mjs`
   //   의 **SU5~SU8**(같은 커밋에서 재작성)이 승계한다: `feeds.mjs` 가 서빙 시점에 억제를 캐시 없이
   //   직접 읽으므로(D-A·D-C) 재생성 없이도 반영이 즉시다. 이 케이스는 **반대 방향의 회귀 가드**로
@@ -154,17 +153,20 @@ describe('발행 아티팩트 — env 격리 (AR3 · 🔴RED 단일 슬롯)', ()
 })
 
 describe('발행 아티팩트 — 봉투·버전·스키마 (AR4·AR6·AR8 · 🔴RED)', () => {
-  it('AR4: 발행 파일의 top-level 키가 **정확히 9키**다 (필드를 흘리는 구현 배제)', async () => {
-    // OQ-P4-4 = A: 아티팩트 = stdout payload = HTTP 응답, 셋이 같은 9키다. 형태를 쪼개면
+  it('AR4: 발행 파일의 top-level 키가 **정확히 7키**다 (필드를 흘리는 구현 배제)', async () => {
+    // OQ-P4-4 = A: 아티팩트 = stdout payload = HTTP 응답, 셋이 같은 형태다. 형태를 쪼개면
     //   `summary.schema.json` 도 두 벌이 되고, 그것이 이 PRD 가 금지한 「호환 분기」다.
     const vault = freshClean()
 
     await generate({ env: 'dev', vault })
 
-    expect(Object.keys(readJson(artifactPathOf(vault, 'dev'))).toSorted()).toEqual(ARTIFACT_KEYS)
+    const keys = Object.keys(readJson(artifactPathOf(vault, 'dev'))).toSorted()
+    // 규범 N — 개수는 빠른 진단, **집합이 계약**이다(§4.3 ①).
+    expect(keys).toHaveLength(7)
+    expect(keys).toEqual(ARTIFACT_KEYS)
   })
 
-  it('AR6: 발행 파일의 `schemaVersion` 이 정수 **3** 다', async () => {
+  it('AR6: 발행 파일의 `schemaVersion` 이 정수 **1** 다 (v3 P1 · D29 리셋)', async () => {
     // 헤더 3키가 늘었으므로 옛 파일은 "미지 버전" 이 아니라 **구 버전**이고, 독자가 stale 로
     //   떨어뜨려 재생성한다(마이그레이션 없음 — 파생 데이터다). 단위 대응물은 RD5 다.
     const vault = freshClean()
