@@ -70,8 +70,19 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
  * `scripts/summary.mjs` 에서 `scripts/lib/generator.mjs` 로 옮겨갔다. pin 의 의도("생성기가 아티팩트
  * 읽기를 손수 만들지 않고 단일 불신 함수를 쓴다")는 그대로다 — 관측 대상만 실제로 그 로직이 사는
  * 파일로 따라간다.
+ *
+ * 🔴 v3 P1(§4.10 「조용한 통과」 RD11 · 메인 세션 판정 5): 관측 대상이 **또 한 번** 옮겨간다.
+ *   Task 5 가 `generator.mjs` 에서 skip 블록·`readFreshSet` 을 걷어내면 그 파일은 `readArtifact` 를
+ *   **아예 부르지 않게** 되어 짝 앵커(`toContain('readArtifact')`)가 red 가 되고, 그 앵커를 지우는
+ *   순간 남은 두 부재 단언이 **영구 공허**가 된다(무엇에 대고 부재를 말하는지가 사라진다).
+ *   그래서 명제를 바꾼다 — 「독자가 하나다」 → **「독자 *함수* 는 하나(`readArtifact`)이고
+ *   `feeds.mjs`·`wiki.mjs` 가 그것을 통과한다」**. 두 서빙 스크립트는 plan Task 6 이 아티팩트
+ *   **소비 전용**으로 만드는 자리라 `readArtifact` 가 거기서 살아남는다. 케이스를 폐기하지 않는다.
  */
-const SUMMARY_SOURCE = path.resolve(HERE, '..', 'generator.mjs')
+const SERVING_SOURCES = {
+  'feeds.mjs': path.resolve(HERE, '..', '..', 'feeds.mjs'),
+  'wiki.mjs': path.resolve(HERE, '..', '..', 'wiki.mjs'),
+}
 
 // ── 커밋 픽스처가 선언한 값 — 전부 **리터럴**이다(규범 A) ──────────────────────────────────────
 // v3 P1 · D29 — 내부 wire 계약 번호를 **1 로 리셋**한다(§4.3 ② · plan Task 2). 이 값은 발행물 3종 +
@@ -392,15 +403,27 @@ describe('픽스처 ↔ 코드 상수 대조 (RD10 · 🔴RED 미구현)', () =>
   })
 })
 
-describe('독자 단일화 트립와이어 (RD11 · 🔴RED 로컬 독자 2개가 살아 있다)', () => {
-  it('RD11: `summary.mjs` 의 로컬 독자 2개가 사라지고 `readArtifact` 를 쓴다', () => {
-    // D-E "생성기 자신도 이 함수를 쓴다 — 독자가 둘이 되지 않게". 독자가 둘이면 한쪽만 불신을
-    //   갖추고 다른 쪽은 옛 파일을 그대로 믿는 상태가 조용히 성립한다.
-    const source = readFileSync(SUMMARY_SOURCE, 'utf8')
+describe('독자 단일화 트립와이어 (RD11 · 🔴RED 서빙 2스크립트가 생성기를 문다)', () => {
+  it('RD11: `feeds.mjs`·`wiki.mjs` 의 독자가 `readArtifact` **하나**다', () => {
+    // D-E "독자가 둘이 되지 않게". 독자가 둘이면 한쪽만 불신을 갖추고 다른 쪽은 옛 파일을 그대로
+    //   믿는 상태가 조용히 성립한다. 두 서빙 스크립트는 plan Task 6 이 **소비 전용**으로 만드는
+    //   자리이므로, 「독자 함수는 하나」가 실제로 관측되는 곳이 여기다.
+    const feedsSource = readFileSync(SERVING_SOURCES['feeds.mjs'], 'utf8')
+    const wikiSource = readFileSync(SERVING_SOURCES['wiki.mjs'], 'utf8')
 
-    // 앵커(규범 B): 부재 단언 앞에 **존재** 단언 — 대체자가 실제로 배선됐다.
-    expect(source).toContain('readArtifact')
-    expect(source).not.toContain('readFreshCache')
-    expect(source).not.toContain('readMatchingReport')
+    // 앵커(규범 B): 부재 단언 앞에 **존재** 단언 — 단일 독자가 두 파일에 실제로 배선돼 있다.
+    //   이 앵커는 착륙 후에도 성립한다(Task 6 이 `readArtifact` 를 남기고 생성기 호출만 걷어낸다).
+    expect(feedsSource).toContain('readArtifact')
+    expect(wikiSource).toContain('readArtifact')
+
+    // 🔴 부재 ①: 조회 경로가 **생성기를 부르지 않는다**. 부르면 판정·재생성이라는 두 번째 읽기
+    //   경로가 서빙 안에 되살아나고, 그것이 정확히 이 phase 가 없애는 lazy 재생성이다.
+    expect(feedsSource).not.toContain('runSummaryGenerator')
+    expect(wikiSource).not.toContain('runSummaryGenerator')
+
+    // 🔴 부재 ②: 아티팩트를 **손수** 읽지 않는다(옛 `readFreshCache`·`readMatchingReport` 부재
+    //   단언의 승계). 직접 파일을 열면 "실패를 stale 로 접는" 규율이 두 곳에서 각자 살게 된다.
+    expect(feedsSource).not.toContain('readFileSync')
+    expect(wikiSource).not.toContain('readFileSync')
   })
 })

@@ -97,10 +97,25 @@ function touchDoc(vault, marker) {
   writeDoc(vault, REL_B, { body: `## 정의\n\n${marker}\n`, id: ID_B, title: '온디바이스 AI' })
 }
 
+/**
+ * 세대를 **실제로 굴린다** — 문서를 고치고 **커밋한다**. 새 HEAD 를 돌려준다.
+ *
+ * 🔴 v3 P1(§4.10 「재작성」 · FA6): 옛 관측 축(`inputsFingerprint`)은 **미커밋 저장만으로도** 움직였다.
+ *   그 축이 사라지면 남는 결정적 세대 좌표는 `sourceCommit`(= HEAD)뿐이고 **HEAD 는 커밋 없이는
+ *   움직이지 않는다**. 게다가 feeds 아티팩트는 문서 본문에 의존하지 않아(items = feed 커밋) 미커밋
+ *   저장으로는 **바이트도 안 바뀐다** — 즉 "둘 다 새 세대로 갔다" 를 관측할 수단이 통째로 없어진다.
+ *   미커밋 저장의 라이브 반영은 D43 이 명시 수용한 손실이므로(§4.10 「승계처 없음」 3형제) 세대를
+ *   커밋으로 굴리는 것이 착륙 후 계약과 같은 방향이다.
+ */
+function rollGeneration(vault, marker) {
+  touchDoc(vault, marker)
+  return commit(vault, `chore: ${marker}`)
+}
+
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
 describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds 아티팩트 미발행)', () => {
-  it('FA5: 재생성 1회가 세 파일을 내고 셋의 `inputsFingerprint` 가 서로 같다', async () => {
+  it('FA5: 재생성 1회가 세 파일을 내고 셋의 `sourceCommit` 이 서로 같다', async () => {
     const { vault } = seedVault()
 
     // 앵커: 실행 **전에는 셋 다 없다**(앞 케이스가 남긴 파일로 통과하는 것을 배제).
@@ -110,50 +125,87 @@ describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds �
 
     const result = await generate({ env: 'dev', vault })
 
-    expect(result.regenerated).toBe(true)
-    const fingerprints = [
-      readJson(summaryFile(vault, 'dev')).inputsFingerprint,
-      readJson(feedsFile(vault, 'dev')).inputsFingerprint,
-      readJson(reportFile(vault, 'dev')).inputsFingerprint,
+    // 🔴 v3 P1(§4.1 「죽는 앵커」 · 규범 L 상 앵커 교체는 flip = RED 커밋 소관): 예전에는
+    //   `expect(result.regenerated).toBe(true)` 였다. Task 5 가 `regenerated` 필드를 없애면 그 줄은
+    //   `expect(undefined).toBe(true)` 로 red 가 되고 **자연스러운 수리가 그 줄 삭제**다 — 그러면
+    //   "1회차가 실제로 일을 했다" 는 앵커가 통째로 사라져 아래 세대 단언이 공허해진다.
+    //   SG4 형태로 승계한다: **세 파일이 실제로 났고 payload 가 비어 있지 않다**(필드가 아니라
+    //   산출물로 재생성을 관측한다 — 착륙 후에도 성립한다).
+    expect(existsSync(summaryFile(vault, 'dev'))).toBe(true)
+    expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
+    expect(existsSync(reportFile(vault, 'dev'))).toBe(true)
+    expect(result.payload.docs.length).toBeGreaterThan(0)
+
+    // 🔴 v3 P1(§4.10 「조용한 통과」 최상단 · §4.1 「가장 위험한 변이」의 이 phase 대표 실례):
+    //   상관 축을 `inputsFingerprint` → **`sourceCommit`** 으로 교체한다. 옛 축으로 두면 착륙 후
+    //   값 3개가 전부 `undefined` 가 되어 `new Set([undefined, undefined, undefined]).size === 1` 도
+    //   `undefined === undefined` 도 **둘 다 참**이다 — **red 조차 뜨지 않고 세대 정합 계약이
+    //   소리 없이 죽는다.** 축만 바꾸는 것으로는 부족하다(아래 값 존재 앵커가 짝이다).
+    const generations = [
+      readJson(summaryFile(vault, 'dev')).sourceCommit,
+      readJson(feedsFile(vault, 'dev')).sourceCommit,
+      readJson(reportFile(vault, 'dev')).sourceCommit,
     ]
+
+    // ★ **값 존재 앵커**(SG1·SG2 와 동형) — 같은 공허의 **직접 해독제**다. `undefined` 는 40자리 hex
+    //   패턴을 만족할 수 없으므로, 어느 발행물이 축을 잃는 순간 `Set{...}.size === 1` 에 **도달하기
+    //   전에** 이 세 줄이 먼저 red 가 된다. 이 앵커 없이 축만 교체하면 같은 함정이 그대로 재발한다.
+    for (const value of generations) expect(value).toMatch(/^[0-9a-f]{40}$/u)
+    expect(result.sourceCommit).toMatch(/^[0-9a-f]{40}$/u)
+
     // ★ 조인 키가 **구조적으로 어긋날 수 없다**(B12)는 계약의 생산자 측 증명이다.
-    expect(new Set(fingerprints).size).toBe(1)
-    expect(fingerprints[0]).toBe(result.inputsFingerprint)
+    expect(new Set(generations).size).toBe(1)
+    expect(generations[0]).toBe(result.sourceCommit)
   })
 })
 
 describe('쓰기 순서 계약 — summary 먼저, feeds 나중 (FA6 · 🔴RED 순서·계약 부재)', () => {
   it('FA6: feeds 자리를 막으면 실패하되 **summary 는 이미 새 세대**다', async () => {
-    // ★ mtime·벽시계를 쓰지 않는 순서 관측이다(규범 E). 순서가 반대였다면 아래 ②가 "구 지문" 으로
+    // ★ mtime·벽시계를 쓰지 않는 순서 관측이다(규범 E). 순서가 반대였다면 아래 ②가 "구 세대" 로
     //   관측된다 — 즉 이 단언 하나가 순서를 양방향으로 못박는다.
+    //
+    // 🔴 v3 P1(§4.10 「재작성」 · 메인 세션 판정 4): 관측 축이 `inputsFingerprint` 였고 그 축은
+    //   착륙 후 사라진다. **그러나 계약은 살아 있다** — 쓰기 순서(summary → feeds)는 `publishSet`
+    //   (`generator.mjs:213-219`)이 **유지하는 현행 계약**이라 승계처 없는 손실이 아니다. 그래서
+    //   케이스를 지우지 않고 축만 **`sourceCommit`** 으로 옮긴다(§4.10 이 지정한 셋 중 결정적인 것).
     const { vault } = seedVault()
-    const first = await generate({ env: 'dev', vault })
-    expect(first.regenerated).toBe(true)
+    const generationOf = (locate) => readJson(locate(vault, 'dev')).sourceCommit
 
-    // 앵커 ①: **막지 않으면 둘 다** 새 지문으로 간다(막았을 때의 관측이 우연이 아니다).
-    touchDoc(vault, '대조 갱신 A')
-    const control = await generate({ env: 'dev', vault })
-    expect(control.inputsFingerprint).not.toBe(first.inputsFingerprint)
-    expect(readJson(summaryFile(vault, 'dev')).inputsFingerprint).toBe(control.inputsFingerprint)
-    expect(readJson(feedsFile(vault, 'dev')).inputsFingerprint).toBe(control.inputsFingerprint)
+    await generate({ env: 'dev', vault })
+
+    // 앵커 ⓪: 1회차가 **실제로 세 파일을 냈고** 축에 값이 있다(빈 값끼리 비교해 통과하는 것을 배제).
+    expect(existsSync(summaryFile(vault, 'dev'))).toBe(true)
+    expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
+    const firstSummary = generationOf(summaryFile)
+    const firstFeeds = generationOf(feedsFile)
+    expect(firstSummary).toMatch(/^[0-9a-f]{40}$/u)
+    expect(firstFeeds).toMatch(/^[0-9a-f]{40}$/u)
+
+    // 앵커 ①: **막지 않으면 둘 다** 새 세대로 간다(막았을 때의 관측이 우연이 아니다).
+    const controlHead = rollGeneration(vault, '대조 갱신 A')
+    await generate({ env: 'dev', vault })
+    expect(controlHead).not.toBe(firstSummary)
+    expect(generationOf(summaryFile)).toBe(controlHead)
+    expect(generationOf(feedsFile)).toBe(controlHead)
 
     // feeds 자리를 **디렉토리로** 막는다 — rename 이 EISDIR 로 죽는 자리는 여기 하나뿐이다.
     rmSync(feedsFile(vault, 'dev'), { force: true })
     mkdirSync(feedsFile(vault, 'dev'), { recursive: true })
-    touchDoc(vault, '차단 갱신 B')
+    const blockedHead = rollGeneration(vault, '차단 갱신 B')
+    expect(blockedHead).not.toBe(controlHead) // 앵커: 세대가 실제로 굴렀다
 
     // ① 산출물 실패다(OQ-P5-5 = throw). 리포트만 예외로 흡수한다 — feeds 는 **서빙 데이터**다.
     await expect(generate({ env: 'dev', vault })).rejects.toThrow()
 
-    // ② 그런데도 summary 는 **이미 새 지문**이다 → summary 가 feeds 보다 먼저 쓰였다.
-    const summaryAfter = readJson(summaryFile(vault, 'dev')).inputsFingerprint
-    expect(summaryAfter).not.toBe(control.inputsFingerprint)
+    // ② 그런데도 summary 는 **이미 새 세대**다 → summary 가 feeds 보다 먼저 쓰였다.
+    expect(generationOf(summaryFile)).toBe(blockedHead)
 
     // ③ 막은 것을 치우면 다시 만든다(찢어진 세트를 스킵으로 접지 않는다).
     rmSync(feedsFile(vault, 'dev'), { force: true, recursive: true })
-    const recovered = await generate({ env: 'dev', vault })
-    expect(recovered.regenerated).toBe(true)
-    expect(readJson(feedsFile(vault, 'dev')).inputsFingerprint).toBe(recovered.inputsFingerprint)
+    await generate({ env: 'dev', vault })
+    expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
+    expect(generationOf(feedsFile)).toBe(blockedHead)
+    expect(generationOf(feedsFile)).toBe(generationOf(summaryFile))
   })
 })
 

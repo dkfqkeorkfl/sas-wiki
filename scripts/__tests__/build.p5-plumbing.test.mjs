@@ -19,7 +19,8 @@
 //
 // 규범 A: 경로 문자열·스크립트 문자열은 **리터럴**이다. 규범 B: "더럽히지 않는다" 앞에 **더럽혀지는
 //   경우**를, "값이 있다" 앞에 **prune 이 실제로 일어난 vault** 를 둔다. 규범 F: 실 vault 는 읽기만.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs' // prettier-ignore
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -115,10 +116,27 @@ describe('리포트 진단 3키 — F-17 (PL11 · 🔴RED 미구현)', () => {
       writeFileSync(path.join(vault, STRAY_PATH), '메모를 고쳤다. 여전히 frontmatter 가 없다.\n')
       feedCommit(vault, { date: '2026-05-01T00:00:00Z', subject: '메모장 소식' })
 
-      expect(runGeneratorOnce({ args: ['--env', 'dev', '--status'], vault }).exitCode).toBe(0)
-      const report = JSON.parse(
-        readFileSync(path.join(vault, 'logs', 'summary.report.dev.json'), 'utf8'),
-      )
+      // 🔴 v3 P1(§4.10 「재작성」 · PL11 · plan Task 7 · D5): 리포트는 **생성기 발행물에서 빠지고**
+      //   `validate.mjs --report <dir>` 로 이사한다. 그래서 생성 주체와 읽는 경로를 함께 옮긴다 —
+      //   **prune 진단 3키 계약 자체는 그대로 유지한다**(그것이 이 케이스의 본체다).
+      //   ★ 이 vault 는 unresolved feed 참조가 실재하므로 `validate.mjs` 의 게이트 ④
+      //     (`checkFeedResolution`)가 fail-loud 로 끊는다 — exit 는 0 이 아니다. **그래도 리포트는
+      //     기록돼야 한다**: 진단 채널은 게이트가 통과할 때가 아니라 **막힐 때** 가장 필요하고, D5 가
+      //     리포트 내용으로 지정한 것(무엇이 어떤 사유로 제외됐고 어떤 피드가 그것을 가리켰는가)이
+      //     정확히 그 상황의 정보다. 그래서 exit code 를 단언하지 않고 **리포트 실재**를 앵커로 쓴다.
+      const reportDir = mkdtempSync(path.join(tmpdir(), 'p5-report-'))
+      tmps.push(reportDir)
+      const run = runGeneratorOnce({
+        args: ['--env', 'dev', '--report', reportDir],
+        script: 'validate.mjs',
+        vault,
+      })
+
+      // 앵커: 리포트 2형식이 **지정한 디렉토리에** 실제로 생겼다(읽기 실패로 뭉개지는 것을 배제).
+      const reportJson = path.join(reportDir, 'summary.report.dev.json')
+      expect(existsSync(reportJson), run.stderr).toBe(true)
+      expect(existsSync(path.join(reportDir, 'summary.report.dev.txt')), run.stderr).toBe(true)
+      const report = JSON.parse(readFileSync(reportJson, 'utf8'))
 
       expect(report.prunedFeeds).toBeGreaterThan(0)
       expect(report.unresolvedPaths.length).toBeGreaterThan(0)

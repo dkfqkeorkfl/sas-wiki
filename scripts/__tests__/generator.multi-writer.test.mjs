@@ -164,7 +164,13 @@ describe('경합 중 소비자 관측 (MW2 · 🔴RED feeds·report 가 영원�
       const race = await runGeneratorRace({
         children: [GENERATOR, GENERATOR],
         env: 'dev',
-        // 라운드마다 문서를 바꿔 **세대를 실제로 굴린다** — 지문이 안 움직이면 "2세대 이상" 이 성립하지 않는다.
+        // 라운드마다 문서를 바꿔 **세대를 실제로 굴린다** — 세대가 안 움직이면 "2세대 이상" 이 성립하지 않는다.
+        //
+        // 🔴 v3 P1(§4.10 MW2-b · flip): 하네스의 세대 좌표가 `inputsFingerprint` → `sourceCommit` 으로
+        //   바뀌었다. 지문은 **미커밋 저장만으로도** 움직였지만 `sourceCommit` 은 HEAD 라 **커밋 없이는
+        //   움직이지 않는다** — 그래서 라운드가 저장에서 **커밋**으로 강화된다. 이것은 완화가 아니라
+        //   반대 방향이다: 미커밋 저장의 라이브 반영은 D43 이 명시 수용한 손실이므로, 착륙 후에도
+        //   관측 가능한 세대 굴림은 커밋뿐이다. `:186` 의 비공허성 앵커는 **그대로 유지**된다.
         onRound: () => {
           round += 1
           writeDoc(vault, REL_B, {
@@ -172,6 +178,7 @@ describe('경합 중 소비자 관측 (MW2 · 🔴RED feeds·report 가 영원�
             id: ID_B,
             title: '온디바이스 AI',
           })
+          commit(vault, `chore: 라운드 ${round} 갱신`)
         },
         rounds: 2,
         vault,

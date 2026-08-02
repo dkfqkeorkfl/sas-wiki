@@ -31,12 +31,17 @@ const T3 = '2026-01-03T00:00:00Z'
 const T4 = '2026-01-04T00:00:00Z'
 
 /**
- * wire feeds 봉투 — **4키**.
+ * `feeds()` 응답의 **키 전량**(정렬) — wire 봉투 4키 + `nextCursor` 가산 = **5키**.
  *
- * 🔴 v3 P1(§4.3 ③ · KY4 · D28): 상관 토큰이 wire 에서 빠진다. ★ `env` 는 **여기 신설되지 않는다** —
- *   그것은 파이프라인 P2 소관이고, 이 배열은 "지금 상태" 이지 미래 계약이 아니다(tdd §9).
+ * 🔴 v3 P1(§4.3 ③ · §4.10 「조용한 통과」 E-F1 · KY4 · D28): 상관 토큰이 wire 에서 빠진다.
+ *   ★ 이 배열은 **정확 일치**로 쓰인다. 예전에는 `expect.arrayContaining(...)` 이었는데 그것은
+ *   **부분집합** 판정이라 착륙 후 `inputsFingerprint` 가 응답에 그대로 남아 있어도 **green** 이다 —
+ *   "빠졌다" 를 검사하겠다는 케이스가 정확히 그 반대를 통과시킨다. §4.3-③ 이 요구한 「원소 제거 +
+ *   정렬 일치」(규범 N)를 여기서 이행한다.
+ *   ★ `env` 는 **여기 신설되지 않는다** — 그것은 파이프라인 P2 소관이고, 이 배열은 "지금 상태"
+ *   이지 미래 계약이 아니다(tdd §9). 값은 **리터럴**이다 — 구현 상수를 import 하지 않는다(규범 A).
  */
-const ENVELOPE_KEYS = ['generatedAt', 'items', 'schemaVersion', 'sourceCommit']
+const PAGE_KEYS = ['generatedAt', 'items', 'nextCursor', 'schemaVersion', 'sourceCommit']
 const titlesOf = (page) => page.items.map((item) => item.title)
 const idsOf = (page) => page.items.map((item) => item.id)
 
@@ -67,7 +72,11 @@ describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환
       // 🔴 v3 P1 · D29(§4.3 ②) — `SCHEMA_VERSION` 은 3 페이로드 **공용**이다(P2 확정: 쪼개면
       //   `WikiDataProvider` 부팅 게이트가 영구 false). 그 공용 상수를 **1 로 리셋**한다.
       expect(page.schemaVersion).toBe(1)
-      expect(Object.keys(page).toSorted()).toEqual(expect.arrayContaining(ENVELOPE_KEYS))
+      // 앵커(규범 B): 봉투가 **비어 있지 않다** — 키 0개짜리 응답이 "여분 키 없음" 으로 통과하는
+      //   것을 배제한다(정확 일치는 그 자체로 개수도 문다).
+      expect(Object.keys(page).length).toBeGreaterThan(0)
+      // ★ 부분집합(`arrayContaining`)이 아니라 **정렬 정확 일치**다 — 여분 키 1개가 곧 red 다.
+      expect(Object.keys(page).toSorted()).toEqual(PAGE_KEYS)
     } finally {
       cleanup(vault)
     }

@@ -30,7 +30,15 @@ const PUBLICATIONS = [
 //   같은 값을 쓰므로 **한 곳만 고치면 두 자리가 함께 간다**. 리터럴 유지는 규범 A 다.
 const SCHEMA_VERSION = 1
 
-/** 소비자 자식 — 생산자들이 갈아끼우는 동안 세 산출물을 **프로덕션 독자**로 반복해 읽는다. */
+/**
+ * 소비자 자식 — 생산자들이 갈아끼우는 동안 세 산출물을 **프로덕션 독자**로 반복해 읽는다.
+ *
+ * ★ v3 P1(§4.10 MW2-b · flip): 세대를 `raw.inputsFingerprint` 로 세면 그 축이 사라지는 순간
+ *   `generationsSeen` 이 **영영 0** 이 되고, `generator.multi-writer.test.mjs` 의 비공허성 앵커
+ *   (`generationsSeen >= 2`)가 그것을 red 로 드러낸다 — 즉 옛 축은 착륙 후 관측 자체가 불가능하다.
+ *   세대 좌표를 **`sourceCommit`** 으로 바꾼다. 그 값이 실제로 굴러야 하므로 호출부는 라운드마다
+ *   **커밋**한다(미커밋 저장은 HEAD 를 움직이지 않는다 — 그 계약은 `generator.multi-writer` 소유).
+ */
 const CONSUMER_SOURCE = `
 import { readFileSync, existsSync } from 'node:fs'
 const mod = await import(process.env.ARTIFACT_MODULE).catch((e) => ({ __err: String(e) }))
@@ -38,7 +46,7 @@ const files = JSON.parse(process.env.RACE_FILES)
 const done = process.env.RACE_DONE
 const counts = {}
 const byKind = {}
-const fingerprints = new Set()
+const generations = new Set()
 let reads = 0
 let trailing = 2
 for (;;) {
@@ -65,7 +73,7 @@ for (;;) {
     if (entry.kind === 'summary') {
       try {
         const raw = JSON.parse(readFileSync(entry.file, 'utf8'))
-        if (typeof raw.inputsFingerprint === 'string') fingerprints.add(raw.inputsFingerprint)
+        if (typeof raw.sourceCommit === 'string') generations.add(raw.sourceCommit)
       } catch {}
     }
   }
@@ -74,7 +82,7 @@ for (;;) {
     if (trailing <= 0) break
   }
 }
-process.stdout.write(JSON.stringify({ byKind, counts, generationsSeen: fingerprints.size, reads }))
+process.stdout.write(JSON.stringify({ byKind, counts, generationsSeen: generations.size, reads }))
 `
 
 /**
