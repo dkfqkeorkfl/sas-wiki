@@ -39,7 +39,7 @@ import {
   GHOST_ID,
 } from '../lib/__tests__/helpers/payload-builders.mjs'
 import { checkInvariants } from '../lib/invariants.mjs'
-import { loadSchema, validateItem } from '../lib/validate.mjs'
+import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 import { buildContent } from '../validate.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 

@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { validateItem } from '../validate.mjs'
+import { validateItem } from '../schema-validator.mjs'
 
 const UUIDV7_A = '0192f0c0-8000-7000-8000-0123456789ab'
 const DOC_12HEX = '062530b95593'

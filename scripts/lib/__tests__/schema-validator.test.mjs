@@ -1,9 +1,9 @@
 // @vitest-environment node
 //
-// P2 RED-1 · scripts/wiki/lib/validate.mjs — `additionalProperties` 지원 (plan Task 1 / tdd §6.1)
+// P2 RED-1 · scripts/lib/schema-validator.mjs — `additionalProperties` 지원 (plan Task 1 / tdd §6.1)
 //
 // RED 사유: 현행 검증기는 JSON Schema **서브셋**이고 `additionalProperties` 를 **무시한다**
-//   (`validate.mjs:44-95`). 그래서 산출물의 strict 검증(= 제거된 필드가 정말 없는가)이 불가능하다.
+//   (`schema-validator.mjs:44-95`). 그래서 산출물의 strict 검증(= 제거된 필드가 정말 없는가)이 불가능하다.
 //   → `additionalProperties: false`(잉여 키 거부)와 `additionalProperties: <스키마>`(Record<K,V>)를
 //     지원해야 스키마 3종(summary·feeds·body)이 계약을 강제할 수 있다.
 //
@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { validateItem } from '../validate.mjs'
+import { validateItem } from '../schema-validator.mjs'
 
 const wikiDocSchema = JSON.parse(
   readFileSync(new URL('../../schema/wiki-doc.schema.json', import.meta.url), 'utf8'),

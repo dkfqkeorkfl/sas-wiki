@@ -10,7 +10,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { loadSchema, validateItem } from '../validate.mjs'
+import { loadSchema, validateItem } from '../schema-validator.mjs'
 import {
   aBody,
   aBodyDoc,

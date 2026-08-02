@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { buildContent } from '../validate.mjs'
-import { loadSchema, validateItem } from '../lib/validate.mjs'
+import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 
 import { seedVault } from './helpers/seed-example-vault.mjs'
 import { git } from './helpers/vault-facts.mjs'

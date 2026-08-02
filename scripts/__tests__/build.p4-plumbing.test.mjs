@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { loadSchema, validateItem } from '../lib/validate.mjs'
+import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')

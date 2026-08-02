@@ -14,7 +14,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { loadSchema, validateItem } from '../validate.mjs'
+import { loadSchema, validateItem } from '../schema-validator.mjs'
 
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema')
 const wikiDocSchema = loadSchema(path.join(SCHEMA_DIR, 'wiki-doc.schema.json'))

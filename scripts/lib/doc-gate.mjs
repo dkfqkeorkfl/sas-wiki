@@ -1,7 +1,7 @@
 import path from 'node:path'
 
 import { anyMarkdown, collectDeletedDocEvents, readIdAtCreation, readIdAtDeletion } from './git.mjs'
-import { validateItem } from './validate.mjs'
+import { validateItem } from './schema-validator.mjs'
 
 export const REASON_CODES = [
   'NO_FRONTMATTER',

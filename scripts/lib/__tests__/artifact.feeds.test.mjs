@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { loadSchema, validateItem } from '../validate.mjs'
+import { loadSchema, validateItem } from '../schema-validator.mjs'
 
 const artifactModule = await import(new URL('../artifact.mjs', import.meta.url).href)
 const payloadsModule = await import(new URL('../payloads.mjs', import.meta.url).href)

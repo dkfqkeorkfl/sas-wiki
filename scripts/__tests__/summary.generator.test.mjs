@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { loadSchema, validateItem } from '../lib/validate.mjs'
+import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 import { cleanup, git } from './helpers/tmp-git-vault.mjs'
 import { CONTROL_PATH, ID_A, seedCleanVault, seedPollutedVault } from './helpers/polluted-vault.mjs'
 

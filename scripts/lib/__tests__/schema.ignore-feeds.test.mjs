@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { validateItem } from '../validate.mjs'
+import { validateItem } from '../schema-validator.mjs'
 
 // 스키마 파일을 그대로 싣는다(형식 계약 고립). RED 시점엔 파일이 없어 여기서 ENOENT 로 죽는다.
 const schema = JSON.parse(

@@ -15,7 +15,7 @@ import { extractWikilinks } from './lib/parse.mjs'
 import { WIKI_PREFIX } from './lib/head-state.mjs'
 import { parseVault } from './lib/parse-vault.mjs'
 import { buildBody, buildFeeds, buildSummary } from './lib/payloads.mjs'
-import { loadSchema, validateItem } from './lib/validate.mjs'
+import { loadSchema, validateItem } from './lib/schema-validator.mjs'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')

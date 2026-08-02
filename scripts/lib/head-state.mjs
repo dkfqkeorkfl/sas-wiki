@@ -9,7 +9,7 @@ import {
   derivePathAndBreadcrumb,
   parseMarkdownFile,
 } from './parse.mjs'
-import { loadSchema } from './validate.mjs'
+import { loadSchema } from './schema-validator.mjs'
 
 /** vault 문서의 리포 상대 경로 접두사 — 여기가 유일한 소유자다(이관 가능성). */
 export const WIKI_PREFIX = 'wiki/'

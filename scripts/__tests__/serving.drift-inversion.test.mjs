@@ -34,7 +34,7 @@ import { judgeDocs } from '../lib/doc-gate.mjs'
 import { WIKI_PREFIX, loadHeadDocState } from '../lib/head-state.mjs'
 import { parseVault } from '../lib/parse-vault.mjs'
 import { makeGitRunner } from '../lib/git.mjs'
-import { loadSchema } from '../lib/validate.mjs'
+import { loadSchema } from '../lib/schema-validator.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import {
   DRIFT_FEED_TITLE,

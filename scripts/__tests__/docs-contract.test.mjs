@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { artifactPath, feedsArtifactPath, reportPath } from '../lib/artifact.mjs'
-import { loadSchema, validateItem } from '../lib/validate.mjs'
+import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 import { cleanup, initVault } from './helpers/tmp-git-vault.mjs'
 
 // 규범 C10 — 헬퍼 부재가 **collection error** 가 되면 러너 요약이 PASS 로 오보고한다(§7.3).
