@@ -17,7 +17,6 @@ export const DOC_A = { id: '0192a000-0000-7000-8000-0000000000aa', path: 'compan
 export const DOC_B = { id: '0192b000-0000-7000-8000-0000000000bb', path: 'tech/HBM' }
 
 export const GENERATED_AT = '2023-11-14T22:13:20.000Z'
-export const INPUTS_FINGERPRINT = '0123456789abcdef'
 
 /** 어디에도 없는 문서 id(유효 UUIDv7) — 불변식 1·3·4 의 위반 주입용 */
 export const GHOST_ID = '0192f000-0000-7000-8000-0000000000ff'
@@ -95,15 +94,11 @@ export function aFeedItem() {
   return builder(DEFAULT_FEED_ITEM, { refs: (value, docs) => ({ ...value, docs }) })
 }
 
-/**
- * wiki_feeds.json 봉투 — P5 부터 `inputsFingerprint` 가 **required** 다(D-G · feeds.schema.json).
- * 값은 **리터럴**이다(규범 A — 프로덕션 상수에서 만들면 자기참조가 된다).
- */
+/** wiki_feeds.json 봉투 — 정확히 4키다. */
 export function aFeeds() {
   return builder(
     {
       generatedAt: GENERATED_AT,
-      inputsFingerprint: INPUTS_FINGERPRINT,
       items: [],
       // v3 P1 · D29(§4.3 ②) — 계약 번호 리셋. 리터럴 유지는 규범 A 다.
       schemaVersion: 1,
@@ -113,22 +108,14 @@ export function aFeeds() {
   )
 }
 
-/**
- * wiki_summary.json 봉투 — P4 부터 **발행 아티팩트**라 `producer`·`env` 헤더를 함께 싣는다.
- *
- * 스키마가 `additionalProperties: false` + required 9키라, 이 둘이 빠지면 "정상 페이로드" 를
- * 자처하는 이 픽스처가 자기 스키마를 통과하지 못한다. 값은 **리터럴**이다(규범 A — 프로덕션
- * 상수에서 만들면 둘이 함께 틀려도 통과하는 자기참조가 된다).
- */
+/** wiki_summary.json 봉투 — env 를 포함한 7키다. */
 export function aSummary() {
   return builder(
     {
       docs: [],
       env: 'dev',
       generatedAt: GENERATED_AT,
-      inputsFingerprint: INPUTS_FINGERPRINT,
-      producer: 'sas-wiki/summary',
-      schemaVersion: 2,
+      schemaVersion: 1,
       sourceCommit: SOURCE_COMMIT,
       tags: {},
       tree: [],

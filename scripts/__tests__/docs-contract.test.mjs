@@ -174,23 +174,6 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     )
   })
 
-  it('PT3: 문서화된 `producer` == `payloads.mjs` 소스의 3종 (양방향)', () => {
-    // 🔴 왜 지금 red 인가: README 에 producer 표지가 **한 번도 나오지 않는다**(신규 계약 9개 중 하나).
-    //   아티팩트 신선도 판정이 `producer` 불일치를 stale 로 접는데, 그 어휘가 문서에 없다.
-    const fromSource = captures(
-      readSource('scripts/lib/payloads.mjs'),
-      /export const \w*PRODUCER = '([^']+)'/g,
-    ).sort()
-
-    // 앵커: 셋이 **서로 다르다**(세 발행물이 같은 표지를 쓰면 3중 신선도가 무의미하다).
-    expect(unique(fromSource)).toHaveLength(3)
-    expect(fromSource).toEqual(['sas-wiki/feeds', 'sas-wiki/report', 'sas-wiki/summary'])
-
-    const scope = docScope('artifacts', ['sas-wiki/summary', 'sas-wiki/feeds', 'sas-wiki/report'])
-    const documented = unique(captures(scopeText(scope), /\b(sas-wiki\/[a-z][a-z-]*)\b/g)).sort()
-    expect(documented, `문서 결속면(${scope.via})`).toEqual(fromSource)
-  })
-
   it('PT4(=CV1·CV2): 문서화된 `schemaVersion` == 소스 == 리터럴 1 (3중 대조)', () => {
     // 🔴 왜 지금 red 인가(v3 P1 · D29 · §4.3 ②·④): 내부 wire 계약 번호를 **1 로 리셋**한다. 소스는
     //   아직 3이고 README 서술도 3이다 — 둘이 **함께** 내려와야 이 케이스가 green 이 된다.
@@ -327,7 +310,6 @@ const EN_ENUM_CONTRACTS = [
       // ★ 앵커는 **선언이 아니라 거동**이다: 검증기가 `fix` 봉투를 통과시키고 `bogus` 를 거부한다.
       const envelope = (importance) => ({
         generatedAt: '2023-11-14T22:13:20.000Z',
-        inputsFingerprint: '0123456789abcdef',
         items: [{ body: '', docs: [], id: 'abcdef012345', importance, keywords: [], title: 'x', ts: '2026-01-01T00:00:00Z' }], // prettier-ignore
         nextCursor: null,
         // v3 P1 · D29 — 계약 번호 리셋(§4.3 ②). 스키마는 값을 pin 하지 않는다(`minimum: 1`).

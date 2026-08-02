@@ -1,10 +1,10 @@
 // @vitest-environment node
 //
-// validate.mjs CLI 계약(인자 분리 · shallow/partial 가드 · 통계 출력 · JSON 미생산) — 구 build.cli.test.
+// validate.mjs CLI 계약(인자 분리 · shallow/partial 가드 · 통계 출력 · 리포트 소유) — 구 build.cli.test.
 //
-// build.mjs → validate.mjs 재정리 반영: `--out`/JSON 산출은 **제거**됐다(dev=미들웨어 on-demand,
-//   prod=미래 서버). CLI 는 무결성 검증 전용 — 통과 시 exit 0, 위반(컨벤션·스키마·unresolved·shallow·
-//   partial) 시 exit 1(fail-loud). 산출 파일은 만들지 않는다. 인자·게이트·통계 단언은 의미 보존.
+// build.mjs → validate.mjs 재정리 반영: summary `--out` 산출은 제거됐다. CLI 는 무결성 검증과
+//   리포트 출력의 소유자다 — 통과 시 exit 0, 위반(컨벤션·스키마·unresolved·shallow·partial) 시
+//   exit 1(fail-loud). 인자·게이트·통계 단언은 의미 보존.
 //
 // subprocess 는 **여기서만** 쓴다(CLI 회귀). 나머지는 in-process — 커버리지 계측 때문이다.
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -213,7 +213,7 @@ describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
     expect(options.schema).toBe(path.resolve('custom/schema'))
   })
 
-  it('--out 은 거부한다(validate.mjs 는 JSON 을 생산하지 않는다 — 출력 인자 없음)', () => {
+  it('--out 은 거부한다(validate.mjs 는 summary 산출물 쓰기 경로가 아니다)', () => {
     expect(() => parseArgs(['--vault', 'v', '--out', 'public'])).toThrow(/--out/)
   })
 

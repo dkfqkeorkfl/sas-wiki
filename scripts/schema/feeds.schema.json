@@ -2,15 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/feeds.schema.json",
   "title": "wiki_feeds",
-  "description": "뉴스 카드 — 서빙 시점에 걸러진 항목만 담는다(자르는 것은 getFeed({limit}) 다. 파일을 자르면 필터가 그 안에서만 맞는다). strict: sentiment·link·source·bodyHtml·tags·refs·path·breadcrumb 은 계약에서 사라졌다. `inputsFingerprint` 는 P5 가 required 로 추가했다(D-G — 생산자가 자기 출력을 상관 토큰으로 스탬프한다).",
+  "description": "뉴스 카드 — 서빙 시점에 걸러진 항목만 담는다(자르는 것은 getFeed({limit}) 다. 파일을 자르면 필터가 그 안에서만 맞는다). wire 응답이므로 env 는 P2 소관이며 내부 feeds 아티팩트와 구분된다.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "sourceCommit", "inputsFingerprint", "items"],
+  "required": ["schemaVersion", "generatedAt", "sourceCommit", "items"],
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
     "generatedAt": { "type": "string", "minLength": 1 },
     "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "inputsFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
     "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } },
     "nextCursor": {
       "anyOf": [{ "$ref": "#/definitions/feedCursor" }, { "type": "null" }]

@@ -11,10 +11,10 @@
 //   wiki(vault, env, ref) → 그 path 문서 1건 { html, headings, meta, sources, path, status, breadcrumb }.
 //     없는 path → null(throw 아님) · disable → status='disable' 스텁 · 요청 path 만(이웃 본문 격리).
 //     렌더는 renderMarkdownToHtml **재사용**(build 렌더 경로와 동일 · 회귀 0).
-//   P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다(D-F: 신선도 확보가 `runSummaryGenerator` 재사용이라
-//   async 다). 단언 **내용**은 무변경 — `await` 만 붙는다.
+//   P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다. 단언 **내용**은 무변경 — `await` 만 붙는다.
 import { describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const { wiki } = await import(new URL('../wiki.mjs', import.meta.url).href)
@@ -40,6 +40,7 @@ describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () 
     const vault = initVault()
     try {
       seedWorld(vault)
+      await prebuildArtifacts(vault, 'dev')
 
       const doc = await wiki(vault, 'dev', PATH_A)
 
@@ -62,6 +63,7 @@ describe('endpoints.wiki — 계약 pin (E-W2·E-W3 🟢GFS)', () => {
     const vault = initVault()
     try {
       seedWorld(vault)
+      await prebuildArtifacts(vault, 'dev')
 
       expect(await wiki(vault, 'dev', '없는/경로')).toBeNull()
     } finally {
@@ -73,6 +75,7 @@ describe('endpoints.wiki — 계약 pin (E-W2·E-W3 🟢GFS)', () => {
     const vault = initVault()
     try {
       seedWorld(vault)
+      await prebuildArtifacts(vault, 'dev')
 
       const doc = await wiki(vault, 'dev', PATH_DISABLE)
 

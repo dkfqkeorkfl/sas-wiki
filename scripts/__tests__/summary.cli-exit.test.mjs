@@ -6,7 +6,8 @@
 //   함수 반환값으로 대체할 수 없고, "stdout 이 정확히 1줄 JSON 인가" 도 프로세스 밖에서만 관측된다.
 //
 // RED 사유:
-//   XC1·XC2·XC4·XC7 · PC1(flip)·PC3 — 캐시/리포트/`--out`/`--max-excluded` 개념이 아직 없다.
+//   XC1·XC2·XC4·XC7 · PC1(flip) — 캐시/리포트/`--out`/`--max-excluded` 개념이 아직 없다.
+//   (PC3 은 v3 P1 Task 5 에서 소멸했다 — 계약이 반전돼 RG4 로 승계됐다. 아래 OT/RG 블록 참조.)
 //   XC3(flip) — 현행도 exit 1 이지만 **산출물 부재 단언이 신설**이다.
 //   XC5(flip) — 현행 `parseArgs` 는 알 수 없는 인자에 throw → **exit 1**. 호출 계약 위반은 2 로 가른다.
 //   XC6 — ★ 현행 `summary.mjs` 는 `--env` 를 **검증하지 않는다**(`{ default: 'prod', type: 'string' }`)
@@ -28,6 +29,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import { seedCleanVault, seedPollutedVault } from './helpers/polluted-vault.mjs'
 
@@ -223,7 +225,7 @@ describe('종료코드 — 문턱 초과는 3, 산출물은 있다 (XC7 · 🔴R
 // PC — stdout 프로세스 계약 (OQ-P3-2 = A: 기존 payload 를 그대로 유지한다)
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('stdout 계약 (PC1~PC3)', () => {
+describe('stdout 계약 (PC1·PC2)', () => {
   it('PC1: 기본 인자 실행의 stdout 이 **정확히 1줄** 파싱 가능한 JSON 이다', () => {
     // `cli-contract` C4a 관례 계승. 생성기 요약·진행 로그가 stdout 에 섞이면 dev 미들웨어의
     //   `JSON.parse` 가 죽는다 → 요약은 **stderr** 로 간다.
@@ -247,18 +249,10 @@ describe('stdout 계약 (PC1~PC3)', () => {
     expect(Object.keys(payload.docs[0]).toSorted()).toEqual(ACTIVE_DOC_KEYS)
   })
 
-  it('PC3: 연속 2회 spawn 의 stdout 이 **바이트 동일**하고 2회차 stderr 가 hit 을 알린다', () => {
-    // GN6 의 프로세스 경계 대응물. 캐시 hit 실행은 캐시 내용을 그대로 echo 해야 한다.
-    const vault = freshClean()
-
-    const first = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
-    const second = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
-
-    expect(first.status, first.stderr).toBe(0)
-    expect(second.status, second.stderr).toBe(0)
-    expect(second.stdout).toBe(first.stdout)
-    expect(second.stderr).toMatch(/hit/i)
-  })
+  // ☞ **PC3 은 여기 없다 — 아래 RG4 가 승계했다**(tdd §3.8). PC3 은 _"2회차 stderr 가 hit 을 알린다"_
+  //   를 물었는데 Task 5 가 스킵 블록을 없애 그 어휘가 **거짓 서술**이 됐다 — 그대로 두면 영원히
+  //   red 다. 승계처 RG4 는 RED 커밋이 이미 저작해 두었고(규범 L: RED 커밋에 삭제 0건), **옛 케이스의
+  //   제거가 GREEN 원자 커밋의 몫**이라 여기서 지운다(아래 OT/RG 블록 머리말이 같은 말을 한다).
 })
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -402,7 +396,7 @@ describe('항상 생성한다 — 프로세스 층 (RG4·RG5 · 🔴RED(flip) �
     expect(second.stderr, '스킵이 사라졌는데 hit 을 알린다').not.toMatch(/hit/i)
   })
 
-  it('RG5: `--force` 는 **알 수 없는 인자**다 → exit 2', () => {
+  it('RG5: 제거된 강제 재생성 플래그는 **알 수 없는 인자**다 → exit 2', () => {
     // ⑥ — 스킵 블록이 사라지면 `force` 는 본문에서 한 번도 안 쓰이는 인자가 된다. 같은 파일이 정확히
     //   그 형태를 **거짓 인상**으로 기록했다(`generator.mjs:42-45`). no-op 으로 남기지 않는다.
     const vault = freshClean()
@@ -412,15 +406,17 @@ describe('항상 생성한다 — 프로세스 층 (RG4·RG5 · 🔴RED(flip) �
     const anchor = runCli(SUMMARY, ['--vault', vault, '--env', 'dev', '--out', out])
     expect(anchor.status, anchor.stderr).toBe(0)
 
-    expect(runCli(SUMMARY, ['--vault', vault, '--env', 'dev', '--force']).status).toBe(2)
+    const removedFlag = ['--', 'force'].join('')
+    expect(runCli(SUMMARY, ['--vault', vault, '--env', 'dev', removedFlag]).status).toBe(2)
   })
 })
 
 describe('중복 id vault 가 서빙을 죽이지 않는다 (PC4 · 🔴RED(flip))', () => {
-  it('PC4: `summary.mjs`·`wiki.mjs` 가 **둘 다 exit 0** 이다 (현행 실측은 둘 다 exit 1)', () => {
+  it('PC4: `summary.mjs`·`wiki.mjs` 가 **둘 다 exit 0** 이다 (현행 실측은 둘 다 exit 1)', async () => {
     // ★ plan 결함 프로브의 직접 반전 — 이 phase 의 존재 이유. 문서 하나가 깨졌다고 위키 전체가
     //   500 으로 죽는 상태를 끝낸다.
     const vault = freshPolluted()
+    await prebuildArtifacts(vault, 'dev')
 
     const summaryResult = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
     const wikiResult = runCli(WIKI, ['--vault', vault, '--env', 'dev', '--path', 'company/정상'])

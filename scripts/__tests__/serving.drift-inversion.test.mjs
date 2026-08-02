@@ -35,6 +35,7 @@ import { WIKI_PREFIX, loadHeadDocState } from '../lib/head-state.mjs'
 import { parseVault } from '../lib/parse-vault.mjs'
 import { makeGitRunner } from '../lib/git.mjs'
 import { loadSchema } from '../lib/schema-validator.mjs'
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import {
   DRIFT_FEED_TITLE,
@@ -131,6 +132,8 @@ describe('B7 반전 — 피드는 살되 제외 문서를 가리키지 않는다
   it('DR2: 드리프트 vault 의 피드가 **생존**하되 `docs === []` 다', async () => {
     const drifted = track(seedTamperedVault())
     const control = track(seedControlVault())
+    await prebuildArtifacts(drifted.vault, 'dev')
+    await prebuildArtifacts(control.vault, 'dev')
 
     const driftedPage = await feeds(drifted.vault, 'dev', {})
     const controlPage = await feeds(control.vault, 'dev', {})
@@ -148,6 +151,8 @@ describe('B8 반전 — 제외 문서의 본문을 서빙하지 않는다 (DR3 �
   it('DR3: 드리프트 문서 조회가 `null` 이고 대조 vault 의 같은 path 는 본문을 준다', async () => {
     const drifted = track(seedTamperedVault())
     const control = track(seedControlVault())
+    await prebuildArtifacts(drifted.vault, 'dev')
+    await prebuildArtifacts(control.vault, 'dev')
 
     // 앵커 ①: 대조 vault 의 같은 path 는 non-null 이고 본문 마커가 있다.
     const controlDoc = await wiki(control.vault, 'dev', drifted.tamperedRel)
@@ -174,6 +179,10 @@ describe('서빙 극성 반전 금지 (DR5 · 🔴RED 오늘 사유 자체가 �
     //   **반대**라 오분류가 곧 서빙 오류다 — 그래서 극성 대조군(draft)을 같은 케이스에 둔다.
     const drifted = track(seedTamperedVault())
     const draftRef = track(seedDraftRefVault())
+    await prebuildArtifacts(drifted.vault, 'dev')
+    await prebuildArtifacts(drifted.vault, 'prod')
+    await prebuildArtifacts(draftRef.vault, 'dev')
+    await prebuildArtifacts(draftRef.vault, 'prod')
 
     const driftedProd = await feeds(drifted.vault, 'prod', {})
     const draftProd = await feeds(draftRef.vault, 'prod', {})
@@ -193,6 +202,7 @@ describe('두 번째 깊은 사유도 같은 반전 (DR6 · 🔴RED flip)', () =
   it('DR6: `DELETED_ID_REUSE` vault 에서도 피드 docs 는 비고 문서 조회는 `null` 이다', async () => {
     // 한 사유만 고친 구현을 배제한다 — 깊은 티어가 더하는 판정은 정확히 둘뿐이다(B6).
     const reuse = track(seedIdReuseVault())
+    await prebuildArtifacts(reuse.vault, 'dev')
 
     // 앵커: 깊은 티어가 실제로 그 사유로 제외한다(픽스처가 겨냥한 조건에 도달했다).
     // P5 D-I: deepDocGate 는 근절됐다(무시되는 인자였다).

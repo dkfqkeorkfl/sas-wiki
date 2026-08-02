@@ -26,8 +26,9 @@ import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -86,6 +87,11 @@ function makeVault() {
 }
 
 const VAULT = makeVault()
+
+beforeAll(async () => {
+  await prebuildArtifacts(VAULT, 'dev')
+  await prebuildArtifacts(VAULT, 'prod')
+})
 
 describe('열거 오타는 즉시 비정상 종료한다 (EV1·EV2·EV7 · 🔴RED(flip) 오늘 무경고 prod)', () => {
   it('EV1: `feeds.mjs --env Dev` → exit 2 · stderr 가 **유효값을 제시**한다', () => {
@@ -153,26 +159,34 @@ describe('정상값을 막지 않는다 (EV3·EV4 · 🟢pair)', () => {
 })
 
 describe('미지정은 여전히 fail-closed(prod) 다 (EV6 · 🟢pin)', () => {
-  it('EV6: 3 CLI 를 `--env` 없이 실행 → exit 0 이고 **prod 산출**이다', () => {
-    // ★ NOT Building 존중: 미지정의 에러화는 이 phase 의 범위가 **아니다**. 열거 오타만 exit 2 다.
-    //   이 pin 이 없으면 GREEN 이 "검증을 넣었다" 며 미지정까지 막아도 아무도 모른다(과잉 구현).
-    //
-    // `--stdout` 은 부작용 없는 조회다(P3 OQ-P3-2) — 이 케이스가 tmp vault 에 캐시를 남기지 않는다.
-    const bare = runCli(SUMMARY, ['--vault', VAULT, '--stdout'])
-    const prod = runCli(SUMMARY, ['--vault', VAULT, '--stdout', '--env', 'prod'])
-    const dev = runCli(SUMMARY, ['--vault', VAULT, '--stdout', '--env', 'dev'])
+  // timeout: OQ-P1-2 (c) 적용 — 실측 **47,680ms · 45,041ms**(단독 실행 · 기본 30s 초과).
+  //   원인은 Task 5(skip 소멸)로 실 repo 생성기가 요청마다 전량 계산하게 된 것이고, 이 케이스는
+  //   그 CLI 를 **3벌** 돌린다. 전역 `testTimeout` 상향은 모든 케이스의 hang 감지를 둔하게 하므로
+  //   금지다(plan 결정 ⑧) — 측정된 이 케이스에만 준다. 같은 파일의 나머지는 여유가 있다(EV5 15.5초).
+  it(
+    'EV6: 3 CLI 를 `--env` 없이 실행 → exit 0 이고 **prod 산출**이다',
+    { timeout: 120_000 },
+    () => {
+      // ★ NOT Building 존중: 미지정의 에러화는 이 phase 의 범위가 **아니다**. 열거 오타만 exit 2 다.
+      //   이 pin 이 없으면 GREEN 이 "검증을 넣었다" 며 미지정까지 막아도 아무도 모른다(과잉 구현).
+      //
+      // `--stdout` 은 부작용 없는 조회다(P3 OQ-P3-2) — 이 케이스가 tmp vault 에 캐시를 남기지 않는다.
+      const bare = runCli(SUMMARY, ['--vault', VAULT, '--stdout'])
+      const prod = runCli(SUMMARY, ['--vault', VAULT, '--stdout', '--env', 'prod'])
+      const dev = runCli(SUMMARY, ['--vault', VAULT, '--stdout', '--env', 'dev'])
 
-    expect([bare.status, prod.status, dev.status]).toEqual([0, 0, 0])
-    expect(runCli(FEEDS, ['--vault', VAULT]).status).toBe(0)
-    expect(runCli(WIKI, ['--vault', VAULT, '--path', ACTIVE_REF]).status).toBe(0)
+      expect([bare.status, prod.status, dev.status]).toEqual([0, 0, 0])
+      expect(runCli(FEEDS, ['--vault', VAULT]).status).toBe(0)
+      expect(runCli(WIKI, ['--vault', VAULT, '--path', ACTIVE_REF]).status).toBe(0)
 
-    const idsOf = (result) => JSON.parse(result.stdout).docs.map((doc) => doc.id).toSorted() // prettier-ignore
+      const idsOf = (result) => JSON.parse(result.stdout).docs.map((doc) => doc.id).toSorted() // prettier-ignore
 
-    // 앵커: 이 vault 는 dev 와 prod 를 **실제로 구분한다**(draft 1건). 구분이 없으면 아래 단언이
-    //   "무엇을 줘도 같다" 로 공허하게 통과한다.
-    expect(idsOf(dev)).toContain(ID_DRAFT)
-    expect(idsOf(prod)).not.toContain(ID_DRAFT)
+      // 앵커: 이 vault 는 dev 와 prod 를 **실제로 구분한다**(draft 1건). 구분이 없으면 아래 단언이
+      //   "무엇을 줘도 같다" 로 공허하게 통과한다.
+      expect(idsOf(dev)).toContain(ID_DRAFT)
+      expect(idsOf(prod)).not.toContain(ID_DRAFT)
 
-    expect(idsOf(bare)).toEqual(idsOf(prod))
-  })
+      expect(idsOf(bare)).toEqual(idsOf(prod))
+    },
+  )
 })

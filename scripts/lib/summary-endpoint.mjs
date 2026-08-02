@@ -15,7 +15,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { computeInputsFingerprint } from './fingerprint.mjs'
 import { parseVault } from './parse-vault.mjs'
 import { buildSummary } from './payloads.mjs'
 
@@ -28,16 +27,10 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 export function summary(vault, env = 'prod') {
   const vaultDir = path.resolve(vault)
   const payload = parseVault(vaultDir, env, SCHEMA_DIR).wire
-  const inputsFingerprint = computeInputsFingerprint({
-    env,
-    sourceCommit: payload.sourceCommit,
-    vaultDir,
-  })
   return buildSummary({
     docs: payload.docs,
     env,
     generatedAt: payload.generatedAt,
-    inputsFingerprint,
     sourceCommit: payload.sourceCommit,
     tags: payload.tags,
     tree: payload.tree,

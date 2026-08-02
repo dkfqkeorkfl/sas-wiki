@@ -9,7 +9,7 @@
 //   가, 9p 대조는 tdd §8-9 측정표가 각각 결론을 낸다.
 //   (vitest 기본 include 는 `*.test.mjs` 만 잡으므로 helpers/*.mjs 는 테스트로 수집되지 않는다 — 의도.)
 //
-// 규범 A: 산출물 경로·producer·버전은 **리터럴**이다. 프로덕션 상수를 import 해 기대값을 만들지 않는다
+// 규범 A: 산출물 경로·버전은 **리터럴**이다. 프로덕션 상수를 import 해 기대값을 만들지 않는다
 //   (읽기 자체는 프로덕션 `readArtifact` 를 쓴다 — 그것이 관측 대상 seam 이기 때문이다).
 import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -19,11 +19,10 @@ import { fileURLToPath } from 'node:url'
 const SCRIPTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const ARTIFACT_MODULE = path.join(SCRIPTS_DIR, 'lib', 'artifact.mjs')
 
-/** 발행물 3종 — `{ kind, producer, rel }`. 경로·표지는 리터럴이다. */
+/** 생성기가 발행하는 아티팩트 2종. 리포트는 관측 로그이며 생성기 발행물이 아니다(C3 §4.10 MW2-b). */
 const PUBLICATIONS = [
-  { kind: 'summary', producer: 'sas-wiki/summary', rel: ['cache', 'summary.<env>.json'] },
-  { kind: 'feeds', producer: 'sas-wiki/feeds', rel: ['cache', 'feeds.<env>.json'] },
-  { kind: 'report', producer: 'sas-wiki/report', rel: ['logs', 'summary.report.<env>.json'] },
+  { kind: 'summary', rel: ['cache', 'summary.<env>.json'] },
+  { kind: 'feeds', rel: ['cache', 'feeds.<env>.json'] },
 ]
 
 // v3 P1 · D29 — 내부 wire 계약 번호를 1 로 리셋한다(§4.3 ②). 소비자 자식 템플릿(`${SCHEMA_VERSION}`)이
@@ -33,11 +32,9 @@ const SCHEMA_VERSION = 1
 /**
  * 소비자 자식 — 생산자들이 갈아끼우는 동안 세 산출물을 **프로덕션 독자**로 반복해 읽는다.
  *
- * ★ v3 P1(§4.10 MW2-b · flip): 세대를 `raw.inputsFingerprint` 로 세면 그 축이 사라지는 순간
- *   `generationsSeen` 이 **영영 0** 이 되고, `generator.multi-writer.test.mjs` 의 비공허성 앵커
- *   (`generationsSeen >= 2`)가 그것을 red 로 드러낸다 — 즉 옛 축은 착륙 후 관측 자체가 불가능하다.
- *   세대 좌표를 **`sourceCommit`** 으로 바꾼다. 그 값이 실제로 굴러야 하므로 호출부는 라운드마다
- *   **커밋**한다(미커밋 저장은 HEAD 를 움직이지 않는다 — 그 계약은 `generator.multi-writer` 소유).
+ * ★ v3 P1(§4.10 MW2-b · flip): 세대 좌표를 **`sourceCommit`** 으로 둔다. 그 값이 실제로 굴러야
+ *   하므로 호출부는 라운드마다 **커밋**한다(미커밋 저장은 HEAD 를 움직이지 않는다 — 그 계약은
+ *   `generator.multi-writer` 소유).
  */
 const CONSUMER_SOURCE = `
 import { readFileSync, existsSync } from 'node:fs'
@@ -60,8 +57,6 @@ for (;;) {
     const verdict = mod.readArtifact({
       expect: {
         env: entry.env,
-        inputsFingerprint: '', // 절대 일치하지 않는다 — 모든 읽기가 **사유**를 내게 한다
-        producer: entry.producer,
         schemaVersion: ${SCHEMA_VERSION},
       },
       path: entry.file,
@@ -90,7 +85,8 @@ process.stdout.write(JSON.stringify({ byKind, counts, generationsSeen: generatio
  *
  * @param {{ children: {args: string[], script: string}[], env: string, onRound?: (round: number) => void,
  *           rounds?: number, timeoutMs?: number, vault: string, withConsumer?: boolean }} input
- * @returns {Promise<{ artifacts: {file: string, fingerprint: string|null, kind: string, parsed: object|null}[],
+ * @returns {Promise<{ artifacts: {file: string, generatedAt: string|null, kind: string,
+ *                                  parsed: object|null, sourceCommit: string|null}[],
  *                     consumer: object|null, producers: {exitCode: number|null, stderr: string, stdout: string}[] }>}
  */
 export async function runGeneratorRace({
@@ -109,7 +105,6 @@ export async function runGeneratorRace({
     env,
     file: path.join(vault, ...publication.rel.map((part) => part.replace('<env>', env))),
     kind: publication.kind,
-    producer: publication.producer,
   }))
 
   const consumer = withConsumer
@@ -186,22 +181,21 @@ function runChild(scriptPath, args, timeoutMs) {
 /**
  * 발행물 1건의 **세대 좌표**를 캔다(판정하지 않는다).
  *
- * ★ v3 P1(§3.12 · §4.3 ⑥): 상관 토큰 축이 사라지면 `new Set(...).size === 1` 이 값 전부 `null` 로
- *   **공허 통과**한다(`Set{null}.size === 1`). 그래서 이 하네스가 **`sourceCommit`·`generatedAt`
- *   두 축을 함께** 실어 보낸다 — 옛 축은 GREEN 원자 커밋이 걷어낼 때까지 그대로 둔다(규범 L).
+ * ★ v3 P1(§3.12 · §4.3 ⑥): 사라진 상관 토큰 축을 계속 쓰면 `new Set(...).size === 1` 이 값 전부
+ *   `null` 로 **공허 통과**한다(`Set{null}.size === 1`). 그래서 이 하네스가 **`sourceCommit`·
+ *   `generatedAt` 두 축을 함께** 실어 보낸다.
  *   두 축이 "판정" 이 아니라 **관측**이라는 점이 v3 D1 과 충돌하지 않는 이유다(§3.12 주석 계약).
  */
 function readPublication(file) {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     return {
-      fingerprint: parsed?.inputsFingerprint ?? null,
       generatedAt: parsed?.generatedAt ?? null,
       parsed,
       sourceCommit: parsed?.sourceCommit ?? null,
     }
   } catch {
-    return { fingerprint: null, generatedAt: null, parsed: null, sourceCommit: null }
+    return { generatedAt: null, parsed: null, sourceCommit: null }
   }
 }
 

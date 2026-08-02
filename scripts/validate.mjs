@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-// vault 무결성 **검증 전용** CLI (구 build.mjs). JSON 을 생산하지 않는다 — dev 는 미들웨어 on-demand,
-// prod 는 미래 서버가 생산한다. 여기서는 payload 를 in-memory 로만 조립해 게이트(컨벤션·id 유일·불변·
+// vault 무결성 CLI (구 build.mjs). payload 를 in-memory 로 조립해 게이트(컨벤션·id 유일·불변·
 // 데드링크·산출물 스키마·불변식)를 전량 실행하고, 통과 시 exit 0 / 위반 시 throw→exit 1(fail-loud).
+// 리포트 출력은 validate 소유다. summary payload 쓰기는 생성기/빌드 경로가 담당한다.
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { envEnumError } from './lib/cli-env.mjs'
 import { checkAnchorExists } from './lib/derive.mjs'
 import { parseCommitForFeed } from './lib/feed.mjs'
-import { computeInputsFingerprint } from './lib/fingerprint.mjs'
 import { applyIgnoreFeeds, loadIgnoreFeeds, reportIgnoreHygiene } from './lib/ignore.mjs'
 import { checkCommitConventions, checkFeedResolution, checkInvariants } from './lib/invariants.mjs'
 import { extractWikilinks } from './lib/parse.mjs'
@@ -66,23 +65,16 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0
     stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
   }
   const feedItems = applyIgnoreFeeds(wire.items, ignore)
-  const inputsFingerprint = computeInputsFingerprint({
-    env,
-    sourceCommit: wire.sourceCommit,
-    vaultDir,
-  })
   const summary = buildSummary({
     docs: wire.docs,
     env,
     generatedAt: wire.generatedAt,
-    inputsFingerprint,
     sourceCommit: wire.sourceCommit,
     tags: wire.tags,
     tree: wire.tree,
   })
   const feeds = buildFeeds({
     generatedAt: wire.generatedAt,
-    inputsFingerprint,
     items: feedItems,
     sourceCommit: wire.sourceCommit,
   })
@@ -107,7 +99,7 @@ export async function main(argv = process.argv.slice(2)) {
 /**
  * `--vault`(선택, 기본 REPO_ROOT) · `--env dev|prod` · `--schema` · `--deadlinks ignore|warn|error`.
  *
- * **`--out`/`--root` 은 거부한다** — validate.mjs 는 JSON 을 생산하지 않으므로 출력 인자가 없다(호환
+ * **`--out`/`--root` 은 거부한다** — validate.mjs 는 summary 산출물 쓰기를 하지 않으므로 출력 인자가 없다(호환
  * 별칭·마이그레이션 금지). 옛 스크립트가 넘기면 시끄럽게 끊어 오배선을 드러낸다.
  */
 export function parseArgs(argv) {
@@ -118,7 +110,7 @@ export function parseArgs(argv) {
     if (arg === '--help' || arg === '-h') return { ...options, help: true }
     if (arg === '--out') {
       throw new Error(
-        '--out 는 제거되었습니다: validate.mjs 는 무결성 검증 전용이며 JSON 을 생산하지 않습니다.',
+        '--out 는 제거되었습니다: validate.mjs 는 summary 산출물 쓰기 경로가 아닙니다.',
       )
     }
     if (arg === '--root') {

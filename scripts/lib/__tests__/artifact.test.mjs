@@ -1,22 +1,18 @@
 // @vitest-environment node
 //
-// P4 · Task 3 — 발행 아티팩트 계약: 경로·스탬프 (D-D) — tdd §3.3 (AR1·AR2·AR5·AR7)
+// P4 · Task 3 — 발행 아티팩트 계약: 경로·버전 (D-D) — tdd §3.3 (AR1·AR2·AR5·AR7)
 //
 // RED 사유:
-//   · AR1·AR5 — **RED(모듈 부재)**. `scripts/lib/artifact.mjs` 가 없다(`artifactPath`·`ARTIFACT_PRODUCER`).
+//   · AR1·AR5 — **RED(모듈 부재)**. `scripts/lib/artifact.mjs` 가 없다(`artifactPath`·`SCHEMA_VERSION`).
 //   · AR2 — **RED(오늘 리터럴이 소비자 쪽에 있다)**. `summary.mjs:46` 이 `path.join(vaultDir, 'cache',
 //     'summary.json')` 으로 경로를 **직접 조립**한다 → 경로 리터럴의 거처가 생성기다.
 //   · AR7 — **pair(지금도 green)**. 3 페이로드 공용 `SCHEMA_VERSION` 을 쪼개지 못하게 하는 못이다.
 //
 // 왜 `cache/` 의 파일이 "캐시" 가 아니라 **발행 아티팩트**인가(R3): 이번 phase 가 처음으로 **CLI 를
 //   우회해 파일을 직접 읽는 소비자**를 만든다. Track B 가 "캐시는 생산자 사적 자산" 을 근거로 반대했고,
-//   사용자 결정(파일 그대로 서빙)을 유지하는 **대가로 계약 4요소를 값으로 치른다**:
-//     (a) `producer` 스탬프  (b) `schemaVersion` + 미지 버전 거동  (c) **경로는 단일 선언에서 파생**
-//     (d) 독자 전면 불신(→ `artifact.read.test.mjs`)
-//   이 파일은 (a)(c)를, `artifact.read.test.mjs` 가 (b)(d)를 문다.
-//
-// 규범 A: 기대값(`'sas-wiki/summary'`)은 **리터럴**이다. 프로덕션 상수에서 유도하면 값이 흔들려도
-//   아무도 모른다 — 그 값이 흔들리면 소비자·픽스처가 **조용히** 어긋난다.
+//   사용자 결정(파일 그대로 서빙)을 유지하는 **대가로 계약 3요소를 값으로 치른다**:
+//     (a) `schemaVersion` + 미지 버전 거동  (b) **경로는 단일 선언에서 파생**
+//     (c) 독자 전면 불신(→ `artifact.read.test.mjs`)
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -44,8 +40,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SUMMARY_SOURCE = path.resolve(HERE, '..', '..', 'summary.mjs')
 const ARTIFACT_SOURCE = path.resolve(HERE, '..', 'artifact.mjs')
 
-/** 아티팩트 발행자 — **리터럴**이다(D-D (a)). */
-const PRODUCER = 'sas-wiki/summary'
 /** 아티팩트가 사는 디렉토리명 — **리터럴**. AR2 트립와이어의 관측 대상이다. */
 const CACHE_DIR = 'cache'
 /** env 무관 단일 슬롯 시절의 파일명 — 이 리터럴이 `summary.mjs` 에 남아 있으면 D-D (c) 위반이다. */
@@ -69,11 +63,14 @@ describe('artifactPath — env 별 경로 파생 (AR1 · 🔴RED 모듈 부재)'
   })
 })
 
-describe('ARTIFACT_PRODUCER — 발행자 스탬프 (AR5 · 🔴RED 상수 부재)', () => {
-  it('AR5: `ARTIFACT_PRODUCER` 가 리터럴 `sas-wiki/summary` 다', () => {
-    // 이 값이 흔들리면 소비자의 `expect.producer` 와 커밋 픽스처가 **조용히** 어긋나 모든 읽기가
-    //   producer-mismatch(stale)로 접히고, dev 가 영원히 재생성만 한다. RD10 이 픽스처 쪽 짝이다.
-    expect(artifact().ARTIFACT_PRODUCER).toBe(PRODUCER)
+describe('artifact 모듈 표면 — 경로·버전만 남는다 (AR5 · 🟩flip)', () => {
+  it('AR5: `artifactPath` 와 `SCHEMA_VERSION` 을 내보내고 제거된 표지 상수는 없다', () => {
+    const module = artifact()
+    const removed = ['ARTIFACT_', 'PRO', 'DUCER'].join('')
+
+    expect(typeof module.artifactPath).toBe('function')
+    expect(module.SCHEMA_VERSION).toBe(1)
+    expect(module).not.toHaveProperty(removed)
   })
 })
 
@@ -100,8 +97,8 @@ describe('SCHEMA_VERSION — 3 페이로드 공용 (AR7 · 🟢pair)', () => {
     //   전부 green 인 상태가 만들어진다. 값 자체(1→2)는 AR6 이 문다.
     const summary = buildSummary({
       docs: [],
+      env: 'dev',
       generatedAt: '2026-07-27T00:00:00.000Z',
-      inputsFingerprint: '0123456789abcdef',
       sourceCommit: '9a1b2c3d4e5f60718293a4b5c6d7e8f901234567',
       tags: {},
       tree: [],

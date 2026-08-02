@@ -56,24 +56,24 @@ ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone
 
 ## 산출물
 
-생성기가 **한 번의 파싱에서** 셋을 함께 만든다(co-derive). 경로·표지·버전은 아래가 정본이다.
+생성기가 **한 번의 파싱에서** summary 와 feeds 아티팩트를 함께 만든다(co-derive). 경로와 버전은 아래가 정본이다.
 
 <!-- contract:artifacts -->
 
-| 산출물     | 경로                             | 발행자 표지(`producer`) | 무엇                                     |
-| ---------- | -------------------------------- | ----------------------- | ---------------------------------------- |
-| summary    | `cache/summary.<env>.json`       | `sas-wiki/summary`      | 화면 뼈대. **유일한 wire 아티팩트**      |
-| feeds      | `cache/feeds.<env>.json`         | `sas-wiki/feeds`        | **억제 전 전량**. raw 로 서빙되지 않는다 |
-| 리포트     | `logs/summary.report.<env>.json` | `sas-wiki/report`       | 제외 문서·prune 진단. 관측 채널          |
-| 리포트(문) | `logs/summary.report.<env>.txt`  | `sas-wiki/report`       | 위와 같은 내용의 사람용                  |
+| 산출물     | 경로                             | 무엇                                     |
+| ---------- | -------------------------------- | ---------------------------------------- |
+| summary    | `cache/summary.<env>.json`       | 화면 뼈대. **유일한 wire 아티팩트**      |
+| feeds      | `cache/feeds.<env>.json`         | **억제 전 전량**. raw 로 서빙되지 않는다 |
+| 리포트     | `logs/summary.report.<env>.json` | 제외 문서·prune 진단. 관측 채널          |
+| 리포트(문) | `logs/summary.report.<env>.txt`  | 위와 같은 내용의 사람용                  |
 
-- 봉투는 `schemaVersion: 3` 을 싣는다. 세 발행물과 세 wire 페이로드가 같은 값을 쓴다.
-- **쓰기 순서는 계약이다: summary → feeds → 리포트.** 도중에 죽으면 (신 summary, 구 feeds) 조합만
-  생기고, 3중 신선도 판정이 그 조합을 stale 로 접어 다음 호출이 다시 만든다.
-- 신선도는 `sourceCommit`(git HEAD) 과 `inputsFingerprint`(sha256 앞 16자) **2축**이다. **셋이 전부**
-  같은 지문일 때만 재생성을 건너뛴다 — 하나라도 없거나 어긋나면 다시 만든다("모르면 다시 만든다").
-- 독자는 발행물을 **전면 불신**한다. 부재·파싱 실패·표지 불일치·버전 불일치·지문 불일치를 **모두**
-  stale 로 접는다. 옛 계약과 새 계약을 동시에 지원하지 않는다.
+- 봉투는 `schemaVersion: 1` 을 싣는다. summary·feeds 아티팩트와 wire 페이로드가 같은 값을 쓴다.
+- **쓰기 순서는 계약이다: summary → feeds.** 도중에 죽으면 (신 summary, 구 feeds) 조합이 생길 수 있다.
+  신선도 판정은 없고, 호출자는 빌드를 명시적으로 다시 실행해야 한다.
+- 생성기는 재생성 건너뛰기를 하지 않는다. 같은 입력을 주면 같은 payload 를 계산하고, 쓰기 여부는 호출자가
+  명시한 출력 경로가 결정한다.
+- 독자는 발행물을 **전면 불신**한다. 부재·파싱 실패·버전 불일치·env 불일치를 실패로 보고, 옛 계약과 새
+  계약을 동시에 지원하지 않는다.
 
 스키마 7종(`scripts/schema/`):
 
@@ -189,12 +189,12 @@ wiki/company/삼성전자.md
 
 ### summary
 
-화면 뼈대. 사이드바 트리·태그·검색 색인·필터에 필요한 것만 담고 **본문은 담지 않는다**. 기본 실행은 stdout 에 summary payload 한 줄을 유지하면서 [산출물](#산출물) 3종을 **원자 발행**한다(tmp 파일 + rename).
+화면 뼈대. 사이드바 트리·태그·검색 색인·필터에 필요한 것만 담고 **본문은 담지 않는다**. 기본 실행은 아무 파일도 쓰지 않고 stdout 에 summary payload 한 줄만 낸다.
 
 ```bash
 node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
                          [--out <file>] [--stdout] [--status]
-                         [--force] [--max-excluded <n>]
+                         [--max-excluded <n>]
 ```
 
 | 플래그             | 의미                                                             |
@@ -202,10 +202,9 @@ node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
 | `--out`            | summary 아티팩트 경로 override. 기본은 [산출물](#산출물) 표      |
 | `--stdout`         | 부작용 없는 조회. 캐시·리포트를 쓰지 않고 stdout payload 만 낸다 |
 | `--status`         | payload 대신 생성 상태 JSON 을 stdout 으로 낸다                  |
-| `--force`          | 지문이 같아도 재생성한다                                         |
 | `--max-excluded n` | 제외 문서가 n건을 넘으면 exit 3. 산출물은 이미 발행된다          |
 
-캐시 봉투에는 `inputsFingerprint`(16자리 sha256)가 들어간다. 입력은 생성기 소스, 스키마, vault 문서 내용, env, source commit 이며, 지문이 같으면 다음 실행은 캐시 파일을 그대로 stdout 에 echo 한다.
+기본 실행은 캐시 봉투를 만들지 않는다. 산출물 발행은 명시 출력 경로를 받은 빌드 경로가 담당한다.
 
 ### feeds
 
@@ -252,7 +251,7 @@ node scripts/wiki.mjs --env dev --path 'company/삼성전자'
 
 ### validate
 
-vault 무결성 검사 전용. **JSON 을 생산하지 않는다.** 페이로드를 메모리에서만 조립해 게이트를 전량 돌리고, 통과하면 exit 0, 위반하면 사유를 출력하고 exit 1 로 죽는다.
+vault 무결성 검사와 리포트 출력의 소유자. 페이로드를 메모리에서 조립해 게이트를 전량 돌리고, 통과하면 exit 0, 위반하면 사유를 출력하고 exit 1 로 죽는다.
 
 ```bash
 node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
@@ -317,7 +316,7 @@ node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
 
 제외된 문서는 **리포트에 사유와 함께 남고** stderr 에도 요약이 나간다 — 조용히 사라지지 않는다.
 
-**여전히 자동으로 도는 것은 없다.** 이 리포에는 pre-commit 훅도 CI 도 없다. 생성기는 요청이 왔을 때(또는 `pnpm run summary` 로) 돌고, `validate` 는 누군가 직접 실행해야 돈다. 다만 **엔드포인트가 무검증 데이터를 내보내는 경로는 이제 없다** — 아티팩트가 없거나 지문이 어긋나면 다시 만들고, 그것도 실패하면 옛 세대를 200 으로 흘리지 않고 시끄럽게 죽는다.
+**여전히 자동으로 도는 것은 없다.** 이 리포에는 pre-commit 훅도 CI 도 없다. 생성기와 `validate` 는 누군가 직접 실행해야 돈다. 다만 **엔드포인트가 무검증 데이터를 내보내는 경로는 이제 없다** — 필요한 아티팩트가 없거나 남은 봉투 검증을 통과하지 못하면 다시 만들지 않고, 옛 세대를 200 으로 흘리지 않은 채 시끄럽게 죽는다.
 
 ### 종료 코드
 
@@ -366,11 +365,9 @@ summary 와 feeds 는 같은 `sourceCommit`(= 그 응답을 만든 커밋의 40�
 
 ```jsonc
 {
-  "producer": "sas-wiki/summary",
-  "schemaVersion": 3,
+  "schemaVersion": 1,
   "env": "dev",
   "generatedAt": "2026-07-26T03:35:20.000Z",
-  "inputsFingerprint": "b6afe39057a3ee47",
   "sourceCommit": "5a624e1b9c2d0f3e8a71c4b5d6e2f9a0c8b3d417",
   "docs": [/* … */],
   "tree": [/* … */],
@@ -378,26 +375,24 @@ summary 와 feeds 는 같은 `sourceCommit`(= 그 응답을 만든 커밋의 40�
 }
 ```
 
-| 키              | 타입                 | 설명                                                                                                                                                                                           |
-| --------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `producer`      | `string`             | 발행자 표지. 독자는 이 값이 다르면 남의 산출물로 보고 불신한다 — [산출물](#산출물) 표가 정본                                                                                                   |
-| `schemaVersion` | `number`             | **내부 wire 계약 버전** — 릴리즈 버전이 아니다. 아래 「계약 버전의 의미」 참조                                                                                                                 |
-| `env`           | `string`             | `dev` \| `prod`. 경로·지문과 **독립으로** 대조하기 위해 파일 안에도 싣는다                                                                                                                     |
-| `inputsFingerprint` | `string`         | 생성기 소스·문서 내용·env·sourceCommit 을 해시한 16자리. 신선도 2축 중 하나                                                                                                                    |
-| `generatedAt`   | `string`             | **실행 시각이 아니다.** 가장 최근 문서 `updated`/피드 `ts` 에서 유도한 결정적 값(`SOURCE_DATE_EPOCH` 가 있으면 그것). vault 가 그대로면 몇 번을 돌려도 같은 값이라 신선도·캐시 키로 쓸 수 없다 |
-| `sourceCommit`  | `string`             | 이 응답을 만든 커밋의 40자 해시. **세대 식별자**                                                                                                                                               |
-| `docs`          | `SummaryDoc[]`       | 문서 목록. status 로 모양이 갈린다                                                                                                                                                             |
-| `tree`          | `TreeNode[]`         | 폴더 트리 (재귀)                                                                                                                                                                               |
-| `tags`          | `Record<태그, id[]>` | 태그 → 문서 id 역색인. active 문서만                                                                                                                                                           |
+| 키              | 타입                 | 설명                                                                                                                 |
+| --------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `schemaVersion` | `number`             | **내부 wire 계약 버전** — 릴리즈 버전이 아니다. 아래 「계약 버전의 의미」 참조                                       |
+| `env`           | `string`             | `dev` \| `prod`. 경로와 **독립으로** 대조하기 위해 파일 안에도 싣는다                                                |
+| `generatedAt`   | `string`             | **실행 시각이 아니다.** 가장 최근 문서 `updated`/피드 `ts` 에서 유도한 결정적 값(`SOURCE_DATE_EPOCH` 가 있으면 그것) |
+| `sourceCommit`  | `string`             | 이 응답을 만든 커밋의 40자 해시. **세대 식별자**                                                                     |
+| `docs`          | `SummaryDoc[]`       | 문서 목록. status 로 모양이 갈린다                                                                                   |
+| `tree`          | `TreeNode[]`         | 폴더 트리 (재귀)                                                                                                     |
+| `tags`          | `Record<태그, id[]>` | 태그 → 문서 id 역색인. active 문서만                                                                                 |
 
 #### 계약 버전의 의미
 
 `schemaVersion` 은 **이 리포 안에서만 쓰는 wire 계약 번호**다. 패키지 릴리즈 버전이 아니고, semver 도 아니다.
 
-- **읽는 법은 등가 비교 하나뿐이다.** 소비자는 `===` 로 같은지만 본다 — 크다/작다를 따지는 코드는 어디에도 없고, "이 버전 이상이면 호환" 같은 규칙도 없다. 값이 다르면 **해석하지 않고 통째로 stale 로 접는다**(옛 계약과 새 계약을 동시에 지원하지 않는다).
-- **그래서 minor/patch 로 쪼개지 않는다.** 응답은 strict 로 검증하므로(`additionalProperties: false`) 필드를 **하나 추가하는 것도 소비자에겐 파괴적**이다. "안전한 추가" 라는 등급이 성립하지 않으니 나눌 축이 없다. 실제로 `inputsFingerprint` 를 추가했을 때 번호를 올렸다.
-- **지금 값이 3인 것은 출시를 세 번 했다는 뜻이 아니다.** 아직 외부 소비자가 0 명이고, 개발 중 계약이 세 번 바뀌었다는 뜻일 뿐이다. **첫 소비자가 붙는 시점에 1 로 리셋**한다(그 전의 번호는 아무도 본 적이 없으므로 이력으로서 의미가 없다).
-- 캐시 신선도 판정은 이 번호가 아니라 `sourceCommit` + `inputsFingerprint` 2 축이 한다. 번호는 **계약 모양이 바뀌었음을 사람이 명시하는 표지**다.
+- **읽는 법은 등가 비교 하나뿐이다.** 소비자는 `===` 로 같은지만 본다 — 크다/작다를 따지는 코드는 어디에도 없고, "이 버전 이상이면 호환" 같은 규칙도 없다. 값이 다르면 **해석하지 않고 통째로 실패로 접는다**(옛 계약과 새 계약을 동시에 지원하지 않는다).
+- **그래서 minor/patch 로 쪼개지 않는다.** 응답은 strict 로 검증하므로(`additionalProperties: false`) 필드를 **하나 추가하는 것도 소비자에겐 파괴적**이다. "안전한 추가" 라는 등급이 성립하지 않으니 나눌 축이 없다.
+- **지금 값은 1이다.** 내부 R&D 단계의 계약 재구성이고, gitlink 배포는 업데이트를 강제할 수 있으므로 이전 내부 번호를 이어받지 않는다.
+- 캐시 신선도 판정은 없다. 번호는 **계약 모양이 바뀌었음을 사람이 명시하는 표지**다.
 
 **`docs[]` — status 로 갈리는 유니온.**
 
@@ -464,10 +459,9 @@ active 문서는 10키다.
 
 ```jsonc
 {
-  "schemaVersion": 3,
+  "schemaVersion": 1,
   "generatedAt": "2026-07-26T03:35:20.000Z",
   "sourceCommit": "5a624e1b…",
-  "inputsFingerprint": "b6afe39057a3ee47",
   "items": [/* … */],
   "nextCursor": null,
 }
@@ -616,10 +610,10 @@ git commit -m "chore: CXL 문서 추가"
 
 > **앵커가 나오는 자리는 둘뿐이고, 둘 다 문서 안쪽을 가리킨다.**
 >
-> | 어디                                        | 무엇                                                        | 만드는 곳                       |
-> | ------------------------------------------- | ----------------------------------------------------------- | ------------------------------- |
-> | [wiki 반환값](#wiki-반환값) `headings[]`    | 문서 heading 의 URL 슬러그 — 목차 항목이 가리키는 목적지    | `slugifyHeading` (md → html)    |
-> | 위키링크 `[[대상#앵커]]`                    | 다른 문서의 특정 heading 으로 가는 링크                     | 같은 슬러그 함수 (lockstep)     |
+> | 어디                                     | 무엇                                                     | 만드는 곳                    |
+> | ---------------------------------------- | -------------------------------------------------------- | ---------------------------- |
+> | [wiki 반환값](#wiki-반환값) `headings[]` | 문서 heading 의 URL 슬러그 — 목차 항목이 가리키는 목적지 | `slugifyHeading` (md → html) |
+> | 위키링크 `[[대상#앵커]]`                 | 다른 문서의 특정 heading 으로 가는 링크                  | 같은 슬러그 함수 (lockstep)  |
 >
 > 렌더된 본문의 `<h2 id="…">` 와 `headings[].anchor` 는 **같은 함수로 만들어져** 항상 일치한다. 반면 **피드**(`feeds` 의 `docs[]`)는 문서만 가리키고 위치는 가리키지 않는다 — 거기엔 앵커가 없다.
 
@@ -646,15 +640,15 @@ Keywords: HBM, 양산
 Importance: breaking
 ```
 
-| 커밋의 무엇               | 피드의 무엇                          |
-| ------------------------- | ------------------------------------ |
-| 커밋 해시 앞 12자리       | `id`                                 |
-| author date               | `ts`                                 |
-| `feed: ` 뒤 제목          | `title`                              |
-| 본문(트레일러 제외)       | `body`                               |
-| `Keywords:` 트레일러      | `keywords[]`                         |
-| `Importance:` 트레일러    | `importance`                         |
-| diff 가 건드린 vault 문서 | `docs[].id`                          |
+| 커밋의 무엇               | 피드의 무엇  |
+| ------------------------- | ------------ |
+| 커밋 해시 앞 12자리       | `id`         |
+| author date               | `ts`         |
+| `feed: ` 뒤 제목          | `title`      |
+| 본문(트레일러 제외)       | `body`       |
+| `Keywords:` 트레일러      | `keywords[]` |
+| `Importance:` 트레일러    | `importance` |
+| diff 가 건드린 vault 문서 | `docs[].id`  |
 
 ### 트레일러 규칙
 

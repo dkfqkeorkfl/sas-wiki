@@ -19,7 +19,7 @@
 // ★ 관측 층 분리(tdd §7.5): 이 파일은 **구조만** 문다. "정적으로 안 물었다" 만 단언하면 **아예
 //   재생성을 못 하는 구현**도 통과하는데, 그 기능 축은 아래 넷이 이미 문다 — 그것이 IG 의
 //   **짝 가드**다(tdd §3.2 · §10.3-4 ②). REFACTOR 때 "IG 와 무관" 이라며 지우지 말 것:
-//     · `summary.generator.test.mjs`  GN3(클린 vault → regenerated true) · FR1(2회차 hit)
+//     · `summary.generator.test.mjs`  GN3(클린 vault → status/excludedCount 실재) · RG1(2회차도 갱신)
 //     · `summary.cli-exit.test.mjs`   XC1(exit 0 · 아티팩트 존재) · XC7(exit 3 이어도 산출물 존재)
 //   (초판 헤더는 FR1 을 `feeds.verify.test.mjs` 로 적었으나 실제 위치는 `summary.generator.test.mjs`
 //    다 — 짝을 못 찾으면 지정이 없는 것과 같으므로 실측 위치로 정정한다.)

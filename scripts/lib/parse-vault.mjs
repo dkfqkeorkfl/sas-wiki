@@ -36,8 +36,8 @@ export function parseVault(vaultDir, env, schemaDir, { runGit: injectedRunGit } 
   // ★ P5 Task 8(D-H) — 이 읽기는 **관용적**이다(malformed 를 삼킨다). `wire.ignore` 는 read-path 소비자
   //   (엔드포인트·GA 계열 회귀)를 위한 참조 값일 뿐, fail-loud 게이트가 아니다 — 그 책임은 `validate.mjs`
   //   가 자신의(관용적이지 않은) 별도 로드로 진다(OQ-P5-6·SU8). 여기서 그대로 throw 하면 malformed
-  //   억제 목록 하나가 `summary --status`(생성기 · 검증을 거치지 않는 경로)까지 죽인다 — 검증도 하지
-  //   않는 경로가 검증기와 같은 엄격도를 가질 이유가 없다.
+  //   억제 목록 하나가 조회용 생성기 경로까지 죽인다 — 검증도 하지
+  //   않는 조회 경로가 검증기와 같은 엄격도를 가질 이유가 없다.
   // try 는 **로드 한 줄만** 감싼다. 계산까지 감싸면 hygiene·커밋 파싱 쪽 버그가 여기서 조용히
   //   삼켜지고, 이미 정상 로드된 `ignore` 까지 `[]` 로 되돌아간다(관용의 범위가 의도보다 넓어진다).
   let ignore = []

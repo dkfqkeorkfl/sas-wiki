@@ -9,9 +9,9 @@
 // 갱신되지 않았다. 실측(`node scripts/summary.mjs --env dev --stdout` · `node scripts/feeds.mjs
 // --env dev` · `node scripts/wiki.mjs --env dev --path "company/삼성전자"`):
 //   ① summary 예시 `schemaVersion: 1` → 실제 **3**            (SP2)
-//   ② summary 예시·표가 6키 → 실제 **9키**(`producer`·`env`·`inputsFingerprint` 누락)  (SP1·SP3)
+//   ② summary 예시·표가 6키 → 실제 7키(`env` 누락)  (SP1·SP3)
 //   ④ feeds 예시 `schemaVersion: 1` → 실제 **3**              (FP2)
-//   ⑤ feeds 예시에 `inputsFingerprint` 없음 (스키마 required) (FP1)
+//   ⑤ feeds 예시와 스키마 required 집합이 어긋난다 (FP1)
 //   ⑥⑦⑧ `docs[]` 의 `anchor`·`anchorText` — P2(D10)가 제거한 **죽은 필드**가 예시·표·산문에 잔존 (FP3·FP4·AN1)
 //   ⑨ 매핑표가 없는 필드 `docs[].anchor` 를 산출물로 적는다   (MP1)
 //   ⑧-b 그 산문이 **함께 제거된 불변식 6번**을 참조한다 — README 자신이 다른 절에서 _"6번이 없는
@@ -45,13 +45,13 @@
 //         → `### wiki 반환값` 바로 다음 줄부터 절 끝(`---`) 직전까지.
 //           **최소**: ① active 문서 예시 블록(= 살아 있는 `headings[].anchor` 가 있는 곳).
 // [2] **값·키를 고친다.** ①②④⑤: 두 예시의 `schemaVersion` 1 → 3, summary 예시·표에 `producer`·
-//     `env`·`inputsFingerprint` 3키 추가, feeds 예시에 `inputsFingerprint` 추가.
+//     `env` 추가, feeds 예시와 스키마 required 집합 일치.
 // [3] **죽은 앵커를 지운다.** ⑥⑦⑧⑨: feeds 예시 `docs[]` 를 `[{ "id": … }]` 로, `docs[]` 표에서
 //     `anchor`·`anchorText` 두 행 삭제, 그 아래 앵커 3문단(README:476·478·480) 삭제, 매핑표
 //     (README:627)의 `docs[].anchor, docs[].anchorText` 행 삭제. **`headings[].anchor` 는 건드리지 않는다.**
 // [4] **③ 거짓 서술은 사람이 고친다 — 이 파일은 결속하지 않는다.** README:378 _"계약 버전. 파괴적
-//     교체에만 +1 (필드 추가로는 안 올린다)"_ 은 **거짓**이다: P4 가 `inputsFingerprint` **필드를
-//     추가**하며 1→2 로 올렸다. 이 리포는 strict(`additionalProperties:false`) 검증이라 필드 추가도
+//     교체에만 +1 (필드 추가로는 안 올린다)"_ 은 **거짓**이다: 이 리포는
+//     strict(`additionalProperties:false`) 검증이라 필드 추가도
 //     소비자에겐 파괴적이다. 그런데 이 문장을 정규식으로 박제하면 다음 사람이 문장을 다듬는 순간
 //     **거짓양성**이 된다(규범 I — 산문은 결속하지 않는다). 그러니 결속 대신 여기 인수인계로 남긴다.
 //     GREEN 에서 문장을 사실로 고칠 것: 필드 추가도 strict 소비자에겐 파괴적이라 +1 대상이다.
@@ -64,8 +64,8 @@
 // 권위가 되고 폴백 경로는 죽는다.
 //
 // ── RED/green 현황 (작성 시점 실측 · `npx vitest run scripts/__tests__/docs-payload-shape.test.mjs`) ──
-//   🔴RED  SP0·FP0·WP0(마커 3종 부재) · SP1(missing producer,env,inputsFingerprint)
-//          SP2(문서 1 vs 소스 3) · SP3(표 3행 누락) · FP1(missing inputsFingerprint)
+//   🔴RED  SP0·FP0·WP0(마커 3종 부재) · SP1(missing env)
+//          SP2(문서 1 vs 소스 3) · SP3(표 1행 누락) · FP1(feeds required mismatch)
 //          FP2(문서 1 vs 소스 3) · FP3(docs[0] 유령 anchor,anchorText) · FP4(표 유령 2행)
 //          AN1(feeds 구간 anchor 6줄 · 전문 anchorText 4줄) · MP1(매핑표 유령 행)
 //          IV1(README:480 이 없는 불변식 6 참조)
@@ -303,8 +303,7 @@ describe('결속 — summary 반환값 (SP)', () => {
 
   it('SP1: 봉투 예시의 top-level 키 == `summary.schema.json` 계약 (양방향)', () => {
     // 🔴 왜 지금 red 인가: 예시는 6키(schemaVersion·generatedAt·sourceCommit·docs·tree·tags)인데
-    //   실제 출력·스키마는 **9키**다 — P4 발행 헤더(`producer`·`env`)와 P5 상관 토큰
-    //   (`inputsFingerprint`)이 통째로 빠졌다. 실측: `node scripts/summary.mjs --env dev --stdout`.
+    //   실제 출력·스키마는 **7키**다 — 발행 환경(`env`)이 빠졌다.
     const schema = readSchema('summary.schema.json')
     // 앵커: 스키마 쪽이 비어 있지 않다(빈 required 와의 `[] === []` 통과를 배제).
     // 🔴 v3 P1(§4.3 ① · KY5): 발행자 표지와 상관 토큰이 사라져 **9 → 7** 이 된다.
@@ -370,12 +369,16 @@ describe('결속 — feeds 반환값 (FP)', () => {
   })
 
   it('FP1: 봉투 예시의 top-level 키 == `feeds.schema.json` 계약 (양방향)', () => {
-    // 🔴 왜 지금 red 인가: 예시에 **`inputsFingerprint` 가 없다**. 스키마는 required 로 요구한다
-    //   (P5 D-G — 생산자가 자기 출력을 상관 토큰으로 스탬프한다). 실측 출력에도 실재한다.
+    // 🔴 왜 지금 red 인가: 예시와 스키마 required 집합이 같은 wire 계약으로 함께 움직여야 한다.
     // ★ `nextCursor` 는 optional 이라 **유령이 아니다** — `keyDiff` 가 required/properties 를 갈라
     //   보는 이유가 바로 이 키다(정당한 서술을 거짓양성으로 만들지 않는다).
     const schema = readSchema('feeds.schema.json')
-    expect(schema.required).toContain('inputsFingerprint')
+    expect([...schema.required].sort()).toEqual([
+      'generatedAt',
+      'items',
+      'schemaVersion',
+      'sourceCommit',
+    ])
     expect(Object.keys(schema.properties)).toContain('nextCursor')
 
     const scope = docScope('feeds-payload')

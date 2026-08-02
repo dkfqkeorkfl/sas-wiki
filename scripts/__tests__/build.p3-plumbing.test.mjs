@@ -4,7 +4,7 @@
 //
 // RED 사유:
 //   PL1 — `.gitignore` 에 `cache` 가 없다(현행 2줄: `node_modules`·`logs`).
-//   PL2 — `summary.schema.json` 은 strict + required 6키다. `inputsFingerprint` 가 아직 없다.
+//   PL2 — `summary.schema.json` 은 strict + required 6키다. `env` 가 아직 없다.
 //   PL3 — `scripts/lib/doc-gate.mjs` 와 `scripts/schema/report.schema.json` 이 **둘 다 부재**다.
 //   PL5 — 생성기가 없어 `--vault` 기준 경로 소유권을 아직 관측할 수 없다.
 //   PL4 — pin(현행도 통과). `cli-contract.test.mjs:246`(T3)이 같은 문자열을 정확 일치로 물고 있다.
@@ -83,11 +83,11 @@ describe('배관 — .gitignore (PL1 · 🔴RED)', () => {
 })
 
 describe('배관 — summary 봉투 스키마 (PL2 · 🔴RED)', () => {
-  it('PL2: `inputsFingerprint` 가 required 이고 pattern 이 16자리 hex 다', () => {
+  it('PL2: `env` 가 required 이고 domain 이 선언돼 있다', () => {
     const schema = readJson(path.join(SCHEMA_DIR, 'summary.schema.json'))
 
-    expect(schema.required).toContain('inputsFingerprint')
-    expect(schema.properties.inputsFingerprint.pattern).toBe('^[0-9a-f]{16}$')
+    expect(schema.required).toContain('env')
+    expect(schema.properties.env.enum).toEqual(['dev', 'prod'])
     // 앵커: 기존 6키를 밀어내지 않았다(strict 스키마라 누락은 산출물 전체를 죽인다).
     for (const key of ['schemaVersion', 'generatedAt', 'sourceCommit', 'docs', 'tree', 'tags']) {
       expect(schema.required).toContain(key)

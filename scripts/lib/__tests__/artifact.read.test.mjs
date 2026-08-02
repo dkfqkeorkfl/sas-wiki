@@ -6,7 +6,7 @@
 //   지연 import + 케이스별 되던지기 + **seam 존재 선단언**(규범 C10)으로, 부재가 collection error 로
 //   접혀 rtk 에 PASS 로 오보고되는 것을 막는다(tdd §7.3).
 //
-// ★ **이 절이 이 phase 에서 공허해지기 가장 쉽다**(tdd §2.3 규범 C). `producer` 스탬프·`env` 표지·
+// ★ **이 절이 이 phase 에서 공허해지기 가장 쉽다**(tdd §2.3 규범 C). `env` 표지·
 //   `schemaVersion` 검사는 **평소엔 항상 통과하는 방어층**이라, 정상 경로만 도는 테스트로는 그것이
 //   구현돼 있는지조차 알 수 없다. 그래서 각 층을 **커밋된 적대적 픽스처**로 개별 발동시키고,
 //   §6 CX2~CX6·CX9 가 각 층을 개별로 깨서 red 를 확인한다. **어느 층이 CX 에서 red 0 이면 그 층은 장식이다.**
@@ -16,7 +16,7 @@
 //   않는다** — 즉 안전은 쓰기 측이 아니라 **읽기 측 불신**에 걸려 있다. 나중에 누가 "최적화" 라며
 //   이 불신을 걷어내려 하면 이 파일이 그 방어 근거다(F-25).
 //
-// 규범 A: 픽스처의 `producer`·`schemaVersion`·`env`·지문 기대값은 전부 **리터럴**이다. 프로덕션
+// 규범 A: 픽스처의 `schemaVersion`·`env` 기대값은 전부 **리터럴**이다. 프로덕션
 //   상수에서 유도하면 상수와 픽스처가 함께 드리프트해 완전히 공허해진다. 그 대가는 **RD10** 이 갚는다
 //   (픽스처 ↔ 코드 상수 대조 — 픽스처를 장식이 아니게 만드는 유일한 고리).
 import { chmodSync, mkdtempSync, readFileSync } from 'node:fs'
@@ -66,13 +66,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 /**
  * 트립와이어(RD11) 전용 — 소스를 **읽기만** 한다.
  *
- * P5 에서 좌표가 옮겨졌다(의도 불변) — OQ-P5-1=A 로 `runSummaryGenerator`(신선도 판정 본체)가
+ * P5 에서 좌표가 옮겨졌다(의도 불변) — OQ-P5-1=A 로 `runSummaryGenerator`(생성기 본체)가
  * `scripts/summary.mjs` 에서 `scripts/lib/generator.mjs` 로 옮겨갔다. pin 의 의도("생성기가 아티팩트
  * 읽기를 손수 만들지 않고 단일 불신 함수를 쓴다")는 그대로다 — 관측 대상만 실제로 그 로직이 사는
  * 파일로 따라간다.
  *
  * 🔴 v3 P1(§4.10 「조용한 통과」 RD11 · 메인 세션 판정 5): 관측 대상이 **또 한 번** 옮겨간다.
- *   Task 5 가 `generator.mjs` 에서 skip 블록·`readFreshSet` 을 걷어내면 그 파일은 `readArtifact` 를
+ *   Task 5 가 `generator.mjs` 에서 skip 블록과 신선도 세트 독자를 걷어내면 그 파일은 `readArtifact` 를
  *   **아예 부르지 않게** 되어 짝 앵커(`toContain('readArtifact')`)가 red 가 되고, 그 앵커를 지우는
  *   순간 남은 두 부재 단언이 **영구 공허**가 된다(무엇에 대고 부재를 말하는지가 사라진다).
  *   그래서 명제를 바꾼다 — 「독자가 하나다」 → **「독자 *함수* 는 하나(`readArtifact`)이고
@@ -90,19 +90,13 @@ const SERVING_SOURCES = {
 //   통과한다 — 규범 A). RD10 이 이 드리프트를 실제로 잡는다: 픽스처
 //   (`scripts/__tests__/fixtures/artifact/*.json`)를 함께 갱신하는 것은 GREEN(C3)의 몫이고,
 //   `schema-version-next.json` 은 **항상 "다음 버전"** 이어야 하므로 2로 내린다.
-const PRODUCER = 'sas-wiki/summary'
 const SCHEMA_VERSION = 1
 const ENV = 'dev'
-const FINGERPRINT = 'b5f0c1d2e3a49876'
-/** `fingerprint-tampered.json` 의 값 — 유효본과 **마지막 한 글자**만 다르다(부분 비교 우회 배제). */
-const FINGERPRINT_TAMPERED = 'b5f0c1d2e3a49877'
 const DOC_ID = '0192a000-0000-7000-8000-0000000000aa'
 
 /** 정상 기대치 — 이 조합에서 `valid.json` 은 Fresh 여야 하고, 적대 픽스처는 각자 한 층씩 걸려야 한다. */
 const EXPECT_DEV = {
   env: ENV,
-  inputsFingerprint: FINGERPRINT,
-  producer: PRODUCER,
   schemaVersion: SCHEMA_VERSION,
 }
 
@@ -110,9 +104,7 @@ const EXPECT_DEV = {
 const MISSING = 'missing'
 const UNREADABLE = 'unreadable'
 const MALFORMED = 'malformed'
-const PRODUCER_MISMATCH = 'producer-mismatch'
 const SCHEMA_VERSION_MISMATCH = 'schema-version-mismatch'
-const FINGERPRINT_MISMATCH = 'fingerprint-mismatch'
 const ENV_MISMATCH = 'env-mismatch'
 
 const tmps = []
@@ -150,9 +142,7 @@ describe('readArtifact — 대조군 (RD0 · 🔴RED 미구현)', () => {
 
     expect(result.fresh).toBe(true)
     expect(result.payload.docs.map((doc) => doc.id)).toEqual([DOC_ID])
-    expect(result.payload.inputsFingerprint).toBe(FINGERPRINT)
-    // 봉투는 **검증자이지 필터가 아니다** — 읽은 것을 깎지 않는다(OQ-P4-4=A · `producer`·`env` 도 남는다).
-    expect(result.payload.producer).toBe(PRODUCER)
+    // 봉투는 **검증자이지 필터가 아니다** — 읽은 것을 깎지 않는다.
     expect(result.payload.env).toBe(ENV)
   })
 })
@@ -232,30 +222,7 @@ describe('readArtifact — 쓰레기·절단 (RD2 · 🔴RED 미구현)', () => 
   })
 })
 
-describe('readArtifact — 발행자 스탬프 (RD3·RD4 · 🔴RED 미구현)', () => {
-  it('RD3: `producer` 가 **위조**된 파일 → stale(`producer-mismatch`)', () => {
-    // 이 층이 없으면 그 경로의 **아무 JSON 이나** 아티팩트가 된다(D-D (a)).
-    expectSeamPresent()
-
-    const result = readFixture('producer-forged.json')
-
-    expect(result.fresh).toBe(false)
-    expect(result.reason).toBe(PRODUCER_MISMATCH)
-  })
-
-  it('RD4: `producer` 키가 **아예 없는** 파일 → 같은 사유로 stale', () => {
-    // 부재와 위조를 **둘 다** 문다. `!==` 비교만 하면 `undefined !== 'sas-wiki/summary'` 로 우연히
-    //   통과하지만, `payload.producer?.startsWith(...)` 류로 쓰면 부재가 조용히 통과한다.
-    expectSeamPresent()
-
-    const result = readFixture('producer-absent.json')
-
-    expect(result.fresh).toBe(false)
-    expect(result.reason).toBe(PRODUCER_MISMATCH)
-  })
-})
-
-describe('readArtifact — 버전·지문·env (RD5~RD7 · 🔴RED 미구현)', () => {
+describe('readArtifact — 버전·env (RD5·RD7)', () => {
   it('RD5: 미지 `schemaVersion` → stale(`schema-version-mismatch`) · **hard-fail 아님**', () => {
     // ★ 「호환 분기 금지」의 물질화(지배 원칙 3): 옛/새 계약을 동시에 지원하지 않고, 미지 버전은
     //   **stale → 재생성**으로 접는다(TypeScript `buildInfo.version !== version` 선례).
@@ -271,22 +238,8 @@ describe('readArtifact — 버전·지문·env (RD5~RD7 · 🔴RED 미구현)', 
     expect(result.reason).toBe(SCHEMA_VERSION_MISMATCH)
   })
 
-  it('RD6: 지문이 **한 글자** 다른 파일 → stale(`fingerprint-mismatch`)', () => {
-    // 전체 재작성이 아니라 1글자 변조다 — prefix 비교·부분 비교로 우회하는 구현을 배제한다.
-    expectSeamPresent()
-    // 앵커: 픽스처가 실제로 "한 글자만" 다르다(픽스처가 통째로 다르면 이 케이스의 의미가 사라진다).
-    expect(FINGERPRINT_TAMPERED).not.toBe(FINGERPRINT)
-    expect(FINGERPRINT_TAMPERED.slice(0, -1)).toBe(FINGERPRINT.slice(0, -1))
-
-    const result = readFixture('fingerprint-tampered.json')
-
-    expect(result.fresh).toBe(false)
-    expect(result.reason).toBe(FINGERPRINT_MISMATCH)
-  })
-
   it('RD7: 파일 안 `env` 가 기대와 다르다 → stale(`env-mismatch`)', () => {
-    // ★ D-G ③ — 지문(①)과 경로(②)를 **우회당해도** 잡히는 유일한 층이다. 이 파일은 producer·
-    //   schemaVersion·지문이 전부 맞고 **env 만** 다르다(층 분리).
+    // 이 파일은 schemaVersion 이 맞고 **env 만** 다르다(층 분리).
     expectSeamPresent()
 
     const result = readFixture('env-mismatch.json')
@@ -301,9 +254,7 @@ describe('readArtifact — 진단 채널 (RD9 · 🔴RED(flip) 7 → 5)', () => 
     // ★ 사유를 뭉개면 "왜 재생성됐는지" 를 영원히 모른다 — P3 F5(제외 사유의 관측 채널)와 같은 축이고,
     //   REFACTOR 때 `readArtifact` 를 평평한 early-return 사슬로 두라는 이유이기도 하다(§10.3-3).
     //
-    // ☞ RD3·RD4 는 **같은 사유가 계약**이므로(위조·부재 둘 다 같은 사유) 여기서 제외한다 —
-    //   tdd §3.4 의 "RD1~RD8 중복 0" 을 문자 그대로 읽으면 RD4 와 모순된다.
-    //   `unreadable` 은 **EISDIR**(RD8b)로 관측한다 — root 에서도 실행돼야 개수가 항상 같다.
+    // `unreadable` 은 **EISDIR**(RD8b)로 관측한다 — root 에서도 실행돼야 개수가 항상 같다.
     //
     // 🔴 v3 P1(§4.3 ① · plan Task 4): 판별층 두 개가 사라지면서 실패 모드가 **7 → 5** 로 줄고,
     //   입력도 함께 바뀐다 — 삭제되는 3픽스처 중 2개를 여기서 쓰고 있었다. 파일만 지우면
@@ -379,7 +330,7 @@ describe('readArtifact — 비객체 JSON (NB1~NB4 · 🔴RED 픽스처·승계 
 })
 
 describe('픽스처 ↔ 코드 상수 대조 (RD10 · 🔴RED 미구현)', () => {
-  it('RD10: 커밋 픽스처의 `schemaVersion`·`producer` 가 **코드가 발행하는 값**과 같다', () => {
+  it('RD10: 커밋 픽스처의 `schemaVersion` 이 **코드가 발행하는 값**과 같다', () => {
     // ★ plan CX 9 를 케이스로 승격한 자리 — **픽스처를 장식이 아니게 만드는 유일한 고리**다.
     //   규범 A 때문에 픽스처는 리터럴인데, 그러면 상수만 올리고 픽스처를 안 고쳐도 아무도 모른다.
     //   여기가 그때 red 가 되어 "리터럴 픽스처를 함께 갱신하라" 고 말한다(PR5 트립와이어와 동형).
@@ -388,7 +339,6 @@ describe('픽스처 ↔ 코드 상수 대조 (RD10 · 🔴RED 미구현)', () =>
     const published = buildSummary({
       docs: [],
       generatedAt: '2026-07-27T00:00:00.000Z',
-      inputsFingerprint: FINGERPRINT,
       sourceCommit: '9a1b2c3d4e5f60718293a4b5c6d7e8f901234567',
       tags: {},
       tree: [],
@@ -396,10 +346,8 @@ describe('픽스처 ↔ 코드 상수 대조 (RD10 · 🔴RED 미구현)', () =>
     const fixture = JSON.parse(readArtifactFixtureText('valid.json'))
 
     expect(fixture.schemaVersion).toBe(published.schemaVersion)
-    expect(fixture.producer).toBe(loaded.ARTIFACT_PRODUCER)
     // 앵커: 대조가 **리터럴 기대치와도** 맞는다(양쪽이 함께 드리프트해 서로만 맞는 것을 배제).
     expect(fixture.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(fixture.producer).toBe(PRODUCER)
   })
 })
 

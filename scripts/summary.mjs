@@ -39,13 +39,9 @@ export async function main(argv = process.argv.slice(2)) {
       console.error(
         `[wiki] summary computed status=${result.status} excluded=${result.excludedCount} (--stdout: 아티팩트·리포트 미기록)`,
       )
-    } else if (result.regenerated) {
-      console.error(
-        `[wiki] summary regenerated status=${result.status} excluded=${result.excludedCount} artifact=${result.artifactPath}`,
-      )
     } else {
       console.error(
-        `[wiki] summary artifact hit excluded=${result.excludedCount} artifact=${result.artifactPath}`,
+        `[wiki] summary generated status=${result.status} excluded=${result.excludedCount} artifact=${result.artifactPath}`,
       )
     }
     if (result.report.error) console.error(`[wiki] report error: ${result.report.error}`)
@@ -76,10 +72,6 @@ function parseCliArgs(argv) {
     }
     if (arg === '--status') {
       options.status = true
-      continue
-    }
-    if (arg === '--force') {
-      options.force = true
       continue
     }
     if (name === '--vault') {
@@ -122,8 +114,6 @@ function statusPayload(result, env) {
     artifactPath: result.artifactPath,
     env,
     excludedCount: result.excludedCount,
-    inputsFingerprint: result.inputsFingerprint,
-    regenerated: result.regenerated,
     reportPath: result.report.jsonPath,
     status: result.status,
   }

@@ -1,27 +1,23 @@
 // @vitest-environment node
 //
-// P5 · Task 2·5 — 발행 아티팩트 **3종화**와 3중 신선도 (D-C·D-D·D-G) — tdd §3.2 (FA5~FA12)
+// P5 · Task 2·5 — 발행 아티팩트와 항상 생성 계약 (D-C·D-D·D-G) — tdd §3.2 (FA5~FA12)
 //
-// 무엇이 바뀌는가: 재생성 1회가 **세 파일**을 낸다 — `cache/summary.<env>.json` ·
-//   `cache/feeds.<env>.json`(내부 · 억제 **전** 전량) · `logs/summary.report.<env>.{json,txt}`.
-//   셋은 같은 `parsed` 에서 co-derive 되고 같은 지문을 이고, 신선도 스킵은 **셋 다** 같은 지문일
-//   때만 일어난다. 쓰기 순서(summary → feeds → 리포트)는 **계약**이다.
+// 무엇이 바뀌는가: 생성 1회가 `cache/summary.<env>.json` · `cache/feeds.<env>.json`(내부 · 억제
+//   **전** 전량) · `logs/summary.report.<env>.{json,txt}` 를 낸다. 쓰기 순서(summary → feeds →
+//   리포트)는 **계약**이다.
 //
 // RED 사유(전부 **미구현**):
 //   · 공통 — `scripts/lib/generator.mjs` 가 없다(**OQ-P5-1 = A** 확정: `runSummaryGenerator` 를 CLI
 //     밖으로 옮기고 **재export 는 두지 않는다**). 이 파일은 새 거처를 seam 으로 삼는다 — 옛 거처를
 //     물면 GREEN 이 끝나도 이 파일만 옛 결합을 살려두게 된다.
-//   · FA5·FA7·FA11·FA12 — feeds 아티팩트가 발행되지 않는다.
+//   · FA5·FA11·FA12 — feeds 아티팩트가 발행되지 않는다.
 //   · FA6 — 쓰기 순서 계약 자체가 없다(**OQ-P5-5 = throw(exit 1)** 확정 — 산출물 실패다).
-//   · FA8 — 리포트에 발행 봉투가 없다(**OQ-P5-3 = a**: top-level `env` 신설 + `inputs` 제거 ·
-//     **OQ-P5-4 = a**: 공용 `SCHEMA_VERSION`). 오늘은 `inputs{env}` 중첩 + 자체 리터럴 1 이다.
-//   · FA9 — 리포트 경로가 env 로 안 갈린다(F-29).
 //   · FA10 — `SCHEMA_VERSION` 이 2 이고 리포트만 1 이다.
 //
 // 관측 층(tdd §7.5): 생성기 **반환 객체**와 **발행된 파일**만 본다. exit code·stdout 은
 //   `summary.suppression-independence.test.mjs`(SU8)와 기존 `summary.cli-exit.test.mjs` 가 문다.
 //
-// 규범 A: 경로 조각·producer·버전·억제 엔트리는 **리터럴**이다. 정확 경로 형태의 고정은 **PL9**
+// 규범 A: 경로 조각·버전·억제 엔트리는 **리터럴**이다. 정확 경로 형태의 고정은 **PL9**
 //   한 곳이 맡고, 여기서는 그 경로를 좌표로 쓴다(둘이 같은 것을 두 번 물지 않는다).
 // 규범 B: 부재·불변 단언 앞에 앵커를 둔다 — 실행 전 파일이 없었다 · 막지 않으면 둘 다 갱신된다 ·
 //   위조 전에는 스킵했다 · 값이 epoch 기본값이 아니다.
@@ -47,10 +43,6 @@ const feedsFile = (vault, env) => path.join(vault, 'cache', `feeds.${env}.json`)
 const reportFile = (vault, env) => path.join(vault, 'logs', `summary.report.${env}.json`)
 const reportTextFile = (vault, env) => path.join(vault, 'logs', `summary.report.${env}.txt`)
 
-/** 발행 표지·버전 — 리터럴이다. */
-const SUMMARY_PRODUCER = 'sas-wiki/summary'
-const FEEDS_PRODUCER = 'sas-wiki/feeds'
-const REPORT_PRODUCER = 'sas-wiki/report'
 /** 🔴 v3 P1 · D29(§4.3 ②) — 계약 번호 리셋. 리터럴 복제는 **복제로 유지**한다(규범 A). */
 const SCHEMA_VERSION = 1
 
@@ -76,7 +68,9 @@ async function generate(options) {
   if (typeof generatorModule.runSummaryGenerator !== 'function') {
     throw new Error('[RED] scripts/lib/generator.mjs 에 runSummaryGenerator export 가 아직 없다')
   }
-  return await generatorModule.runSummaryGenerator(options)
+  const env = options.env ?? 'prod'
+  const artifactPath = options.artifactPath ?? summaryFile(options.vault, env)
+  return await generatorModule.runSummaryGenerator({ ...options, artifactPath, env })
 }
 
 /** active 문서 2건 + 그중 하나를 가리키는 `feed:` 1건. feedId(12hex)를 함께 돌려준다. */
@@ -92,7 +86,7 @@ function seedVault() {
   return { feedId: feedSha.slice(0, 12), vault }
 }
 
-/** 지문을 움직이는 **미커밋 저장**(문서 변경). HEAD 는 그대로다. */
+/** 문서 변경을 만든다. */
 function touchDoc(vault, marker) {
   writeDoc(vault, REL_B, { body: `## 정의\n\n${marker}\n`, id: ID_B, title: '온디바이스 AI' })
 }
@@ -100,10 +94,10 @@ function touchDoc(vault, marker) {
 /**
  * 세대를 **실제로 굴린다** — 문서를 고치고 **커밋한다**. 새 HEAD 를 돌려준다.
  *
- * 🔴 v3 P1(§4.10 「재작성」 · FA6): 옛 관측 축(`inputsFingerprint`)은 **미커밋 저장만으로도** 움직였다.
- *   그 축이 사라지면 남는 결정적 세대 좌표는 `sourceCommit`(= HEAD)뿐이고 **HEAD 는 커밋 없이는
- *   움직이지 않는다**. 게다가 feeds 아티팩트는 문서 본문에 의존하지 않아(items = feed 커밋) 미커밋
- *   저장으로는 **바이트도 안 바뀐다** — 즉 "둘 다 새 세대로 갔다" 를 관측할 수단이 통째로 없어진다.
+ * 🔴 v3 P1(§4.10 「재작성」 · FA6): 결정적 세대 좌표는 `sourceCommit`(= HEAD)뿐이고 **HEAD 는
+ *   커밋 없이는 움직이지 않는다**. 게다가 feeds 아티팩트는 문서 본문에 의존하지 않아(items = feed
+ *   커밋) 미커밋 저장으로는 **바이트도 안 바뀐다** — 즉 "둘 다 새 세대로 갔다" 를 관측할 수단이
+ *   통째로 없어진다.
  *   미커밋 저장의 라이브 반영은 D43 이 명시 수용한 손실이므로(§4.10 「승계처 없음」 3형제) 세대를
  *   커밋으로 굴리는 것이 착륙 후 계약과 같은 방향이다.
  */
@@ -126,8 +120,7 @@ describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds �
     const result = await generate({ env: 'dev', vault })
 
     // 🔴 v3 P1(§4.1 「죽는 앵커」 · 규범 L 상 앵커 교체는 flip = RED 커밋 소관): 예전에는
-    //   `expect(result.regenerated).toBe(true)` 였다. Task 5 가 `regenerated` 필드를 없애면 그 줄은
-    //   `expect(undefined).toBe(true)` 로 red 가 되고 **자연스러운 수리가 그 줄 삭제**다 — 그러면
+    //   상태 필드로 "실제로 썼다" 를 보았다. Task 5 가 그 필드를 없애면 자연스러운 수리가 줄 삭제다 — 그러면
     //   "1회차가 실제로 일을 했다" 는 앵커가 통째로 사라져 아래 세대 단언이 공허해진다.
     //   SG4 형태로 승계한다: **세 파일이 실제로 났고 payload 가 비어 있지 않다**(필드가 아니라
     //   산출물로 재생성을 관측한다 — 착륙 후에도 성립한다).
@@ -137,8 +130,8 @@ describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds �
     expect(result.payload.docs.length).toBeGreaterThan(0)
 
     // 🔴 v3 P1(§4.10 「조용한 통과」 최상단 · §4.1 「가장 위험한 변이」의 이 phase 대표 실례):
-    //   상관 축을 `inputsFingerprint` → **`sourceCommit`** 으로 교체한다. 옛 축으로 두면 착륙 후
-    //   값 3개가 전부 `undefined` 가 되어 `new Set([undefined, undefined, undefined]).size === 1` 도
+    //   상관 축을 **`sourceCommit`** 으로 고정한다. 없어진 축으로 두면 착륙 후 값 3개가 전부
+    //   `undefined` 가 되어 `new Set([undefined, undefined, undefined]).size === 1` 도
     //   `undefined === undefined` 도 **둘 다 참**이다 — **red 조차 뜨지 않고 세대 정합 계약이
     //   소리 없이 죽는다.** 축만 바꾸는 것으로는 부족하다(아래 값 존재 앵커가 짝이다).
     const generations = [
@@ -164,7 +157,7 @@ describe('쓰기 순서 계약 — summary 먼저, feeds 나중 (FA6 · 🔴RED 
     // ★ mtime·벽시계를 쓰지 않는 순서 관측이다(규범 E). 순서가 반대였다면 아래 ②가 "구 세대" 로
     //   관측된다 — 즉 이 단언 하나가 순서를 양방향으로 못박는다.
     //
-    // 🔴 v3 P1(§4.10 「재작성」 · 메인 세션 판정 4): 관측 축이 `inputsFingerprint` 였고 그 축은
+    // 🔴 v3 P1(§4.10 「재작성」 · 메인 세션 판정 4): 관측 축이 옛 상관 토큰이었고 그 축은
     //   착륙 후 사라진다. **그러나 계약은 살아 있다** — 쓰기 순서(summary → feeds)는 `publishSet`
     //   (`generator.mjs:213-219`)이 **유지하는 현행 계약**이라 승계처 없는 손실이 아니다. 그래서
     //   케이스를 지우지 않고 축만 **`sourceCommit`** 으로 옮긴다(§4.10 이 지정한 셋 중 결정적인 것).
@@ -206,74 +199,6 @@ describe('쓰기 순서 계약 — summary 먼저, feeds 나중 (FA6 · 🔴RED 
     expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
     expect(generationOf(feedsFile)).toBe(blockedHead)
     expect(generationOf(feedsFile)).toBe(generationOf(summaryFile))
-  })
-})
-
-describe('3중 신선도 — 셋 다 같은 지문일 때만 스킵 (FA7 · 🔴RED 조건이 2중)', () => {
-  // **arm 을 3개 다 둔다** — 하나만 두면 "지운 그 파일만 보는" 구현이 통과한다.
-  for (const [arm, locate] of [
-    ['summary', summaryFile],
-    ['feeds', feedsFile],
-    ['report', reportFile],
-  ]) {
-    it(`FA7-${arm}: ${arm} 산출물을 지우면 재생성한다`, async () => {
-      const { vault } = seedVault()
-      await generate({ env: 'dev', vault })
-
-      // 앵커: 셋 다 있으면 **스킵**한다(항상 재생성하는 생성기에서는 이 케이스가 무의미하다).
-      const skipped = await generate({ env: 'dev', vault })
-      expect(skipped.regenerated).toBe(false)
-
-      rmSync(locate(vault, 'dev'), { force: true })
-
-      expect((await generate({ env: 'dev', vault })).regenerated).toBe(true)
-    })
-  }
-})
-
-describe('리포트도 발행물이다 — readArtifact 를 탄다 (FA8 · 🔴RED 봉투 부재)', () => {
-  it('FA8: 리포트에 `producer`·top-level `env`·`schemaVersion`·지문이 있고 위조하면 재생성한다', async () => {
-    // F-27. "실패를 stale 로 접는" 규율이 세 곳에서 각자 살지 않는다 — 독자는 하나다.
-    const { vault } = seedVault()
-    const first = await generate({ env: 'dev', vault })
-
-    const report = readJson(reportFile(vault, 'dev'))
-    expect(report.producer).toBe(REPORT_PRODUCER)
-    expect(report.env).toBe('dev') // OQ-P5-3 = a — `inputs{env}` 중첩이 아니라 top-level
-    expect(report).not.toHaveProperty('inputs') // 「레거시는 남기지 않는다」
-    expect(report.schemaVersion).toBe(SCHEMA_VERSION) // OQ-P5-4 = a — 공용 상수
-    expect(report.inputsFingerprint).toBe(first.inputsFingerprint)
-
-    // 앵커: 위조 **전에는** 스킵했다.
-    expect((await generate({ env: 'dev', vault })).regenerated).toBe(false)
-
-    writeFileSync(
-      reportFile(vault, 'dev'),
-      JSON.stringify({ ...report, producer: SUMMARY_PRODUCER }),
-      'utf8',
-    )
-
-    expect((await generate({ env: 'dev', vault })).regenerated).toBe(true)
-  })
-})
-
-describe('리포트 경로 env 분리 (FA9 · 🔴RED 단일 슬롯)', () => {
-  it('FA9: dev·prod 리포트가 **공존**하고 prod 실행이 dev 리포트를 건드리지 않는다', async () => {
-    // F-29. 오늘은 `logs/summary.report.json` 한 슬롯이라 dev·prod 교대 실행이 서로를 무효화한다.
-    const { vault } = seedVault()
-
-    await generate({ env: 'dev', vault })
-    const devSnapshot = readFileSync(reportFile(vault, 'dev'), 'utf8')
-
-    await generate({ env: 'prod', vault })
-
-    // 앵커: 둘 다 **실제로 존재한다**(둘 다 없어서 통과하는 것을 배제 — P4 AR3 과 동형).
-    expect(existsSync(reportFile(vault, 'dev'))).toBe(true)
-    expect(existsSync(reportFile(vault, 'prod'))).toBe(true)
-    expect(existsSync(reportTextFile(vault, 'dev'))).toBe(true)
-    expect(existsSync(reportTextFile(vault, 'prod'))).toBe(true)
-    expect(readFileSync(reportFile(vault, 'dev'), 'utf8')).toBe(devSnapshot)
-    expect(readJson(reportFile(vault, 'prod')).env).toBe('prod')
   })
 })
 
@@ -339,7 +264,5 @@ describe('co-derivation — 두 아티팩트가 같은 파싱에서 나온다 (F
 
     expect(feedsArtifact.generatedAt).toBe(summary.generatedAt)
     expect(feedsArtifact.sourceCommit).toBe(summary.sourceCommit)
-    expect(feedsArtifact.producer).toBe(FEEDS_PRODUCER)
-    expect(summary.producer).toBe(SUMMARY_PRODUCER)
   })
 })

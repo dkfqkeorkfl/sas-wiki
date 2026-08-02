@@ -19,10 +19,8 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
 /**
  * vault 루트의 억제 목록 파일명 — **이 리터럴의 유일한 거처**다.
  *
- * 억제는 `feeds` 출력을 바꾸는 입력이므로 `fingerprint.mjs` 도 이 파일을 읽어야 한다(D-C). 그런데
- * 파일명을 그쪽에 **다시 적으면** 이름이 바뀔 때 한쪽만 따라가고, 지문은 **조용히** 억제를 못 보게
- * 된다 — 저장해도 반영되지 않는 상태로 되돌아가는데 아무 테스트도 죽지 않는다. `WIKI_PREFIX` 를
- * `head-state.mjs` 가 소유하는 것과 같은 이유다(`fingerprint.mjs` 의 그 자리 경고 주석 참조).
+ * 억제는 `feeds` 출력을 바꾸는 입력이므로 이 파일명이 둘 이상이면 한쪽만 따라가고, 서빙 필터가
+ * 조용히 억제를 못 보게 된다. `WIKI_PREFIX` 를 `head-state.mjs` 가 소유하는 것과 같은 이유다.
  */
 export const IGNORE_FEEDS_FILE = 'ignore-feeds.json'
 

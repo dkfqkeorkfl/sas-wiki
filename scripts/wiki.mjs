@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 // wiki 엔드포인트 — **단일 문서 렌더**(D-F). summary 아티팩트를 읽어 `docs[].breadcrumb` 로 경로
 //   집합 + basename 인덱스를 만들고(`lib/single-doc.mjs`), 요청 문서 **1건만** 파싱·렌더한다.
-//   `derive()`·`collectFeedItems()`·`getFileCommitDates()` 를 타지 않으므로 문서별 git 호출이 0 이다 —
-//   히트 경로의 git 호출 multiset 은 `runSummaryGenerator` 의 신선도 판정이 내는 `[['rev-parse','HEAD']]`
-//   뿐이다(TR2 의 비용 계약).
+//   `derive()`·`collectFeedItems()`·`getFileCommitDates()` 를 타지 않고, 생성기도 부르지 않는다.
+//   히트 경로의 비용 계약은 "아티팩트 읽기 + 단일 문서 렌더" 이며 git 호출은 없다.
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { ARTIFACT_PRODUCER, SCHEMA_VERSION, artifactPath, readArtifact } from './lib/artifact.mjs'
+import { SCHEMA_VERSION, artifactPath, readArtifact } from './lib/artifact.mjs'
 import { envEnumError } from './lib/cli-env.mjs'
-import { runSummaryGenerator } from './lib/generator.mjs'
 import { WIKI_PREFIX } from './lib/head-state.mjs'
 import { parseMarkdownFile } from './lib/parse.mjs'
 import { makeDocIndex, projectSingleDoc } from './lib/single-doc.mjs'
@@ -31,21 +29,19 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  */
 export async function wiki(vault, env = 'prod', ref = '') {
   const vaultDir = path.resolve(vault)
-  // 신선도 확보 — D1 lazy 재생성 그 자체다(재생성 분기는 lib/generator.mjs 안의 동적 import 로만 열린다).
-  const status = await runSummaryGenerator({ env, vault: vaultDir })
+  // 읽기 실패 처리일 뿐 신선도 판정이 아니다. path 가 summary 아티팩트를 가리키고, 남은 expect 는
+  // `{env, schemaVersion}` 로 feeds 독자와 같다.
   const artifact = readArtifact({
     expect: {
       env,
-      inputsFingerprint: status.inputsFingerprint,
-      producer: ARTIFACT_PRODUCER,
       schemaVersion: SCHEMA_VERSION,
     },
     path: artifactPath(vaultDir, env),
   })
-  // 재생성 직후에도 아티팩트를 신뢰할 수 없다면 옛 세대를 200 으로 흘리지 않는다(WK9).
+  // 빌드 후에도 아티팩트를 신뢰할 수 없다면 옛 세대를 200 으로 흘리지 않는다(WK9).
   if (!artifact.fresh) {
     throw new Error(
-      `summary 아티팩트를 신뢰할 수 없다(${artifact.reason}): ${artifactPath(vaultDir, env)}`,
+      `summary 아티팩트를 읽을 수 없다(${artifact.reason}): ${artifactPath(vaultDir, env)} — 빌드를 먼저 실행하세요.`,
     )
   }
   const index = makeDocIndex(artifact.payload.docs)

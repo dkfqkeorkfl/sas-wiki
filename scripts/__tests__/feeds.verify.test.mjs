@@ -23,6 +23,7 @@ import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs' // prettier-ignore
 
 const { feeds } = await import(new URL('../feeds.mjs', import.meta.url).href)
@@ -73,6 +74,7 @@ describe('endpoints.feeds.verify — 억제 ⟂ 슬라이스 위임 (V1 🔴RED)
       const suppressed = seedFeed(vault, { date: T4, subject: 'n4' }) // 정렬 후 top-3 창 안
       seedFeed(vault, { date: T5, subject: 'n5' })
       writeIgnore(vault, [suppressed])
+      await prebuildArtifacts(vault, 'dev')
       const opts = { count: 3 }
 
       const page = await feeds(vault, 'dev', opts)
@@ -95,6 +97,7 @@ describe('endpoints.feeds.verify — 정렬 위임 (V2 🔴RED)', () => {
       seedFeed(vault, { date: T2, subject: '최고참' })
       seedFeed(vault, { date: T5, subject: '최신' })
       seedFeed(vault, { date: T3, subject: '중간' })
+      await prebuildArtifacts(vault, 'dev')
       const opts = { count: 10 }
 
       const page = await feeds(vault, 'dev', opts)
@@ -119,6 +122,7 @@ describe('endpoints.feeds.verify — offset 무드리프트 (V3 🔴RED)', () =>
       seedFeed(vault, { date: T4, subject: 'n4' })
       seedFeed(vault, { date: T5, subject: 'n5' })
       writeIgnore(vault, [suppressed])
+      await prebuildArtifacts(vault, 'dev')
       const opts = { count: 3 }
 
       const page = await feeds(vault, 'dev', opts)

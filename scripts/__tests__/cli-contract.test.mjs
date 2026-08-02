@@ -18,11 +18,11 @@
 // 비공허성(vacuity 방지): 각 단언은 tdd.md "무엇을 깨면 red" 를 반영한다 — status 만이 아니라
 //   페이로드 실질(docs.length>0 · id 포함/제외 · null · sourceCommit 동일 · throw)을 확인한다.
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 // 순수 함수는 직접 import 로 격리 단언한다(C5) — vault 기본값이 없음을(= undefined 흡수 안 함) 확인.
 import { feeds } from '../feeds.mjs'
@@ -31,6 +31,7 @@ import { feeds } from '../feeds.mjs'
 import { summary } from '../lib/summary-endpoint.mjs'
 import { wiki } from '../wiki.mjs'
 
+import { summaryArtifactPath } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -65,6 +66,28 @@ function runCli(script, args, { cwd } = {}) {
   })
 }
 
+/**
+ * 실 repo(REPO_ROOT) 를 spawn 하는 케이스 전용 타임아웃 — **OQ-P1-2 (c) 「케이스별 `{ timeout: N }`」**
+ * 의 적용이다(plan 결정 ⑧ / tdd §2.6). 전역 상향은 **금지**다(모든 케이스의 hang 감지가 둔해진다),
+ * 선제적으로도 올리지 않는다 — 대상은 **실측으로 확정**했다.
+ *
+ * ★ 원인은 구현 결함이 아니라 **실 repo 생성기 spawn 비용**이다. Task 5 가 skip 블록(`readFreshSet`·
+ *   `--force`)을 없애 이제 매 실행이 vault 를 전량 재계산하므로, 이 컨테이너(9p 마운트)에서 1회
+ *   **25~31초**가 든다. 기본 `testTimeout: 30000` 은 그 비용 **하나**를 겨우 담는 크기다.
+ *   ☞ 테스트를 느슨하게 한 것이 아니다. 느슨해진 쪽이 있다면 그것은 **문턱이 아니라 워크로드**다.
+ *
+ * 실측(2026-08-01 · 기본 설정 1회 실행):
+ *   | C1-summary | 30,975ms | 초과                                     |
+ *   | C6         | 51,546ms | 초과 — 실 repo 생성기를 **2회** spawn 한다 |
+ *   | V1         | 41,198ms | 초과                                     |
+ *   | C4a-summary| 29,395ms | 문턱의 **98%** — 부하가 조금만 올라가면 넘는다 |
+ *
+ * ★ `C1`·`C4a` 는 `it.each` 3 arm 이고 **arm 별 타임아웃은 API 상 불가능**하다(`EachFunctionReturn`:
+ *   `(name, options|timeout, fn)` — 값이 **그룹당 하나**다). 두 그룹의 나머지 arm 도 같은 실 repo
+ *   spawn 계열이라(`wiki` 12~13초) 그룹 단위 적용이 뜻과 어긋나지 않는다.
+ */
+const REAL_REPO_SPAWN_TIMEOUT = 120_000
+
 // 생성한 tmp 는 전부 등록 후 afterAll 에서 일괄 정리(누수 0).
 const tmps = []
 function makeVault() {
@@ -80,6 +103,30 @@ const ABSENT_VAULT = path.join(ABSENT_BASE, 'no-such-vault')
 
 afterAll(() => cleanup(...tmps))
 
+// 실 repo(REPO_ROOT) 산출물 프리빌드 — `--vault` 생략 경로(C1·C4a·C6)가 읽을 아티팩트를 만든다.
+//   "앞서 누가 만들어 뒀는지" 에 기대지 않으려면 이 파일이 스스로 만들어야 한다.
+//
+// ★ **in-process 프리빌드를 쓰지 않는다.** `vitest.config.js` 가 `GIT_CONFIG_GLOBAL=/dev/null` 로 git
+//   설정을 의도적으로 격리하는데(개발자 `~/.gitconfig` 가 identity 를 몰래 공급하는 것 차단 — 이
+//   격리는 옳다), 이 컨테이너의 실 repo 는 러너와 소유자가 달라 격리된 git 이 `safe.directory` 예외를
+//   못 보고 **dubious ownership 으로 거부**한다. 러너 프로세스 안에서 생성기를 부르면 그 자리에서
+//   `beforeAll` 이 죽고 **이 파일 19케이스가 통째로 가려진다**(suite 레벨 실패 · 실측).
+//   위 `runCli`(:53-68)는 자식 env 에 `safe.directory=*` 를 주입하는 **이 파일이 이미 채택한 관례**라,
+//   프리빌드를 그 통로에 태우면 같은 방어를 그대로 받는다(환경 우회를 새로 심는 것이 아니다).
+//
+// ★ **Task 7(C4) 착륙 시 `--out <경로>` 로 바꾼다.** OT1 이 _"`--out` 미지정 실행은 어떤 파일도 만들지
+//   않는다"_ 를 계약으로 세우므로 그 뒤에는 아래 형태가 아무것도 만들지 않는다. 그때 조용히 빈손이
+//   되지 않도록 exit 0 과 **산출물 실재**를 함께 문다 — 프리빌드가 실패하면 여기서 크게 터진다.
+beforeAll(() => {
+  const prebuilt = runCli(SUMMARY, ['--vault', REPO_ROOT, '--env', 'dev'])
+
+  expect(prebuilt.status, prebuilt.stderr).toBe(0)
+  expect(
+    existsSync(summaryArtifactPath(REPO_ROOT, 'dev')),
+    '프리빌드가 exit 0 인데 산출물이 없다',
+  ).toBe(true)
+}, 300_000)
+
 // ── C1: 3 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.
 //    RED 단계에서는 `if(!vault) throw` 존치 → exit1 → status 단언 실패. (docs.length>0 는 REPO_ROOT
 //       오파생(`wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
@@ -90,8 +137,11 @@ const C1_CASES = [
 ]
 
 describe('C1 — 기본 vault(REPO_ROOT) · --vault 생략 (RED 단계 회귀 가드)', () => {
+  // timeout: OQ-P1-2 (c) — summary arm 실측 **30,975ms**(> 기본 30s). 사유·측정표는
+  //   `REAL_REPO_SPAWN_TIMEOUT` 주석 참조. arm 별 지정은 `it.each` API 상 불가능하다.
   it.each(C1_CASES)(
     '$name: --env dev(cwd=repo) → exit0 · 1건 유효 JSON · 페이로드 계약',
+    { timeout: REAL_REPO_SPAWN_TIMEOUT },
     ({ args, assert, script }) => {
       const result = runCli(script, args, { cwd: REPO_ROOT })
 
@@ -148,8 +198,12 @@ const C4A_CASES = [
 ]
 
 describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)', () => {
+  // timeout: OQ-P1-2 (c) — summary arm 실측 **29,395ms** = 기본 30s 의 **98%**. 통과했지만 부하가
+  //   조금만 올라가면 넘는다(같은 일을 하는 C1-summary 는 같은 실행에서 30,975ms 로 실제 초과했다).
+  //   「선제적 상향 금지」가 막는 것은 *측정 없는* 상향이고, 98% 는 그 자체가 측정이다.
   it.each(C4A_CASES)(
     '$name: --env dev(--vault 생략) → stdout 은 단 1줄의 파싱 가능한 JSON',
+    { timeout: REAL_REPO_SPAWN_TIMEOUT },
     ({ args, script }) => {
       const result = runCli(script, args, { cwd: REPO_ROOT })
 
@@ -219,27 +273,38 @@ describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격�
 //    RED 단계에서는 exit1. 무엇을 깨면 red(GREEN 후): 기본값을 process.cwd() 파생으로 하면 tmpdir 에
 //    `wiki` 부재 → red. 두 cwd 의 sourceCommit 동일 = 같은 REPO_ROOT 확증.
 describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (RED 단계 회귀 가드)', () => {
-  it('summary --env dev(--vault 생략), cwd=tmpdir → exit0 · docs>0 · sourceCommit=cwd repo 실행값', () => {
-    const inRepo = runCli(SUMMARY, ['--env', 'dev'], { cwd: REPO_ROOT })
-    const inTmp = runCli(SUMMARY, ['--env', 'dev'], { cwd: tmpdir() })
+  // timeout: OQ-P1-2 (c) — 실측 **51,546ms**. 이 케이스만 실 repo 생성기를 **2회** spawn 한다
+  //   (cwd=repo · cwd=tmpdir 대조) → 1회 25~31초의 두 배라 기본 30s 로는 구조적으로 불가능하다.
+  it(
+    'summary --env dev(--vault 생략), cwd=tmpdir → exit0 · docs>0 · sourceCommit=cwd repo 실행값',
+    { timeout: REAL_REPO_SPAWN_TIMEOUT },
+    () => {
+      const inRepo = runCli(SUMMARY, ['--env', 'dev'], { cwd: REPO_ROOT })
+      const inTmp = runCli(SUMMARY, ['--env', 'dev'], { cwd: tmpdir() })
 
-    expect(inTmp.status).toBe(0) // RED 단계 신호였던 단언. 아래 parse 전에 clean 실패했다.
-    const tmpPayload = JSON.parse(inTmp.stdout)
-    expect(tmpPayload.docs.length).toBeGreaterThan(0)
-    // cwd 만 다르고 대상 리포는 같아야 한다 → HEAD sourceCommit 이 동일.
-    expect(tmpPayload.sourceCommit).toBe(JSON.parse(inRepo.stdout).sourceCommit)
-  })
+      expect(inTmp.status).toBe(0) // RED 단계 신호였던 단언. 아래 parse 전에 clean 실패했다.
+      const tmpPayload = JSON.parse(inTmp.stdout)
+      expect(tmpPayload.docs.length).toBeGreaterThan(0)
+      // cwd 만 다르고 대상 리포는 같아야 한다 → HEAD sourceCommit 이 동일.
+      expect(tmpPayload.sourceCommit).toBe(JSON.parse(inRepo.stdout).sourceCommit)
+    },
+  )
 })
 
 // ── V1: validate 도 동일 강등 — --env dev(--vault 생략) → exit0 · stats stdout(`[wiki] docs=`).
 //    RED 단계에서는 parseArgs:122 throw. validate 는 JSON 이 아니라 stats 를 stdout 에 낸다(다른 계약).
 describe('V1 — validate 기본 vault(REPO_ROOT) (RED 단계 회귀 가드)', () => {
-  it('validate --env dev(--vault 생략) → exit0 · stdout 에 "[wiki] docs="', () => {
-    const result = runCli(VALIDATE, ['--env', 'dev'], { cwd: REPO_ROOT })
+  // timeout: OQ-P1-2 (c) — 실측 **41,198ms**(> 기본 30s). `validate.mjs` 도 실 repo 를 전량 훑는다.
+  it(
+    'validate --env dev(--vault 생략) → exit0 · stdout 에 "[wiki] docs="',
+    { timeout: REAL_REPO_SPAWN_TIMEOUT },
+    () => {
+      const result = runCli(VALIDATE, ['--env', 'dev'], { cwd: REPO_ROOT })
 
-    expect(result.status).toBe(0) // RED 단계 신호였던 단언.
-    expect(result.stdout).toContain('[wiki] docs=')
-  })
+      expect(result.status).toBe(0) // RED 단계 신호였던 단언.
+      expect(result.stdout).toContain('[wiki] docs=')
+    },
+  )
 })
 
 // ── V2: env fail-closed 불변 — --vault <tmp> --env staging → exit≠0 · dev|prod 거부. 🟢 green(회귀).

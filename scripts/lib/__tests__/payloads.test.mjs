@@ -51,16 +51,14 @@ function aBodyRecord(patch = {}) {
   }
 }
 
-/** 아티팩트 스탬프 리터럴 — 프로덕션 상수를 import 하지 않는다(규범 A). 드리프트 감지는 RD10 이 한다. */
+/** 아티팩트 env 리터럴 — 프로덕션 상수를 import 하지 않는다(규범 A). 드리프트 감지는 RD10 이 한다. */
 const ENV = 'dev'
-const PRODUCER = 'sas-wiki/summary'
 
 function summaryOf(docs) {
   return buildSummary({
     docs,
     env: ENV,
     generatedAt: GENERATED_AT,
-    inputsFingerprint: '0123456789abcdef',
     sourceCommit: SOURCE_COMMIT,
     tags: TAGS,
     tree: TREE,
@@ -69,14 +67,7 @@ function summaryOf(docs) {
 
 describe('buildSummary', () => {
   it('봉투 키 집합이 정확하다 — **정확히 7키**(v3 P1 · 죽은 값 2키 소거)', () => {
-    // §4 원장 ⑤ (OQ-P4-4 = **A**): 아티팩트 파일 = stdout payload = HTTP 응답이 **같은 9키**다.
-    //   `buildSummary` 를 7키로 두면 형태가 둘이 된다 — `summary()`(얕은 티어)는 7키를 내는데 실제로
-    //   서빙되는 파일은 9키가 되고, webfront `dev-api.contract.test.ts` 가 **실제 계약과 다른 모양**을
-    //   계약으로 단언하게 된다. A 가 기각한 「두 형태」가 뒷문으로 들어오는 자리라 여기서 막는다.
-    //
-    // ★ 비대칭은 **의도**다: `buildFeeds`·`buildBody` 는 스탬프하지 않는다 — 이번 phase 에서 발행
-    //   아티팩트는 summary 하나뿐이고, 스탬프는 "이 파일이 무엇이며 어느 env 의 것인가" 를 말하는
-    //   **발행 계약**이지 페이로드 장식이 아니다.
+    // 파일 = stdout = 응답이 같은 7키다. 개수 단언만 내리지 않고 집합을 계약으로 둔다.
     const summary = summaryOf([aDoc().build()])
 
     // 🔴 v3 P1(§4.3 ③ · KY3 · D28): 발행자 표지·상관 토큰이 사라져 **7키**가 된다.
@@ -93,13 +84,10 @@ describe('buildSummary', () => {
     ])
   })
 
-  it('`producer`·`env` 스탬프가 실제 값을 싣는다(키만 있고 undefined 인 상태 배제)', () => {
-    // 키 집합만 보면 `{ ...payload, producer: undefined, env: undefined }` 도 9키로 통과한다 —
-    //   그러면 독자(`readArtifact`)의 producer·env 층이 **모든 파일을 stale 로 접고** dev 가 영원히
-    //   재생성만 돈다. `env` 는 **인자를 그대로** 실어야 한다(하드코딩이면 dev·prod 파일이 같아진다).
-    expect(summaryOf([aDoc().build()]).producer).toBe(PRODUCER)
+  it('`env` 스탬프가 실제 값을 싣는다(키만 있고 undefined 인 상태 배제)', () => {
+    // `env` 는 **인자를 그대로** 실어야 한다(하드코딩이면 dev·prod 파일이 같아진다).
     expect(summaryOf([aDoc().build()]).env).toBe(ENV)
-    expect(buildSummary({ docs: [], env: 'prod', generatedAt: GENERATED_AT, inputsFingerprint: '0123456789abcdef', sourceCommit: SOURCE_COMMIT, tags: TAGS, tree: TREE }).env).toBe('prod') // prettier-ignore
+    expect(buildSummary({ docs: [], env: 'prod', generatedAt: GENERATED_AT, sourceCommit: SOURCE_COMMIT, tags: TAGS, tree: TREE }).env).toBe('prod') // prettier-ignore
   })
 
   it('schemaVersion 은 정수 1이다(문자열 "1" 금지)', () => {
@@ -152,7 +140,6 @@ describe('buildFeeds', () => {
     const item = aFeedItem().build()
     const feeds = buildFeeds({
       generatedAt: GENERATED_AT,
-      inputsFingerprint: '0123456789abcdef',
       items: [item],
       sourceCommit: SOURCE_COMMIT,
     })
@@ -164,19 +151,6 @@ describe('buildFeeds', () => {
     expect(feeds.items).toEqual([item])
     // 🔴 v3 P1 · D29 — 3 페이로드 **공용** 상수라 feeds 도 함께 1 이 된다(쪼개지 않는다 · AR7 이 pin).
     expect(feeds.schemaVersion).toBe(1)
-  })
-
-  it('`inputsFingerprint` 스탬프가 실제 값을 싣는다(키만 있고 undefined 인 상태 배제)', () => {
-    // D-G — 소비자가 라벨을 붙이면 자기검증이 아니라 자기기만이다. 키 집합만 보면
-    //   `{ ...feeds, inputsFingerprint: undefined }` 도 5키로 통과하므로 값을 따로 문다.
-    const feeds = buildFeeds({
-      generatedAt: GENERATED_AT,
-      inputsFingerprint: '0123456789abcdef',
-      items: [],
-      sourceCommit: SOURCE_COMMIT,
-    })
-
-    expect(feeds.inputsFingerprint).toBe('0123456789abcdef')
   })
 })
 

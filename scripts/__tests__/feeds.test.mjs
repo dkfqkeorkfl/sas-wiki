@@ -13,11 +13,12 @@
 //   tie-break·continuation 은 `pageFeeds` 에 **위임**(endpoints 층 재구현 금지 · SSOT · FC5).
 //     from/to/count 의미 표면 보존(값경계·상한) · nextCursor 필드 **가산**(당시 schemaVersion 불변).
 //     ☞ P4 에서 공용 `SCHEMA_VERSION` 이 1 → 2, P5(D-G · §4 원장 ⑭)가 2 → **3** 이 된다 — feeds
-//     봉투 **형태**는 `inputsFingerprint` 가산(D-G) 외엔 그대로다.
+//     봉투 **형태**는 스키마 버전 리셋 외엔 그대로다.
 //   P5 · §4 원장 ③ — `feeds()` 가 async 가 됐다(신선도 확보가 `runSummaryGenerator` 재사용이라
 //   async 다). 단언 **내용**은 무변경 — `await` 만 붙는다.
 import { describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs' // prettier-ignore
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -35,7 +36,7 @@ const T4 = '2026-01-04T00:00:00Z'
  *
  * 🔴 v3 P1(§4.3 ③ · §4.10 「조용한 통과」 E-F1 · KY4 · D28): 상관 토큰이 wire 에서 빠진다.
  *   ★ 이 배열은 **정확 일치**로 쓰인다. 예전에는 `expect.arrayContaining(...)` 이었는데 그것은
- *   **부분집합** 판정이라 착륙 후 `inputsFingerprint` 가 응답에 그대로 남아 있어도 **green** 이다 —
+ *   **부분집합** 판정이라 착륙 후 잉여 키가 응답에 그대로 남아 있어도 **green** 이다 —
  *   "빠졌다" 를 검사하겠다는 케이스가 정확히 그 반대를 통과시킨다. §4.3-③ 이 요구한 「원소 제거 +
  *   정렬 일치」(규범 N)를 여기서 이행한다.
  *   ★ `env` 는 **여기 신설되지 않는다** — 그것은 파이프라인 P2 소관이고, 이 배열은 "지금 상태"
@@ -65,6 +66,7 @@ describe('endpoints.feeds — on-demand 슬라이스 봉투 (E-F1 🔴RED 전환
     const vault = initVault()
     try {
       seedFour(vault)
+      await prebuildArtifacts(vault, 'dev')
 
       const page = await feeds(vault, 'dev', { count: 3 })
 
@@ -88,6 +90,7 @@ describe('endpoints.feeds — nextCursor 연속 seam (E-F2 🔴RED 신규 필드
     const vault = initVault()
     try {
       seedFour(vault)
+      await prebuildArtifacts(vault, 'dev')
 
       const page1 = await feeds(vault, 'dev', { count: 2 }) // [n4, n3]
       const page2 = await feeds(vault, 'dev', { after: page1.nextCursor, count: 2 }) // [n2, n1]
@@ -116,6 +119,7 @@ describe('endpoints.feeds — 억제·정렬 재구현 안 함(pageFeeds 위임)
         JSON.stringify([{ id: suppressed, when: '2026-07-23T00:00:00Z' }]),
         'utf8',
       )
+      await prebuildArtifacts(vault, 'dev')
 
       const page = await feeds(vault, 'dev', { count: 10 })
 

@@ -2,7 +2,7 @@
 //
 // P5 · Task 3 — `feeds` 를 **아티팩트 소비자**로 (D-E·D-G·D-B ②) — tdd §3.3 (FC2~FC10)
 //
-// 무엇이 바뀌는가: `feeds()` 가 vault 를 재파싱하지 않는다. 신선도를 `runSummaryGenerator` 로 확보하고
+// 무엇이 바뀌는가: `feeds()` 가 vault 를 재파싱하지 않는다. Arrange 의 명시 빌드가 만든
 //   `cache/feeds.<env>.json` 을 읽어 **억제 필터 + 페이지**만 얹는다. 사유 판정은 생성기 안에만
 //   남으므로(D-A) `feeds` 는 **분류를 전혀 하지 않는다**. 정적 폐쇄에서 렌더 툴체인이 사라지는 축은
 //   **FC1**(기존 `summary.import-graph.test.mjs`)이, 런타임 로드·git 프로파일은 **TR1·TR3** 이 문다 —
@@ -11,7 +11,7 @@
 // RED 사유:
 //   · FC2 — **RED(오늘 동기)**. `feeds.mjs:27` 이 `export function feeds(...)` 다.
 //   · FC3·FC7·FC8 — **RED(미구현)**. 아티팩트를 읽지 않고 자체 파싱이 item 을 만든다 · 서빙 시점
-//     `generatedAt` 재집계가 없다 · 응답에 `inputsFingerprint` 가 없다.
+//     `generatedAt` 재집계가 없다 · 응답 세대가 아티팩트와 어긋난다.
 //   · FC5 — **RED(소스 형태)**. 오늘은 `buildWirePayload` 를 정적으로 물고 `parse-vault.mjs` 가
 //     정적 폐쇄에 있다. **CX 지목 = CX-E**.
 //   · FC9 — **RED(경로 부재)**. 재생성 백스톱 자체가 없다.
@@ -24,11 +24,12 @@
 //   아니라 **파일을 읽어** 한다 — 생성기 출력과 생성기 함수를 비교하면 완전히 공허하다(tdd §2.3 함정 ①).
 // 규범 C10: `rejects` 계열 앞에 seam 가드(대상이 함수인가)를 둔다 — 모듈이 죽어도 통과하는 모양 배제.
 // 규범 F: 실 vault 를 건드리지 않는다.
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const feedsModule = await import(new URL('../feeds.mjs', import.meta.url).href)
@@ -83,6 +84,12 @@ function seedTwoFeeds() {
   return { newFeedId: newSha.slice(0, 12), oldFeedId: oldSha.slice(0, 12), vault }
 }
 
+async function seedTwoFeedsWithArtifacts(env = 'dev') {
+  const seeded = seedTwoFeeds()
+  await prebuildArtifacts(seeded.vault, env)
+  return seeded
+}
+
 function suppress(vault, feedId) {
   writeFileSync(
     path.join(vault, IGNORE_FILE),
@@ -99,7 +106,7 @@ describe('feeds 는 async 다 (FC2 · 🔴RED 오늘 동기)', () => {
   it('FC2: `feeds` 가 함수이고 호출 결과가 **Promise** 다', async () => {
     // 이후 케이스 전부의 전제이자 규범 C10 의 seam 가드다. 신선도 확보(생성기 재사용)가 async 이므로
     //   `feeds()` 도 async 가 된다 — 이관 비용은 §4.3 이 22파일로 전수 계상했다.
-    const { vault } = seedTwoFeeds()
+    const { vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
 
     const returned = feeds(vault, 'dev', {})
@@ -114,7 +121,7 @@ describe('선택 속성 — feeds 는 item 을 만들지 않는다 (FC3 · 🔴R
     // ★ 규범 A 함정 ② 회피형이다: `feeds() == pageFeeds(...)` 로 쓰면 같은 함수를 두 번 부르는 것이라
     //   아무것도 증명하지 못한다. 여기서는 **파일에서 읽은** item 과 대조한다 — feeds 가 하는 일은
     //   고르는 것뿐이고, 만드는 것은 생성기다(D-A: 판정 권위는 하나).
-    const { vault } = seedTwoFeeds()
+    const { vault } = await seedTwoFeedsWithArtifacts()
     const page = await feedsFn()(vault, 'dev', {})
 
     expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
@@ -131,7 +138,7 @@ describe('선택 속성 — feeds 는 item 을 만들지 않는다 (FC3 · 🔴R
 
 describe('억제는 서빙 시점에 걸린다 (FC4 · 🟢오늘도 성립 — 짝은 FA11)', () => {
   it('FC4: 억제 엔트리가 걸린 id 가 응답에 **없다**', async () => {
-    const { newFeedId, vault } = seedTwoFeeds()
+    const { newFeedId, vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
 
     // 앵커: 억제 **전에는 있었다**(빈 응답으로 부재 단언이 공허해지는 것을 배제).
@@ -168,7 +175,7 @@ describe('재구현 금지 트립와이어 (FC5 · 🔴RED 소스 형태 · CX-E
 describe('페이지·커서 위임 4축 (FC6 · 🟩pair)', () => {
   it('FC6: `count`·`after`·`from`·`to` 가 전부 반영된다', async () => {
     // 과잉 축소(전부 빈 페이지를 내는 구현) 배제. 앵커는 무인자 호출이 전량을 낸다는 것이다.
-    const { newFeedId, oldFeedId, vault } = seedTwoFeeds()
+    const { newFeedId, oldFeedId, vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
 
     const all = await feeds(vault, 'dev', {})
@@ -192,7 +199,7 @@ describe('서빙 시점 generatedAt 재집계 (FC7 · 🔴RED 억제 전 값이 
   it('FC7: 응답 `generatedAt` 이 **억제 후** item ts 이고 억제된 항목의 ts 가 아니다', async () => {
     // ★ D-B 의 CWE-204 클로즈다. 아티팩트 값은 억제를 보지 않고(GA5), 서빙 층이 억제 **후** 집합으로
     //   다시 max 를 낸다 — 두 층이다. 아티팩트 층만 고치면(CX-B′) 여기가 red 로 남는다.
-    const { newFeedId, vault } = seedTwoFeeds()
+    const { newFeedId, vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
 
     // 앵커: 억제하지 않으면 그 ts 가 **실제로** 응답 generatedAt 이 된다(누출이 실재했다).
@@ -207,31 +214,12 @@ describe('서빙 시점 generatedAt 재집계 (FC7 · 🔴RED 억제 전 값이 
 })
 
 describe('생산자가 자기 출력을 스탬프한다 (FC8 · 🔴RED 필드 부재 · CX-T)', () => {
-  it('FC8: 응답 `inputsFingerprint` 가 아티팩트 지문과 같다', async () => {
-    // D-G. 소비자가 라벨을 붙이면 자기검증이 아니라 자기기만이다 — 상관(correlation) 토큰이다.
-    const { vault } = seedTwoFeeds()
+  it('FC8: 응답 `sourceCommit` 이 feeds 아티팩트와 같다', async () => {
+    const { vault } = await seedTwoFeedsWithArtifacts()
     const page = await feedsFn()(vault, 'dev', {})
 
-    expect(page.inputsFingerprint).toMatch(/^[0-9a-f]{16}$/u)
-    expect(page.inputsFingerprint).toBe(readJson(feedsFile(vault, 'dev')).inputsFingerprint)
-  })
-})
-
-describe('stale + 재생성 실패 → 옛 아티팩트를 서빙하지 않는다 (FC9 · 🔴RED 경로 부재)', () => {
-  it('FC9: 재생성이 불가능해지면 **reject** 한다(200 으로 옛 세대를 내지 않는다)', async () => {
-    const { vault } = seedTwoFeeds()
-    const feeds = feedsFn()
-
-    // 앵커: 정상 vault 에서는 resolve 하고 items 가 있다(항상 던지는 구현 배제).
-    const healthy = await feeds(vault, 'dev', {})
-    expect(healthy.items.length).toBeGreaterThan(0)
-
-    // git 을 걷어내 재생성을 불가능하게 만든다(신선도 판정 `rev-parse HEAD` 가 죽는다).
-    rmSync(path.join(vault, '.git'), { force: true, recursive: true })
-
-    const returned = feeds(vault, 'dev', {})
-    expect(returned).toBeInstanceOf(Promise) // 규범 C10 — 동기 throw 로 통과하는 모양 배제
-    await expect(returned).rejects.toThrow()
+    expect(page.sourceCommit).toMatch(/^[0-9a-f]{40}$/u)
+    expect(page.sourceCommit).toBe(readJson(feedsFile(vault, 'dev')).sourceCommit)
   })
 })
 
@@ -239,7 +227,7 @@ describe('malformed 억제 목록은 fail-loud 다 (FC10 · 🟢pin · OQ-P5-6 �
   it('FC10: 스키마 위반 `ignore-feeds.json` 이면 실패한다(조용히 무시하지 않는다)', async () => {
     // Task 8 이후 `summary --status` 의 조기 검출은 사라지지만(D-H 수용) **여기는 남는다** — SU8 이
     //   그 경계를 계약으로 못박는다. 동기 throw 든 rejection 이든 같은 의미로 받는다(형태 축은 FC2 소유).
-    const { vault } = seedTwoFeeds()
+    const { vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
     writeFileSync(path.join(vault, IGNORE_FILE), JSON.stringify([{ id: 'not-12hex' }]), 'utf8')
 

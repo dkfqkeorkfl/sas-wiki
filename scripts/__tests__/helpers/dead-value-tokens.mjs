@@ -7,26 +7,36 @@
 //   소스에는 `inputs` 와 `Fingerprint` 만 있고 이어진 토큰은 **런타임에만** 존재한다.
 //   ☞ 면제 목록이 1 이라도 생기면 `dead-values.guard.test.mjs` 의 DV6 이 red 가 된다(규범 H).
 //
-// ★ 맨단어 `producer` 는 **판정 토큰이 아니다**(plan Task 10 GOTCHA · 실측 16줄이 동시성
-//   producer/consumer 패턴이다). 그래서 아래 목록에 없다.
+// ★ 맨단어(접두사 없는 낱말 하나)는 **대문자든 소문자든 판정 토큰이 아니다**(plan Task 10 GOTCHA ·
+//   tdd §3.7 실측 16줄이 전부 동시성 producer/consumer 패턴이었다 — `helpers/atomic-stress.mjs`·
+//   `atomic.concurrency.test.mjs`·`generator.multi-writer.test.mjs`). 그래서 아래 목록에 없다.
+//   그 어휘를 **tdd §4.4 무변경 pin** 이 사유와 함께 못박아 두었다(_"동시성 패턴 어휘다. 판정
+//   토큰이 아니다"_) — 대문자 판(版)을 목록에 넣으면 가드가 pin 파일을 물고, 그 red 의 "자연스러운
+//   수리" 가 **pin 위반**(마커 개명)이 된다. 실제로 한 번 그렇게 수리됐다.
+//   ☞ 게다가 그 항목은 **중복이면서 과잉**이다: 스탬프를 담은 상수는 접두사 3종(아래 2·3·4번)이
+//     이름으로, 값 3종(7·8·9번)이 값으로 이미 잡는다. 맨단어가 유일하게 더 잡는 것은 *스탬프가
+//     아닌 값을 가진 동명 식별자* — 정확히 오탐이 사는 자리다.
 //   (vitest 기본 include 는 `*.test.mjs` 만 잡으므로 helpers/*.mjs 는 테스트로 수집되지 않는다 — 의도.)
 
 /** 이어 붙이기 전 조각들. **이 배열이 유일한 정의처다**(스펙 본문에 토큰을 다시 적지 않는다). */
 const TOKEN_PARTS = [
-  ['inputs', 'Fingerprint'],
-  ['compute', 'Inputs', 'Fingerprint'],
-  ['ARTIFACT_', 'PRO', 'DUCER'],
-  ['FEEDS_ARTIFACT_', 'PRO', 'DUCER'],
-  ['REPORT_', 'PRO', 'DUCER'],
-  ['PRO', 'DUCER'],
-  ['FEEDS_', 'PRO', 'DUCER'],
-  ['sas-wiki/', 'sum', 'mary'],
-  ['sas-wiki/', 'fee', 'ds'],
-  ['sas-wiki/', 'rep', 'ort'],
-  ['pro', 'ducer-mismatch'],
+  ['inputs', 'Fingerprint'], //          0
+  ['compute', 'Inputs', 'Fingerprint'], // 1
+  ['ARTIFACT_', 'PRO', 'DUCER'], //      2
+  ['FEEDS_ARTIFACT_', 'PRO', 'DUCER'], // 3
+  ['REPORT_', 'PRO', 'DUCER'], //        4
+  ['FEEDS_', 'PRO', 'DUCER'], //         5
+  ['sas-wiki/', 'sum', 'mary'], //       6
+  ['sas-wiki/', 'fee', 'ds'], //         7
+  ['sas-wiki/', 'rep', 'ort'], //        8
+  ['pro', 'ducer-mismatch'], //          9
 ]
 
-/** 판정 토큰 11종(런타임 조립). 순서는 위 배열 그대로다 — 진단 메시지의 좌표계다. */
+/**
+ * 판정 토큰 10종(런타임 조립). 순서는 위 배열 그대로다 — 진단 메시지의 좌표계이자 **아래 `TOKEN`
+ * 접근자의 인덱스**다. 항목을 넣거나 빼면 접근자 인덱스를 **같은 커밋에서** 재조정해야 한다 —
+ * 어긋나도 형(型)은 그대로 문자열이라 **조용히 통과한다**(각 접근자가 엉뚱한 토큰을 가리킨 채로).
+ */
 export const DEAD_VALUE_TOKENS = TOKEN_PARTS.map((parts) => parts.join(''))
 
 /**
@@ -38,10 +48,10 @@ export const DEAD_VALUE_TOKENS = TOKEN_PARTS.map((parts) => parts.join(''))
  */
 export const TOKEN = {
   CORRELATION_FIELD: DEAD_VALUE_TOKENS[0],
-  FEEDS_STAMP_VALUE: DEAD_VALUE_TOKENS[8],
-  MISMATCH_REASON: DEAD_VALUE_TOKENS[10],
-  REPORT_STAMP_VALUE: DEAD_VALUE_TOKENS[9],
-  SUMMARY_STAMP_VALUE: DEAD_VALUE_TOKENS[7],
+  FEEDS_STAMP_VALUE: DEAD_VALUE_TOKENS[7],
+  MISMATCH_REASON: DEAD_VALUE_TOKENS[9],
+  REPORT_STAMP_VALUE: DEAD_VALUE_TOKENS[8],
+  SUMMARY_STAMP_VALUE: DEAD_VALUE_TOKENS[6],
 }
 
 /** 삭제되는 계산 모듈이 리포에서 유일하게 쓰던 내장 모듈 지정자(같은 이유로 조각이다). */

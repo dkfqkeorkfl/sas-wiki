@@ -13,11 +13,12 @@
 //
 // 왜 3 엔드포인트를 다 무는가: 세 함수는 같은 파싱 엔진을 공유하지만 **소비 형태가 다르다**(전체
 //   payload / 단건 조회 / 피드 창). 하나만 고치고 나머지가 여전히 죽는 상태를 배제한다.
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { feeds } from '../feeds.mjs'
 import { summary } from '../lib/summary-endpoint.mjs'
 import { wiki } from '../wiki.mjs'
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import {
   CONTROL_FEED_TITLE,
@@ -36,6 +37,10 @@ afterAll(() => cleanup(...tmps))
 
 const polluted = seedPollutedVault()
 tmps.push(polluted.vault)
+
+beforeAll(async () => {
+  await prebuildArtifacts(polluted.vault, 'dev')
+})
 
 const titlesOf = (items) => items.map((item) => item.title)
 
@@ -91,6 +96,7 @@ describe('서빙 경로 — 과잉 차단 가드 (SR5 · 대조군 vault)', () =
     // 정상 데이터가 제외 모델 때문에 사라지지 않는지 — SR1~SR4 의 반대 방향 가드다.
     const clean = seedCleanVault()
     tmps.push(clean.vault)
+    await prebuildArtifacts(clean.vault, 'dev')
 
     const summaryPayload = summary(clean.vault, 'dev')
     expect(summaryPayload.docs.map((doc) => doc.id)).toContain(ID_A)

@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs' // prettier-ignore
 import { runGeneratorOnce } from './helpers/generator-race.mjs'
 
@@ -79,23 +80,27 @@ describe('경로 정확 형태 고정 (PL9 · 🔴RED 함수 부재)', () => {
 })
 
 describe('3 산출물이 워킹트리를 더럽히지 않는다 (PL10 · 실측 · `.gitignore` 추정 금지)', () => {
-  it('PL10: 생성기 실행 후 `git status --porcelain` 이 비어 있다', { timeout: 300_000 }, () => {
-    // **실 리포의 `.gitignore` 를 그대로 복사**해 쓴다 — tmp 전용 규칙을 새로 쓰면 "테스트가 만든
-    //   ignore 규칙" 을 검증하게 되어 아무 의미가 없다.
-    const vault = initVault()
-    tmps.push(vault)
-    expect(existsSync(REPO_GITIGNORE)).toBe(true)
-    copyFileSync(REPO_GITIGNORE, path.join(vault, '.gitignore'))
-    writeDoc(vault, REL_A, { body: '## 정의\n\n본문.\n', id: ID_A, title: '삼성전자', type: 'company' }) // prettier-ignore
-    commit(vault, 'chore: 문서 1건 + gitignore')
+  it(
+    'PL10: 생성기 실행 후 `git status --porcelain` 이 비어 있다',
+    { timeout: 300_000 },
+    async () => {
+      // **실 리포의 `.gitignore` 를 그대로 복사**해 쓴다 — tmp 전용 규칙을 새로 쓰면 "테스트가 만든
+      //   ignore 규칙" 을 검증하게 되어 아무 의미가 없다.
+      const vault = initVault()
+      tmps.push(vault)
+      expect(existsSync(REPO_GITIGNORE)).toBe(true)
+      copyFileSync(REPO_GITIGNORE, path.join(vault, '.gitignore'))
+      writeDoc(vault, REL_A, { body: '## 정의\n\n본문.\n', id: ID_A, title: '삼성전자', type: 'company' }) // prettier-ignore
+      commit(vault, 'chore: 문서 1건 + gitignore')
 
-    expect(runGeneratorOnce({ args: ['--env', 'dev', '--status'], vault }).exitCode).toBe(0)
-    expect(git(vault, ['status', '--porcelain'])).toBe('')
+      await prebuildArtifacts(vault, 'dev')
+      expect(git(vault, ['status', '--porcelain'])).toBe('')
 
-    // 앵커: **문서를 하나 만들면 porcelain 이 비지 않는다**(git 이 죽어서 늘 빈 것을 배제).
-    writeDoc(vault, 'concept/새문서', { body: '## 정의\n\n새 문서다.\n', id: ID_A })
-    expect(git(vault, ['status', '--porcelain'])).not.toBe('')
-  })
+      // 앵커: **문서를 하나 만들면 porcelain 이 비지 않는다**(git 이 죽어서 늘 빈 것을 배제).
+      writeDoc(vault, 'concept/새문서', { body: '## 정의\n\n새 문서다.\n', id: ID_A })
+      expect(git(vault, ['status', '--porcelain'])).not.toBe('')
+    },
+  )
 })
 
 describe('리포트 진단 3키 — F-17 (PL11 · 🔴RED 미구현)', () => {

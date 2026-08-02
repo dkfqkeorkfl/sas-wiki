@@ -4,11 +4,10 @@
 //
 // 이 파일이 `serving.cost-tier.test.mjs`(CT1)를 **교체**한다(§4.1 ①). CT1 의 전제(_서빙 파싱은 얕다_)는
 //   Task 9 로 소멸하지만 그것이 지키려던 것("서빙이 문서당 git 을 팔지 않는다")은 더 강한 형태로
-//   남는다 — **히트 경로의 git 호출 multiset === `[['rev-parse','HEAD']]`**. 삭제가 아니라 교체다.
+//   남는다 — **히트 경로의 git 호출 multiset === `[]`**. 삭제가 아니라 교체다.
 //
-// ★ 「git spawn 0」은 **도달 불가**다(tdd §12 ① · 메인 재측정). 신선도 판정이 `rev-parse HEAD` 를
-//   반드시 내며 그것이 D1 의 신선도 정의 자체다. 도달 불가 목표를 남기면 그 단언은 영원히 red 이거나
-//   (정직) 조용히 완화된다(위험). 그래서 **multiset 동치**로 못박는다.
+// ★ v3 P1 Task 6 이후 조회 도구는 아티팩트를 읽기만 한다. git 을 한 번이라도 부르면 그 자체가
+//   생성기 판정 경로가 되살아났다는 신호다. 그래서 **빈 multiset 동치**로 못박는다.
 //
 // ★ 규범 G(이 phase 신설): "열지 않았다" 는 정적 그래프가 아니라 **실행에서** 관측한다. 재생성 분기가
 //   `await import()` 라서 정적 게이트(FC1·WK8)가 green 인 채로 툴체인이 로드되는 상태가 성립한다
@@ -19,7 +18,7 @@
 //     기준 git 9회 · 실 vault 20회 — M2·M3).
 //   · TR3·TR5 — **RED**. 오늘 두 CLI 다 `node_modules` 185+ · `lib/render.mjs`·`derive.mjs`·
 //     `parse-vault.mjs` 를 **실행한다**(실측).
-//   · TR4 — **pair**(오늘도 green). 재생성 경로는 반대 방향이다 — "아예 재생성을 못 하는 구현" 배제.
+//   · TR4 — **pair**. 생성 경로는 반대 방향이다 — "아예 생성하지 못하는 구현" 배제.
 //   · TR6 — **RED · 후행(Task 9)**. 오늘 세 심볼이 프로덕션 소스에 살아 있다. 지정 Task 전까지
 //     red 인 것이 **정상**이며 "무관한 실패" 로 보고 `.skip` 하면 안 된다(§5.1).
 //
@@ -41,9 +40,6 @@ import { DRIFT_REL, seedControlVault } from './helpers/drifted-vault.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCRIPTS_DIR = path.resolve(HERE, '..')
-
-/** 히트 경로의 git 호출 계약 — **리터럴 argv**다(규범 A: 프로덕션 상수로 기대값을 만들지 않는다). */
-const HIT_GIT_CALLS = [['rev-parse', 'HEAD']]
 
 /**
  * v3 P1(Task 6) 이후의 조회 경로 git 호출 계약 — **빈 multiset**이다.
@@ -148,7 +144,7 @@ describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip): 오늘 판정이
     //   구분되지 않는다. 그래서 위험 실재 앵커를 **`summary.mjs` 실행**으로 옮긴다: 생성기는 항상
     //   히스토리를 훑으므로 같은 shim 에서 `log`·`rev-list` 가 실제로 나온다.
     expect(warm.exitCode, warm.stderr).toBe(0)
-    expect(warm.gitCalls.length).toBeGreaterThan(HIT_GIT_CALLS.length)
+    expect(warm.gitCalls.length).toBeGreaterThan(0)
     expect(gitVerbs(warm).some((verb) => verb.startsWith('rev-list'))).toBe(true)
     expect(gitVerbs(warm).some((verb) => verb.startsWith('log'))).toBe(true)
 
@@ -156,15 +152,10 @@ describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip): 오늘 판정이
     expect(hitFeeds.gitCalls).toEqual(READ_ONLY_GIT_CALLS)
   })
 
-  // ★ PU5(구 TR2) — **확정대기**(tdd §3.9). `wiki.mjs` 가 렌더 외에 git 을 부르는 자리가 남는지는
-  //   §8-③ 실측으로 **먼저 재고**한 뒤 기대값을 확정한다. 확정 전에 구현 판단으로 채우지 않는다
-  //   (tdd §10.1 작업규칙 9) — 그래서 아래 TR2 의 기대는 **오늘 값 그대로** 둔다.
-  //   ☞ 메인 세션 확정 후 `HIT_GIT_CALLS` → `READ_ONLY_GIT_CALLS` 로 flip 하거나, 남는 호출을
-  //     리터럴 multiset 으로 다시 적는다.
-  it('TR2: `wiki.mjs` 히트 실행도 동상 (두 CLI 를 **각각** 문다)', () => {
+  it('PU5(구 TR2): `wiki.mjs` 히트 실행도 git 호출 multiset === `[]`', () => {
     // 하나만 고친 구현을 배제한다 — D-E 와 D-F 는 서로 다른 Task 다.
     expect(hitWiki.exitCode).toBe(0)
-    expect(hitWiki.gitCalls).toEqual(HIT_GIT_CALLS)
+    expect(hitWiki.gitCalls).toEqual(READ_ONLY_GIT_CALLS)
   })
 })
 

@@ -27,13 +27,11 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const wikiModule = await import(new URL('../wiki.mjs', import.meta.url).href)
 const singleDocModule = await import(new URL('../lib/single-doc.mjs', import.meta.url).href).catch(
-  (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
-)
-const generatorModule = await import(new URL('../lib/generator.mjs', import.meta.url).href).catch(
   (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
 )
 const graphModule = await import(new URL('./helpers/static-import-graph.mjs', import.meta.url).href)
@@ -94,15 +92,6 @@ function singleDoc() {
   return singleDocModule
 }
 
-async function generate(options) {
-  if (generatorModule.__loadError !== undefined) {
-    throw new Error(
-      `[RED] scripts/lib/generator.mjs 가 아직 없다 (OQ-P5-1=A 미구현): ${generatorModule.__loadError}`,
-    )
-  }
-  return await generatorModule.runSummaryGenerator(options)
-}
-
 /**
  * 세계관 — active 5 + disable 1.
  *
@@ -142,6 +131,7 @@ describe('wiki 는 async 이고 순수부는 lib/single-doc.mjs 다 (WK1 · 🔴
   it('WK1: `wiki()` 가 Promise 를 돌려주고 `single-doc.mjs` 의 두 export 가 함수다', async () => {
     const vault = seedWorld()
     const wiki = wikiFn()
+    await prebuildArtifacts(vault, 'dev')
 
     const returned = wiki(vault, 'dev', REL_MAIN)
     expect(returned).toBeInstanceOf(Promise)
@@ -157,6 +147,7 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
   it('WK2: active 문서 → **정확 7키** · 자기 마커 있고 이웃 마커 없다', async () => {
     const vault = seedWorld()
     const wiki = wikiFn()
+    await prebuildArtifacts(vault, 'dev')
 
     const doc = await wiki(vault, 'dev', REL_MAIN)
 
@@ -173,6 +164,7 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
     // 링크 생존 계약이다 — 다른 문서가 `[[폐업기업]]` 으로 걸어도 데드가 되지 않는다.
     const vault = seedWorld()
     const wiki = wikiFn()
+    await prebuildArtifacts(vault, 'dev')
 
     const stub = await wiki(vault, 'dev', REL_DISABLE)
 
@@ -186,6 +178,7 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
     // 소비자 404 선처리(`plugin.ts:245` — `wikiEnvelope.parse(null)` 은 throw 라 순서가 계약이다)가
     //   이 값에 결속돼 있다.
     const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
 
     expect(await wikiFn()(vault, 'dev', '없는/경로')).toBeNull()
   })
@@ -194,7 +187,9 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
 describe('위키링크 해석 동치 (WK5·WK6 · 🟢계약 보존 pin · CX-O)', () => {
   it('WK5: 같은 문서 안에서 존재 대상은 살고 부재 대상은 dead 로 렌더된다', async () => {
     // 앵커가 케이스 안에 있다 — 한쪽만 두면 "전부 dead"·"전부 alive" 구현이 통과한다.
-    const html = (await wikiFn()(seedWorld(), 'dev', REL_MAIN)).html
+    const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
+    const html = (await wikiFn()(vault, 'dev', REL_MAIN)).html
 
     expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
     expect(anchorOf(html, '없는문서')).toContain(DEAD_CLASS)
@@ -202,7 +197,9 @@ describe('위키링크 해석 동치 (WK5·WK6 · 🟢계약 보존 pin · CX-O)
 
   it('WK6: **동명 basename** `[[HBM]]` 은 dead · 유일 basename 은 해석된다', async () => {
     // plan Task 4 GOTCHA · B9 — 실 vault 에 동명 basename 이 0건이라 **픽스처가 없으면 공허**하다.
-    const html = (await wikiFn()(seedWorld(), 'dev', REL_MAIN)).html
+    const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
+    const html = (await wikiFn()(vault, 'dev', REL_MAIN)).html
 
     expect(anchorOf(html, 'HBM')).toContain(DEAD_CLASS)
     expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
@@ -213,7 +210,7 @@ describe('해석 인덱스는 아티팩트에서 유도된다 (WK7 · 🔴RED �
   it('WK7: 아티팩트 `docs[].breadcrumb` 집합 === 인덱스 경로 집합 (**disable 포함**)', async () => {
     // B9 의 동치 실측을 계약으로 고정한다. 해석기는 값이 아니라 **키 집합**만 쓴다.
     const vault = seedWorld()
-    await generate({ env: 'dev', vault })
+    await prebuildArtifacts(vault, 'dev')
 
     const artifactDocs = readJson(summaryFile(vault, 'dev')).docs
     const index = singleDoc().makeDocIndex(artifactDocs)
@@ -240,25 +237,17 @@ describe('단건 투영은 전 문서 파생을 타지 않는다 (WK8 · 🔴RED
   })
 })
 
-describe('아티팩트 신선도 백스톱 (WK9 · 🔴RED 경로 부재)', () => {
-  it('WK9: stale + 재생성 성공 → 새 내용 · stale + 재생성 실패 → **reject**', async () => {
+describe('아티팩트 읽기 백스톱 (WK9 · 🔴RED 경로 부재)', () => {
+  it('WK9: 사전 빌드된 아티팩트는 읽고, 부재 아티팩트는 **reject** 한다', async () => {
     const vault = seedWorld()
     const wiki = wikiFn()
+    await prebuildArtifacts(vault, 'dev')
 
     // 앵커: 정상 히트는 resolve 하고 본문이 있다.
     expect((await wiki(vault, 'dev', REL_MAIN)).html).toContain(MARKER_MAIN)
 
-    // stale + 재생성 성공 — 미커밋 저장이 다음 조회에 반영된다(D12).
-    writeDoc(vault, REL_MAIN, {
-      body: '## 정의\n\n갱신된본문마커 본문이다.\n',
-      id: ID_MAIN,
-      title: '삼성전자',
-      type: 'company',
-    })
-    expect((await wiki(vault, 'dev', REL_MAIN)).html).toContain('갱신된본문마커')
-
-    // stale + 재생성 실패 — 옛 아티팩트를 200 으로 흘리지 않는다.
-    rmSync(path.join(vault, '.git'), { force: true, recursive: true })
+    // 아티팩트 부재는 fail-loud 다. 조회 경로가 생성기를 되살려 통과하면 안 된다.
+    rmSync(summaryFile(vault, 'dev'), { force: true })
     const returned = wiki(vault, 'dev', REL_MAIN)
     expect(returned).toBeInstanceOf(Promise) // 규범 C10
     await expect(returned).rejects.toThrow()
@@ -271,7 +260,7 @@ describe('빈 아티팩트 가드 (WK10 · 🔴RED 경로 부재)', () => {
     //   정상이므로 "빈 아티팩트 = 이상" 은 거짓 명제다. 앵커 의무는 **테스트가** 진다.
     const vault = seedWorld()
     const wiki = wikiFn()
-    await generate({ env: 'dev', vault })
+    await prebuildArtifacts(vault, 'dev')
 
     const file = summaryFile(vault, 'dev')
     const healthy = readFileSync(file, 'utf8')

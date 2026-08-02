@@ -6,12 +6,17 @@
 //   시딩으로 1회 태워 "셸이 실제로 돈다"를 고정한다(0% 커버리지 → 셸 분기 커버).
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { fileURLToPath } from 'node:url'
+import path from 'node:path'
+
+import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 import { main as feedsMain } from '../feeds.mjs'
 import { main as summaryMain } from '../summary.mjs'
 import { main as wikiMain } from '../wiki.mjs'
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
 /** active 문서 1 + 그 문서를 가리키는 feed 1 (post-D1 — blob 에 id 존재). */
 function seed() {
@@ -42,7 +47,7 @@ async function run(main, argv) {
 //   safe.directory 예외가 사라져 9p/컨테이너에서 실 repo git 이 dubious-ownership 로 죽으므로 주입한다
 //   (build.uuidv7-e2e 관례). tmp vault 케이스엔 무해.
 const SAVED_GIT_ENV = {}
-beforeAll(() => {
+beforeAll(async () => {
   for (const [k, v] of [
     ['GIT_CONFIG_COUNT', '1'],
     ['GIT_CONFIG_KEY_0', 'safe.directory'],
@@ -51,6 +56,7 @@ beforeAll(() => {
     SAVED_GIT_ENV[k] = process.env[k]
     process.env[k] = v
   }
+  await prebuildArtifacts(REPO_ROOT, 'dev')
 })
 afterAll(() => {
   for (const [k, v] of Object.entries(SAVED_GIT_ENV)) {
@@ -60,8 +66,9 @@ afterAll(() => {
 })
 
 let vault
-beforeEach(() => {
+beforeEach(async () => {
   vault = seed()
+  await prebuildArtifacts(vault, 'dev')
 })
 afterEach(() => {
   cleanup(vault)

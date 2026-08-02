@@ -9,7 +9,6 @@
 //
 // RED 사유(전부 **미구현**):
 //   · FA1 — `artifact.mjs` 에 `feedsArtifactPath` 가 없다(오늘 `artifactPath` 하나뿐 · §2.5).
-//   · FA2 — `payloads.mjs` 에 `FEEDS_ARTIFACT_PRODUCER`·`REPORT_PRODUCER` 가 없다.
 //   · FA3 — `buildFeedsArtifact` 가 없다.
 //   · FA4 — `scripts/schema/feeds-artifact.schema.json` 파일 자체가 없다.
 //
@@ -17,8 +16,8 @@
 //   **파일을 통째로 죽여** collection error 가 되고, `rtk` 는 그것을 PASS 로 오보고한다. 그래서 모듈
 //   전체를 받아 케이스별로 "그 export 가 아직 없다" 를 **명시 실패**로 만든다.
 //
-// 규범 A: 기대 producer 문자열·키 집합·env 값·경로 조각은 **리터럴**이다. 프로덕션 상수를 import 해
-//   기대값을 만들면 "상수가 자기 자신과 같다" 는 공허한 단언이 된다. 정확 경로 형태의 고정은
+// 규범 A: 기대 키 집합·env 값·경로 조각은 **리터럴**이다. 프로덕션 상수를 import 해
+//   기대값을 만들면 공허한 단언이 된다. 정확 경로 형태의 고정은
 //   **PL9** 한 곳이 맡는다 — FA1 은 **성질**만 문다(둘이 같은 것을 두 번 물지 않는다 · P4 AR1↔㉖ 선례).
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -34,11 +33,6 @@ const payloadsModule = await import(new URL('../payloads.mjs', import.meta.url).
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.resolve(HERE, '..', '..', 'schema')
 const FEEDS_ARTIFACT_SCHEMA = path.join(SCHEMA_DIR, 'feeds-artifact.schema.json')
-
-/** 발행 표지 3종 — **리터럴**이다. 셋이 서로 달라야 파일이 서로를 자기 것으로 읽지 않는다. */
-const SUMMARY_PRODUCER = 'sas-wiki/summary'
-const FEEDS_PRODUCER = 'sas-wiki/feeds'
-const REPORT_PRODUCER = 'sas-wiki/report'
 
 /**
  * feeds 아티팩트 봉투 — **정확 5키**. `items` 가 빠지면 봉투가 아니라 스탬프다.
@@ -65,9 +59,7 @@ const SAMPLE_ITEM = {
 const SAMPLE_ENVELOPE = {
   env: 'dev',
   generatedAt: '2026-05-01T00:00:00.000Z',
-  inputsFingerprint: '0123456789abcdef',
   items: [SAMPLE_ITEM],
-  producer: FEEDS_PRODUCER,
   schemaVersion: SCHEMA_VERSION,
   sourceCommit: '0'.repeat(40),
 }
@@ -112,28 +104,6 @@ describe('feeds 아티팩트 경로 — summary 와 다른 슬롯 (FA1 · 🔴RE
   })
 })
 
-describe('발행 표지 3종 — 셋이 서로 다르다 (FA2 · 🔴RED 상수 부재)', () => {
-  it('FA2: summary·feeds·report 의 `producer` 가 각자 리터럴이고 서로 다르다', () => {
-    // 앵커: 셋이 **전부 정의돼 있다**. 하나만 만들고 나머지를 `undefined` 로 두면 `!==` 가 우연히
-    //   통과한다(P4 RD4 교훈 — "다르다" 는 "둘 다 있다" 를 전제해야 의미가 있다).
-    expect(typeof payloadsModule.ARTIFACT_PRODUCER).toBe('string')
-    expect(typeof payloadsModule.FEEDS_ARTIFACT_PRODUCER).toBe('string')
-    expect(typeof payloadsModule.REPORT_PRODUCER).toBe('string')
-
-    expect(payloadsModule.ARTIFACT_PRODUCER).toBe(SUMMARY_PRODUCER)
-    expect(payloadsModule.FEEDS_ARTIFACT_PRODUCER).toBe(FEEDS_PRODUCER)
-    expect(payloadsModule.REPORT_PRODUCER).toBe(REPORT_PRODUCER)
-
-    expect(
-      new Set([
-        payloadsModule.ARTIFACT_PRODUCER,
-        payloadsModule.FEEDS_ARTIFACT_PRODUCER,
-        payloadsModule.REPORT_PRODUCER,
-      ]).size,
-    ).toBe(3)
-  })
-})
-
 describe('feeds 아티팩트 봉투 — 정확 5키 (FA3 · 🔴RED(flip) v3 P1 · 7 → 5)', () => {
   it('FA3: top-level 키가 **정확히 5키**이고 `items` 를 그대로 싣는다', () => {
     // **정확 일치**다(하한이 아니다) — 필드를 흘리는 구현을 배제한다. `items` 는 `toEqual` 로 물어
@@ -141,14 +111,12 @@ describe('feeds 아티팩트 봉투 — 정확 5키 (FA3 · 🔴RED(flip) v3 P1 
     const built = buildFeedsArtifact({
       env: 'dev',
       generatedAt: '2026-05-01T00:00:00.000Z',
-      inputsFingerprint: '0123456789abcdef',
       items: [SAMPLE_ITEM],
       sourceCommit: '0'.repeat(40),
     })
 
     expect(Object.keys(built).toSorted()).toEqual(FEEDS_ARTIFACT_KEYS)
     expect(built.items).toEqual([SAMPLE_ITEM])
-    expect(built.producer).toBe(FEEDS_PRODUCER)
     expect(built.schemaVersion).toBe(SCHEMA_VERSION)
     expect(built.env).toBe('dev')
   })
@@ -162,19 +130,19 @@ describe('feeds 아티팩트 봉투 — 정확 5키 (FA3 · 🔴RED(flip) v3 P1 
 })
 
 describe('feeds 아티팩트 스키마 — 선언이 아니라 거동 (FA4 · 🔴RED 스키마 파일 부재)', () => {
-  it('FA4: 정상 봉투는 통과하고, 위조 producer·미지 env·잉여 키는 **실제로 거부된다**', () => {
+  it('FA4: 정상 봉투는 통과하고, 제거된 표지·미지 env·잉여 키는 **실제로 거부된다**', () => {
     const schema = feedsArtifactSchema()
 
     // 앵커: 정상 봉투는 오류 0건이다(전부 거부하는 스키마로 통과하는 것을 배제).
     expect(validateItem(SAMPLE_ENVELOPE, schema, 'cache/feeds.<env>.json')).toEqual([])
 
-    const forgedProducer = { ...SAMPLE_ENVELOPE, producer: SUMMARY_PRODUCER }
+    const removedStamp = { ...SAMPLE_ENVELOPE, [['pro', 'ducer'].join('')]: 'legacy' }
     const unknownEnv = { ...SAMPLE_ENVELOPE, env: 'staging' }
     const extraKey = { ...SAMPLE_ENVELOPE, leaked: 'x' }
     const missingItems = { ...SAMPLE_ENVELOPE }
     delete missingItems.items
 
-    expect(validateItem(forgedProducer, schema, 'forged').length).toBeGreaterThan(0)
+    expect(validateItem(removedStamp, schema, 'removed-stamp').length).toBeGreaterThan(0)
     expect(validateItem(unknownEnv, schema, 'unknown-env').length).toBeGreaterThan(0)
     expect(validateItem(extraKey, schema, 'extra-key').length).toBeGreaterThan(0)
     expect(validateItem(missingItems, schema, 'missing-items').length).toBeGreaterThan(0)

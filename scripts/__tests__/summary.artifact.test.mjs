@@ -3,12 +3,10 @@
 // P4 · Task 1·3 — 발행 아티팩트의 종단 계약 (D-C·D-D·D-G) — tdd §3.1(FP7) · §3.3(AR3·AR4·AR6·AR8)
 //
 // RED 사유:
-//   · FP7 — **RED(미구현)**. 지문이 `ignore-feeds.json` 을 입력으로 물지 않으므로(plan B5), 억제
-//     목록만 저장해서는 재생성이 일어나지 않는다. FP1 의 **종단판**이다.
 //   · AR3 — **RED(오늘 env 무관 단일 슬롯)**. `summary.mjs:46` 이 dev·prod 를 `cache/summary.json`
 //     한 슬롯에 쓴다(plan B6) → 교대 실행이 서로를 무효화한다.
-//   · AR4 — **RED(필드 부재)**. 봉투에 `producer`·`env` 가 없다. OQ-P4-4 = **A** 확정:
-//     아티팩트 = stdout payload = HTTP 응답, 셋이 **같은 9키**다.
+//   · AR4 — **RED(필드 부재)**. 봉투에 `env` 가 없다. OQ-P4-4 = **A** 확정:
+//     아티팩트 = stdout payload = HTTP 응답, 셋이 **같은 7키**다.
 //   · AR6 — **RED(flip)**. 오늘 `schemaVersion` 은 1 이다(`payloads.mjs:12`). §4 원장 ⑥~⑩ 이 뒤집히는
 //     리터럴 6지점을 1:1 로 지목한다 — 그 지점들과 **같은 커밋**에서 움직인다.
 //   · AR8 — **RED(스키마 미갱신)**. `summary.schema.json` 은 `additionalProperties:false` 이고
@@ -23,14 +21,14 @@
 //   먼저 어기는 꼴이 된다. 대신 **파일 내용**(env 표지·키 집합·버전·스키마)이 전부 리터럴 단언이다.
 //
 // ★ 규범 F: 실 vault 를 건드리지 않는다. 억제 엔트리는 tmp git vault 에서만 만든다.
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
-import { cleanup, git } from './helpers/tmp-git-vault.mjs'
+import { cleanup } from './helpers/tmp-git-vault.mjs'
 import { seedCleanVault } from './helpers/polluted-vault.mjs'
 
 // P5 · OQ-P5-1=A — runSummaryGenerator 가 CLI 파일(summary.mjs)에서 lib/generator.mjs 로 이동했다.
@@ -46,7 +44,9 @@ async function generate(options) {
   }
   // ★ `await` 는 **선제적**이다 — D-A 가 `runSummaryGenerator` 를 async 로 만든다(OQ-P4-3 승인).
   //   동기 반환값에 붙는 `await` 는 무해하므로 이 파일은 전후 양쪽에서 같은 의미를 갖는다.
-  return await loadedSummary.runSummaryGenerator(options)
+  const env = options.env ?? 'prod'
+  const artifactPath = options.artifactPath ?? artifactPathOf(options.vault, env)
+  return await loadedSummary.runSummaryGenerator({ ...options, artifactPath, env })
 }
 
 /** 발행 파일의 **좌표**만 얻는다 — 기대값이 아니다(위 헤더 주석 참조). */
@@ -64,10 +64,6 @@ function artifactPathOf(vaultDir, env) {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
-
-/** 억제 파일명 · 엔트리 — **리터럴**이다(규범 A). id 는 12hex, when 은 RFC3339(ignore-feeds.schema.json). */
-const IGNORE_FILE = 'ignore-feeds.json'
-const IGNORE_ENTRY = '[{"id":"0123456789ab","when":"2026-07-27T00:00:00Z"}]'
 
 /**
  * 아티팩트 봉투 **7키** — 리터럴이고 **정확 일치**로 문다(하한이 아니다).
@@ -98,38 +94,6 @@ function freshClean() {
 }
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
-
-describe('억제 저장은 재생성을 유발하지 않는다 (FP7 · 🟩flip · P5 Task 8(D-H) · SU5 로 대체)', () => {
-  // ★ Rewrite(메인 세션 판정 · tdd §4 원장 ⑦·§4.5 ㉑) — P4 시절 이 케이스는 "억제가 지문 입력이라
-  //   저장만 해도 재생성된다" 를 세워 D12("저장만으로 즉시 반영")를 지켰다. P5 Task 8(D-H)로 억제는
-  //   지문의 입력에서 **빠졌다**(계산 모듈은 v3 P1 이 통째로 없앤다 · §4.3 ⑤) — 그 결과 이 파일 저장은 더 이상 재생성을 유발하지
-  //   않는다. D12 자체는 죽지 않았다 — 그 종단 증거는 `summary.suppression-independence.test.mjs`
-  //   의 **SU5~SU8**(같은 커밋에서 재작성)이 승계한다: `feeds.mjs` 가 서빙 시점에 억제를 캐시 없이
-  //   직접 읽으므로(D-A·D-C) 재생성 없이도 반영이 즉시다. 이 케이스는 **반대 방향의 회귀 가드**로
-  //   남는다 — 억제 저장이 다시 재생성을 유발하게 되면(지문에 억제가 도로 섞이면) 그것이 SU1~SU4 의
-  //   회귀이자 여기서도 flip 이다.
-  it('FP7: HEAD 불변 + 억제 목록만 **미커밋 저장** → 다음 실행도 재생성하지 않는다(지문 불변)', async () => {
-    const vault = freshClean()
-    const first = await generate({ env: 'dev', vault })
-    const second = await generate({ env: 'dev', vault })
-
-    // 앵커 ①: 2회차는 실제로 **스킵**했다 — "항상 재생성하는" 생성기에서는 3회차 재생성이 무의미하다.
-    expect(second.regenerated).toBe(false)
-
-    const headBefore = git(vault, ['rev-parse', 'HEAD'])
-    writeFileSync(path.join(vault, IGNORE_FILE), IGNORE_ENTRY, 'utf8')
-
-    // 앵커 ②: 저장은 **워킹트리**에만 일어났다(그 파일이 실제로 더러워졌다).
-    expect(git(vault, ['status', '--porcelain'])).toContain(IGNORE_FILE)
-    // 앵커 ③: HEAD 는 움직이지 않았다 → 재생성의 원인은 `sourceCommit` 이 아니다.
-    expect(git(vault, ['rev-parse', 'HEAD'])).toBe(headBefore)
-
-    const third = await generate({ env: 'dev', vault })
-
-    expect(third.regenerated).toBe(false)
-    expect(third.inputsFingerprint).toBe(first.inputsFingerprint)
-  })
-})
 
 describe('발행 아티팩트 — env 격리 (AR3 · 🔴RED 단일 슬롯)', () => {
   it('AR3: dev·prod 가 **서로 다른 파일**에 공존하고 각자 자기 `env` 를 선언한다', async () => {

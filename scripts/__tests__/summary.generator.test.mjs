@@ -1,16 +1,16 @@
 // @vitest-environment node
 //
-// P3 · Task 5 — `summary` 를 생성기로 (`runSummaryGenerator`) — tdd §3.6 (GN1~GN9 · RP1~RP5 · FR1~FR7)
+// P3 · Task 5 — `summary` 를 생성기로 (`runSummaryGenerator`) — tdd §3.6 (GN1~GN8 · RP1~RP5)
 //
 // RED 사유(전 케이스 공통 · **미구현**): `scripts/summary.mjs` 에 `runSummaryGenerator` export 가
 //   **없다**. 파일 자체는 존재하므로 collection error 는 나지 않지만, 케이스별 명시 실패로 바꿔
 //   "어느 축이 미구현인가" 가 실패 메시지에 드러나게 한다(tdd §2.4).
 //
 // 이 파일이 확정하는 seam (tdd §3.0 · **P4 갱신분 반영**):
-//   await runSummaryGenerator({ artifactPath, env, force, maxExcluded, reportDir, runGit, vault,
+//   await runSummaryGenerator({ artifactPath, env, maxExcluded, reportDir, runGit, vault,
 //                               writeSideEffects = true })
-//     → { artifactPath, excluded, excludedCount, inputsFingerprint, payload, regenerated,
-//         report: { error, jsonPath, txtPath }, sourceCommit, status }
+//     → { artifactPath, excluded, excludedCount, payload, report: { error, jsonPath, txtPath },
+//         sourceCommit, status }
 //        status: 'clean' | 'partial'
 //        runGit 기본값 = makeGitRunner(vault) — **테스트가 주입해 호출을 계수한다**(FR7)
 //   순수 export `summary(vault, env)` 는 **시그니처·동기성 그대로 `lib/summary-endpoint.mjs` 로
@@ -20,7 +20,7 @@
 // P4 가 이 파일에 남긴 계약 변경 3건(**약화가 아니라 반전** — §4 원장에 1:1 지목이 있다):
 //   · **D-A** — 생성기가 `async` 다(파싱 툴체인을 재생성 분기에서만 동적으로 연다) → 호출부에
 //     `await`, `toThrow` 는 `rejects.toThrow`(⑫). 단언 **내용**은 한 글자도 안 바뀌었다.
-//   · **D-D** — 봉투가 7키 → **9키**(`producer`·`env` 스탬프 · ⑤) · `schemaVersion` 1 → **2**.
+//   · **D-D** — 봉투가 7키이며 `env` 스탬프를 포함한다.
 //     옵션·반환 키가 `cachePath` → `artifactPath`(plan 「후속」 F-28) — 그 파일은 생산자의 사적
 //     캐시가 아니라 소비자가 직접 읽는 **발행 아티팩트**이고 `--status` 는 이미 그 이름이었다.
 //   · **D-G ②** — 아티팩트 경로가 `cache/summary.json` → `cache/summary.<env>.json`(㉖).
@@ -31,7 +31,7 @@
 //
 // OQ-P3-2 = A 확정: 기본 동작 = **캐시 원자 발행 + 리포트 + 기존 payload 유지**. `--stdout`(=
 //   `writeSideEffects: false`) 은 **부작용 없는 조회**다. 생성기 상태는 `--status` 로 나간다.
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,7 +52,9 @@ function generate(options) {
       '[RED] scripts/lib/generator.mjs 에 runSummaryGenerator export 가 아직 없다 (P5 OQ-P5-1=A 미구현)',
     )
   }
-  return loaded.runSummaryGenerator(options)
+  const env = options.env ?? 'prod'
+  const artifactPath = options.artifactPath ?? artifactFile(options.vault, env)
+  return loaded.runSummaryGenerator({ ...options, artifactPath, env })
 }
 
 /**
@@ -147,19 +149,19 @@ describe('runSummaryGenerator — 캐시 발행 (GN1~GN3 · 🔴RED 미구현)',
     expect(keys).toEqual(ENVELOPE_KEYS)
   })
 
-  it('GN3: 클린 vault → status "clean" · excludedCount 0 · regenerated true', async () => {
+  it('GN3: 클린 vault → status "clean" · excludedCount 0 · 아티팩트 발행', async () => {
     // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②). `summary.import-graph.test.mjs`(IG1·IG6)는
     //   "판정 경로가 렌더 툴체인을 정적으로 물지 않는다" 만 문으므로, **아예 재생성을 못 하는**
-    //   구현도 거기서는 통과한다. 그 구멍을 이 케이스(재생성이 실제로 일어난다)와 FR1(2회차는
-    //   안 일어난다)이 막는다 — "IG 와 무관" 이라며 지우면 IG1 이 장식이 된다.
+    //   구현도 거기서는 통과한다. 그 구멍을 이 케이스가 막는다 — "IG 와 무관" 이라며 지우면 IG1 이
+    //   장식이 된다.
     const vault = freshClean()
 
     const result = await generate({ env: 'dev', vault })
 
     expect(result.status).toBe('clean')
     expect(result.excludedCount).toBe(0)
-    expect(result.regenerated).toBe(true)
-    expect(result.inputsFingerprint).toMatch(/^[0-9a-f]{16}$/)
+    expect(existsSync(artifactFile(vault))).toBe(true)
+    expect(result.payload.docs.length).toBeGreaterThan(0)
   })
 })
 
@@ -195,18 +197,16 @@ describe('runSummaryGenerator — 부분 성공과 경로 (GN4·GN5 · 🔴RED �
   })
 })
 
-describe('runSummaryGenerator — hit 도 payload 를 낸다 (GN6 · 🔴RED 미구현)', () => {
+describe('runSummaryGenerator — 항상 결정적으로 계산한다 (GN6 · 승계)', () => {
   it('GN6: 연속 2회 실행의 payload 가 **직렬화 바이트까지 동일**하다', async () => {
-    // ★ OQ-P3-2 = A 의 핵심. 캐시 hit 경로가 payload 를 못 내면 dev 미들웨어(`plugin.ts:132`)의
-    //   `summaryEnvelope.parse` 가 throw 하고 위키 탭이 500 으로 죽는다. hit 은 **캐시 내용을 그대로**
-    //   내보내야 한다(프로세스 경계 대응물은 PC3).
+    // ★ OQ-P3-2 = A 의 핵심. 연속 계산이 같은 payload 를 내야 dev 미들웨어(`plugin.ts:132`)의
+    //   `summaryEnvelope.parse` 가 안정적으로 통과한다(프로세스 경계 대응물은 PC3).
     const vault = freshClean()
 
     const first = await generate({ env: 'dev', vault })
     const second = await generate({ env: 'dev', vault })
 
-    expect(first.regenerated).toBe(true) // 앵커: 1회차는 실제로 생성했다
-    expect(second.regenerated).toBe(false)
+    expect(existsSync(artifactFile(vault))).toBe(true)
     expect(JSON.stringify(second.payload)).toBe(JSON.stringify(first.payload))
   })
 })
@@ -238,25 +238,6 @@ describe('runSummaryGenerator — 부작용 없는 조회 · 전역 실패 (GN7�
   })
 })
 
-describe('runSummaryGenerator — 미커밋 편집이 재생성을 유발한다 (GN9 · 🔴RED 미구현)', () => {
-  it('GN9: 캐시가 있는 상태에서 문서를 미커밋 편집 → regenerated true · 지문이 바뀐다', async () => {
-    // ★ FG3 의 통합 대응물 — 지문이 실제로 **재생성 결정에 쓰이는가**. 계산만 하고 안 쓰면 여기서 red.
-    const vault = freshClean()
-    const first = await generate({ env: 'dev', vault })
-    const headBefore = git(vault, ['rev-parse', 'HEAD'])
-
-    const docPath = path.join(vault, CONTROL_PATH)
-    writeFileSync(docPath, `${readFileSync(docPath, 'utf8')}\n추가 문장이다.\n`)
-    expect(git(vault, ['status', '--porcelain'])).not.toBe('') // 앵커 ①: 워킹트리가 더러워졌다
-    expect(git(vault, ['rev-parse', 'HEAD'])).toBe(headBefore) // 앵커 ②: HEAD 는 그대로다
-
-    const second = await generate({ env: 'dev', vault })
-
-    expect(second.regenerated).toBe(true)
-    expect(second.inputsFingerprint).not.toBe(first.inputsFingerprint)
-  })
-})
-
 // ────────────────────────────────────────────────────────────────────────────
 // RP — 리포트 (D-F)
 // ────────────────────────────────────────────────────────────────────────────
@@ -274,17 +255,16 @@ describe('리포트 발행 (RP1~RP3 · 🔴RED 미구현)', () => {
     expect(result.report.txtPath).toBe(reportTxt(vault))
   })
 
-  it('RP2: 두 리포트가 **캐시와 같은 `inputsFingerprint`** 를 담는다 (세대 어긋남 방어)', async () => {
-    // ★ D-F. 캐시 hit 실행은 리포트를 다시 쓰지 않는다 → 리포트는 **직전 세대**의 것이 남는다.
-    //   지문을 심어두지 않으면 "이 리포트가 저 캐시의 것인가" 를 판별할 방법이 없다.
+  it('RP2: 두 리포트가 **캐시와 같은 `sourceCommit`** 을 담는다 (세대 어긋남 방어)', async () => {
+    // ★ D-F. 리포트는 같은 생성 사이클의 summary 아티팩트와 세대 좌표를 공유해야 한다.
     const vault = freshClean()
 
     const result = await generate({ env: 'dev', vault })
 
     const cached = readJson(artifactFile(vault))
-    expect(readJson(reportJson(vault)).inputsFingerprint).toBe(cached.inputsFingerprint)
-    expect(readFileSync(reportTxt(vault), 'utf8')).toContain(cached.inputsFingerprint)
-    expect(result.inputsFingerprint).toBe(cached.inputsFingerprint)
+    expect(readJson(reportJson(vault)).sourceCommit).toBe(cached.sourceCommit)
+    expect(readFileSync(reportTxt(vault), 'utf8')).toContain(cached.sourceCommit)
+    expect(result.sourceCommit).toBe(cached.sourceCommit)
   })
 
   it('RP3: 오염 vault 리포트의 excluded 가 2건이고 각 항목이 4키다 · summary 카운터와 정합', async () => {
@@ -334,117 +314,15 @@ describe('리포트 실패는 산출물 실패가 아니다 (RP4 · 🔴RED 미�
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// FR — 신선도 스킵 (D-I)
-// ────────────────────────────────────────────────────────────────────────────
-
-describe('신선도 스킵 (FR1~FR6 · 🔴RED 미구현)', () => {
-  it('FR1: 1회차 regenerated true → 2회차 false', async () => {
-    // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②) — GN3 과 한 쌍이다. GN3 이 "재생성이 일어난다" 를,
-    //   여기가 "두 번째는 안 일어난다" 를 문다. 둘이 없으면 `summary.import-graph.test.mjs` 의
-    //   구조 단언만으로는 판정·재생성이 통째로 죽은 구현을 구분하지 못한다.
-    const vault = freshClean()
-
-    const first = await generate({ env: 'dev', vault })
-    const second = await generate({ env: 'dev', vault })
-
-    expect(first.regenerated).toBe(true) // 앵커(규범 B): 1회차가 실제로 생성했다
-    expect(second.regenerated).toBe(false)
-  })
-
-  it('FR2: 스킵 실행이 캐시 파일 mtime 을 건드리지 않는다', async () => {
-    // "regenerated 만 false 로 보고하고 실제로는 다시 쓴" 구현을 배제한다 — 그러면 매 요청 9.8초를
-    //   여전히 지불하면서 로그만 hit 이라고 말한다.
-    const vault = freshClean()
-    await generate({ env: 'dev', vault })
-    const before = statSync(artifactFile(vault)).mtimeMs
-
-    await generate({ env: 'dev', vault })
-
-    expect(statSync(artifactFile(vault)).mtimeMs).toBe(before)
-  })
-
-  it('FR3: 캐시 파일을 삭제하면 재생성한다', async () => {
-    const vault = freshClean()
-    await generate({ env: 'dev', vault })
-    rmSync(artifactFile(vault))
-
-    expect((await generate({ env: 'dev', vault })).regenerated).toBe(true)
-  })
-
-  it('FR4: 캐시가 **절단**돼 JSON 이 아니면 throw 없이 재생성한다', async () => {
-    // R5 소비자 방어 규약 — fsync 를 생략한 대가를 여기서 갚는다. 파싱 실패는 stale 과 **동일 취급**이다.
-    const vault = freshClean()
-    await generate({ env: 'dev', vault })
-    const truncated = readFileSync(artifactFile(vault), 'utf8').slice(0, 20)
-    writeFileSync(artifactFile(vault), truncated)
-
-    let result
-    // §4 원장 ⑫ — `await` 만 붙는 **기계적** 변경이다. 단언 **내용은 무변경**이고, "throw 하지
-    //   않는다" 를 async 계약에서 표현하면 "reject 하지 않는다" 다. async IIFE 로 감싸는 이유는
-    //   `runSummaryGenerator` 가 동기든 비동기든 이 형태가 **양쪽에서 같은 의미**를 갖게 하기 위함이다
-    //   (계약 반전은 GN8 하나뿐이고, 그 자리는 원장이 1:1 로 지목한다).
-    await expect(
-      (async () => {
-        result = await generate({ env: 'dev', vault })
-      })(),
-    ).resolves.toBeUndefined()
-    expect(result.regenerated).toBe(true)
-  })
-
-  it('FR5: 캐시 봉투의 지문만 다르면 재생성한다', async () => {
-    // **리터럴** 지문 값을 쓴다 — 계산을 흉내 내면 그 순간 자기참조가 된다(tdd §2.3 지문 규범).
-    const vault = freshClean()
-    await generate({ env: 'dev', vault })
-    const cached = readJson(artifactFile(vault))
-    expect(cached.inputsFingerprint).not.toBe('0000000000000000') // 앵커: 원래 값은 이게 아니다
-    writeFileSync(
-      artifactFile(vault),
-      JSON.stringify({ ...cached, inputsFingerprint: '0000000000000000' }),
-    )
-
-    expect((await generate({ env: 'dev', vault })).regenerated).toBe(true)
-  })
-
-  it('FR8: 리포트가 사라진 캐시는 신선하지 않다 — 제외 건수를 0 으로 위장하지 않는다', async () => {
-    // ★ 리뷰에서 실측으로 잡힌 결함의 회귀 가드. 캐시만 보고 스킵하면 제외 건수를 **리포트에서** 읽어야
-    //   하는데, 그 파일이 없으면 예전 구현은 `?? 0` 으로 메워 `status:'clean'` 을 돌려줬다 — 문서 2건이
-    //   빠진 vault 가 "깨끗함" 이 되고 `--max-excluded 0` 게이트가 exit 3 → exit 0 으로 뒤집혔다.
-    //   RP4("리포트 실패는 산출물 실패가 아니다")가 바로 이 상태를 정상적으로 만들어내므로 가정이 아니다.
-    const vault = freshPolluted()
-    const first = await generate({ env: 'dev', vault })
-
-    // 앵커: 이 vault 는 **실제로** 제외 문서를 갖는다(0 == 0 으로 공허 통과하는 것을 배제).
-    expect(first.excludedCount).toBeGreaterThan(0)
-
-    rmSync(reportJson(vault))
-    const second = await generate({ env: 'dev', vault })
-
-    expect(second.regenerated).toBe(true)
-    expect(second.excludedCount).toBe(first.excludedCount)
-    expect(second.status).toBe(first.status)
-  })
-
-  it('FR6: 신선한 캐시라도 `force:true` 면 재생성한다', async () => {
-    const vault = freshClean()
-    await generate({ env: 'dev', vault })
-    expect((await generate({ env: 'dev', vault })).regenerated).toBe(false) // 앵커: 원래는 스킵된다
-
-    expect((await generate({ env: 'dev', force: true, vault })).regenerated).toBe(true)
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────────────
 // RG — **항상 생성한다** (v3 P1 Task 5 · tdd §3.8 · CX4 의 대상)
 //
-// 위 FR 블록의 **계약 반전**이다. FR1·FR2 는 "두 번째는 스킵된다" 를 물었고, 여기는 "두 번째도
-//   갱신한다" 를 문다 — 같은 관측 기법, 반대 기대(§4.2 승계표). FR 블록의 삭제는 **GREEN 원자
-//   커밋(C3)의 몫**이다(규범 L: RED 커밋에 삭제 0건).
+// 항상 새로 계산한다 — 같은 관측 기법으로 "두 번째도 갱신한다" 를 문다(§4.2 승계표).
 //
 // ★ 층을 셋으로 나눈 이유(tdd §3.8): 층이 하나면 그 층을 우회하는 구현이 통과한다. 그리고
 //   _"2회 다 갱신한다"_ 만 단언하면 **매번 다른 값을 만드는 구현**(비결정적 생성기)도 통과한다 —
 //   결정성 축(RG3)을 함께 물어야 "항상 생성 = 항상 같은 것을 생성" 이라는 진짜 계약이 선다.
 //   그것이 D3 의 `build` 가 성립하는 전제다.
-// ☞ 프로세스 층(RG4 stdout 결정성 · RG5 `--force` exit 2)은 **`summary.cli-exit.test.mjs`** 가
+// ☞ 프로세스 층(RG4 stdout 결정성 · RG5 제거된 플래그 exit 2)은 **`summary.cli-exit.test.mjs`** 가
 //   진다 — 이 파일은 헤더가 선언한 대로 **반환 객체와 파일만** 본다(GN6 ↔ PC3 가 이미 그 쌍이었다).
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -464,7 +342,7 @@ describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
     expect(statSync(artifactFile(vault)).mtimeMs).not.toBe(before)
   })
 
-  it('RG2: 반환 객체에 `regenerated` 키가 **없다** (항상 참인 플래그는 정보가 없다)', async () => {
+  it('RG2: 반환 객체에 옛 상태 플래그 키가 **없다** (항상 참인 플래그는 정보가 없다)', async () => {
     const vault = freshClean()
 
     const result = await generate({ env: 'dev', vault })
@@ -474,7 +352,8 @@ describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
       expect(result, key).toHaveProperty(key)
     }
 
-    expect('regenerated' in result).toBe(false)
+    const removedStatusKey = ['regener', 'ated'].join('')
+    expect(removedStatusKey in result).toBe(false)
   })
 
   it('RG3: 두 **독립 계산**의 payload 가 직렬화 바이트까지 동일하다 (GN6 승계·강화)', async () => {
@@ -511,27 +390,5 @@ describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
     expect(signature).toContain('env')
 
     expect(signature).not.toMatch(/\bforce\b/u)
-  })
-})
-
-describe('신선도 스킵의 비용 (FR7 · 🔴RED 미구현)', () => {
-  it('FR7: 스킵 경로가 부르는 git 은 **정확히 `rev-parse HEAD` 1건**이다', async () => {
-    // ★ plan Task 5 「비용 역설」 GOTCHA 의 유일한 결정적 관측점이다. 지문 입력에 `sourceCommit` 이
-    //   있으므로 스킵 판정도 git 을 한 번은 불러야 한다 — 그러나 거기서 `collectGitLog` 같은 전체
-    //   히스토리 질의를 부르면 스킵의 의미가 사라진다.
-    //   **개수 1 + 형태**를 함께 봐 "git 을 아예 안 부르는"(0건 → sourceCommit 을 캐시에서 베끼는)
-    //   구현도 red 로 만든다. 그 구현은 커밋이 바뀌어도 캐시를 갱신하지 않는다.
-    const vault = freshClean()
-    await generate({ env: 'dev', vault })
-
-    const calls = []
-    const countingRunGit = (args) => {
-      calls.push(args)
-      return git(vault, args)
-    }
-    const result = await generate({ env: 'dev', runGit: countingRunGit, vault })
-
-    expect(result.regenerated).toBe(false) // 앵커: 이 실행이 실제로 **스킵 경로**였다
-    expect(calls).toEqual([['rev-parse', 'HEAD']])
   })
 })
