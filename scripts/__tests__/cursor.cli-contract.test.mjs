@@ -1,0 +1,363 @@
+// @vitest-environment node
+//
+// v3 P2 · Task 2·4 — 옵션 주입 차단(CR7~CR9) + `--count` 계약(CQ1~CQ6) — tdd §3.1·§3.3
+//
+// 관측 층은 **프로세스**다: exit code · stdout · **stderr 어휘** · 파일 부재. 규범 P 가 지배한다 —
+//   이 phase 이후 `feeds.mjs` 는 **세 사유로** 비정상 종료하고 그중 둘이 exit 2 를 공유하므로,
+//   종료 코드만 단언하는 케이스는 **엉뚱한 사유로 green** 이 된다. 모든 종료 단언에 어휘 축을 붙인다.
+//
+// ── ★ 인자 형태가 층을 가른다 (tdd §2.5-③ 실측 · 이 phase 최대의 공허 함정) ──────────────────
+//   `["--after=--output=/tmp/x"]`  → parseArgs 통과 → **우리 방어(D10 ①)** 에 도달 → 목표 exit 2
+//   `["--after","--output=/tmp/x"]`→ `ERR_PARSE_ARGS_INVALID_OPTION_VALUE` 로 **먼저 throw** → exit 1
+//   ⇒ 공백 형태는 커서 검증이 **0줄이어도 통과**한다. 두 형태를 **짝**으로 두되 공백 형태에
+//     **exit 2 를 요구하지 않는다**. 같은 갈림이 `--count -5`(exit 1) ↔ `--count=-5`(exit 2)에도 있다.
+//
+// ── RED 사유 ────────────────────────────────────────────────────────────────────────────────
+//   · CR7·CR8 — 🔴RED. 오늘 exit≠0 은 나지만 사유가 **`JSON.parse` 실패**다(`feeds.mjs:115`) —
+//     stderr 가 커서 어휘를 한 글자도 담지 않는다(실측: _"No number after minus sign in JSON…"_).
+//     pair 앵커(정상 12-hex 커서 → exit 0)도 red 다 — 오늘은 12-hex 가 유효 JSON 이 아니다.
+//   · CR9 — 🔴RED. `lib/feed-cursor.mjs` 가 없다(C3 신설).
+//   · CQ1·CQ2 — 🔴RED. 오늘 누락·`abc`·`0`·`-5`·`1.9`·`5e2`·`" 7"`·`0x10`·`""`·`Infinity` 가
+//     **전부 exit 0** 이고 조용히 50건으로 흡수된다(`git-walk.mjs:80`).
+//   · CQ3 — 🔴RED. `DEFAULT_FEED_LIMIT` 이 아직 프로덕션에 산다.
+//   · CQ4 — 🔴RED(flip). `package.json` 의 `"feeds"` 가 아직 `--count` 를 안 싣는다.
+//   · CQ5 — 🔴RED. `--from`/`--to` 가 프로덕션 argv 층에 그대로 있다.
+//   · CQ6 — 🔴RED. `--count` 무효가 아무 말도 하지 않으므로 두 사유의 어휘를 가를 수 없다.
+//
+// 규범 A: 커서·count 입력·기대 exit code 는 **전부 본문 리터럴**이다.
+// 규범 B: 부재 단언(파일 미생성 · `--from`/`--to` 0건) 앞에 **위험 실재 앵커**를 짝으로 둔다.
+// 규범 F: 실 vault 를 건드리지 않는다 — 태그 생성은 **tmp 리포에서만**(12-hex 태그는 그 리포의 모든
+//   축약 해석을 오염시킨다 · tdd §2.5-②).
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import { cleanup } from './helpers/tmp-git-vault.mjs'
+import { listTracked, scanTracked } from './helpers/tracked-scan.mjs'
+import {
+  initTinyRepo,
+  makeRealGitRunner,
+  runFeedsCli,
+  seedFeedVault,
+} from './helpers/cursor-vault.mjs'
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const SCRIPTS_DIR = path.resolve(HERE, '..')
+const REPO_ROOT = path.resolve(SCRIPTS_DIR, '..')
+
+// ── 계약 리터럴 (규범 A) ─────────────────────────────────────────────────────────────────────
+/**
+ * 커서 사유 축 — stderr 가 이 어휘로 말해야 한다(규범 P).
+ *
+ * ★★ **맨단어 `after` 를 토큰으로 쓰지 마라.** 첫 판(`/after|cursor|커서/i`)은 오늘의
+ *   `JSON.parse` 실패 메시지 _"No number **after** minus sign in JSON…"_ 에 걸려 **CR7 이 공허하게
+ *   green** 이었다(실측). 판정 토큰은 **플래그 형태(`--after`)** 이거나 커서 어휘여야 한다 —
+ *   plan Task 1 GOTCHA(맨단어 `from`/`to` 금지)와 같은 함정이 사유 축에도 있다.
+ * ⇒ **GREEN 계약**: 커서 거부 stderr 는 `--after` 또는 `cursor`/`커서` 를 담는다.
+ */
+const CURSOR_VOCAB = /--after|cursor|커서/iu
+/** count 사유 축 — 위와 **서로 다른 어휘**여야 규범 P 가 성립한다. */
+const COUNT_VOCAB = /count/iu
+/** env 열거 사유 축 — 현행 `lib/cli-env.mjs` 가 제시하는 두 값. */
+const ENV_VOCAB = /dev\|prod|dev\b.*prod/iu
+/** 12-hex 커서 정규식 — 리터럴. */
+const HEX12 = /^[0-9a-f]{12}$/u
+
+/** `--count` 값 검증 대상 **9종**. plan·PRD 의 4종으로는 부족하다(tdd §2.5-④ `parseInt` 실측). */
+const BAD_COUNTS = ['abc', '0', '-5', '1.9', '5e2', ' 7', '0x10', '', 'Infinity']
+/** pair 앵커 — 정상값은 통과해야 한다("전부 거부" 구현 배제). */
+const GOOD_COUNTS = ['1', '5', '200']
+
+const tmps = []
+afterAll(() => cleanup(...tmps))
+
+/** 공용 vault — feed 커밋 4건. 케이스마다 다시 시딩하면 파일 전체가 분 단위로 늘어난다. */
+let base
+beforeAll(() => {
+  base = seedFeedVault({ feedCount: 4 })
+  tmps.push(base.vault)
+  // ★ 캐시를 미리 굽는다 — **오늘의 baseline 을 살려 두기 위해서다**. 없으면 이 파일의 모든 arm 이
+  //   "아티팩트를 읽을 수 없다(exit 1)" 라는 **한 가지 사유**로 red 가 되어, D15·D16·D10 의 구멍이
+  //   관측되지 않는다(공허한 red 는 공허한 green 만큼 나쁘다). C4 이후 조회는 이 파일을 읽지 않으므로
+  //   이 Arrange 는 무해한 잔재가 된다 — 라이브 워크 계약 자체는 `feed-cursor.test.mjs` WA11-전제가 문다.
+  const prebuilt = runFeedsCli(base.vault, { count: 200, out: 'cache/feeds.dev.json' })
+  if (prebuilt.status !== 0) {
+    throw new Error(`[Arrange] feeds --out 실패 exit=${prebuilt.status}\n${prebuilt.stderr}`)
+  }
+}, 300_000)
+
+// ────────────────────────────────────────────────────────────────────────────
+// CR7~CR9 — 옵션 주입 차단 (tdd §3.9 CJ1·CJ4)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('옵션 주입 차단 (CR7·CR8 · 🔴RED 사유가 커서 검증이 아니다)', () => {
+  it(
+    'CR7: `--after=--output=<tmp>/pwned` 가 exit≠0 이고 **그 경로에 파일이 없다** (CJ1)',
+    { timeout: 300_000 },
+    () => {
+      // prettier-ignore
+      const target = path.join(base.vault, 'pwned')
+
+      // ★★ 위험 실재 앵커 — **먼저 실행한다**. 방어 없이 넘어가면 git 이 그 파일을 **실제로 만든다**.
+      //   우리 CLI 로는 "방어 없음" 상태를 재현할 수 없으므로 앵커는 **git 직접 호출**이어야 한다.
+      execFileSync('git', ['rev-list', '--max-count=1', `--output=${target}`, 'HEAD'], {
+        cwd: base.vault,
+        encoding: 'utf8',
+        env: { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: '*' }, // prettier-ignore
+      })
+      expect(existsSync(target), '앵커: 방어 없이 넘기면 파일이 실제로 생긴다').toBe(true)
+      rmSync(target, { force: true })
+
+      const result = runFeedsCli(base.vault, { after: `--output=${target}`, count: 5 })
+
+      // 숫자를 요구하지 않는다(규범 P·C9 — 문서 보증은 _"non-zero"_ 까지다).
+      expect(result.status, `stdout=${result.stdout}`).not.toBe(0)
+      // ★ 이 줄이 이 케이스의 존재 이유다.
+      expect(existsSync(target), '주입된 `--output=` 이 파일을 만들었다').toBe(false)
+      expect(result.stdout).toBe('')
+      // ★ 사유 축(규범 P) — 오늘은 `JSON.parse` 실패라 이 어휘가 없다.
+      expect(result.stderr, `stderr 가 커서 사유를 말하지 않는다: ${result.stderr}`).toMatch(CURSOR_VOCAB) // prettier-ignore
+    },
+  )
+
+  it(
+    'CR7-짝(pair): **공백 형태**는 `parseArgs` 층에서 죽는다 — 층이 다르다',
+    { timeout: 300_000 },
+    () => {
+      // prettier-ignore
+      // ★ 여기서 **exit 2 를 요구하지 않는다**. 이 arm 이 무는 것은 "우리 방어" 가 아니라
+      //   "그 형태로는 우리 방어에 도달조차 못 한다" 는 사실이다(tdd §2.5-③). 두 arm 을 한 케이스로
+      //   합치면 층이 뭉개지고, PRD `:512` 축자를 그대로 옮긴 케이스가 **방어 0줄에도 통과**한다.
+      const target = path.join(base.vault, 'pwned-spaced')
+      const result = runFeedsCli(base.vault, {
+        count: 5,
+        extraArgs: ['--after', `--output=${target}`],
+      })
+
+      expect(result.status).not.toBe(0)
+      expect(existsSync(target)).toBe(false)
+      expect(result.stdout).toBe('')
+    },
+  )
+
+  it(
+    'CR8: `--after=--all` · `--after=main` 이 exit≠0 이고 정상 커서는 exit 0 이다 (pair)',
+    { timeout: 300_000 },
+    () => {
+      // prettier-ignore
+      // ★ 앵커 ① (pair): 정상 12-hex 커서는 **exit 0 + 파싱 가능 JSON** 이다 — "전부 거부" 구현 배제.
+      //   동시에 이것이 **M3 방어**다: `--` 로 "막았다" 는 구현은 exit 0 + 빈 결과를 내므로 항목 수 0 이
+      //   「피드 끝」으로 오인된다. 정상 arm 이 **items 를 실제로 낸다**는 것으로 그 형태를 가른다.
+      const healthy = runFeedsCli(base.vault, { after: base.feedIds[0], count: 2 })
+      expect(healthy.status, healthy.stderr).toBe(0)
+      const page = JSON.parse(healthy.stdout)
+      expect(Array.isArray(page.items)).toBe(true)
+      expect(page.items.length, '정상 커서인데 0건이다 — 「끝」과 구분되지 않는다').toBeGreaterThan(
+        0,
+      )
+
+      for (const bad of ['--all', 'main']) {
+        const result = runFeedsCli(base.vault, { after: bad, count: 5 })
+        expect(result.status, `${bad}: stdout=${result.stdout}`).not.toBe(0)
+        expect(result.stdout, bad).toBe('')
+        expect(result.stderr, `${bad}: ${result.stderr}`).toMatch(CURSOR_VOCAB)
+      }
+    },
+  )
+})
+
+describe('refname 그림자 (CR9 · 🔴RED 모듈 부재 · CJ4)', () => {
+  it(
+    'CR9: 12-hex 와 **동명의 태그**가 있으면 ③ 이 잡는다 — ①② 는 통과한다',
+    { timeout: 300_000 },
+    async () => {
+      // prettier-ignore
+      // ★★ **실 vault 변형 절대 금지.** 12-hex 태그는 그 리포의 모든 축약 해석을 오염시킨다
+      //   (실측: `rev-list` 가 _"refname is ambiguous"_ 경고와 함께 **태그 커밋**을 쓴다). tmp 리포에서만.
+      const module = await import(new URL('../lib/feed-cursor.mjs', import.meta.url).href).then(
+      (loaded) => loaded,
+      (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
+    )
+      expect(module.__loadError, 'scripts/lib/feed-cursor.mjs 로드 (C3 신설 대상)').toBeUndefined()
+      expect(typeof module.isCursorFormat).toBe('function')
+      expect(typeof module.resolveCursorCommit).toBe('function')
+
+      const tiny = initTinyRepo()
+      tmps.push(tiny.repo)
+      const runGit = makeRealGitRunner(tiny.repo)
+      const shadowed = tiny.first.slice(0, 12)
+
+      // ★ 대조 앵커(먼저) — 태그 **없는** 상태에서는 같은 커서가 **통과**한다.
+      expect(module.resolveCursorCommit(shadowed, { runGit })).toBe(tiny.first)
+
+      tiny.git(['tag', shadowed, tiny.second])
+
+      // ★ 거부 사유가 ③ 임을 같은 하네스에서 보인다 — 이 세 줄이 없으면 "①이 잡았다" 와 구분되지 않는다.
+      expect(module.isCursorFormat(shadowed), '① 정규식은 통과한다').toBe(true)
+      expect(tiny.git(['rev-parse', '--verify', '--quiet', '--end-of-options', `${shadowed}^{commit}`])).toBe(tiny.second) // prettier-ignore
+
+      expect(module.resolveCursorCommit(shadowed, { runGit }), '③ startsWith 가 잡아야 한다').toBeNull() // prettier-ignore
+    },
+  )
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// CQ — `--count` 계약 (tdd §3.3 · D15·D16)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('`--count` 필수·값 검증 (CQ1·CQ2 · 🔴RED 오늘 전부 exit 0)', () => {
+  it(
+    'CQ1: `--count` 미지정이 **exit 2** · stdout 빈 문자열 · stderr 가 count 어휘로 말한다',
+    { timeout: 300_000 },
+    () => {
+      // prettier-ignore
+      // 앵커(pair): `--count=5` 는 exit 0 + 파싱 가능 JSON 이다(파서 전체가 죽은 것을 배제).
+      const healthy = runFeedsCli(base.vault, { count: 5 })
+      expect(healthy.status, healthy.stderr).toBe(0)
+      expect(() => JSON.parse(healthy.stdout)).not.toThrow()
+
+      const missing = runFeedsCli(base.vault, {})
+      expect(missing.status, `stdout=${missing.stdout}`).toBe(2)
+      expect(missing.stdout).toBe('')
+      expect(missing.stderr, missing.stderr).toMatch(COUNT_VOCAB)
+    },
+  )
+
+  it(
+    'CQ2: 값 검증 **9종**이 전부 exit 2 이고 `1`·`5`·`200` 은 exit 0 이다 (pair)',
+    { timeout: 600_000 },
+    () => {
+      // prettier-ignore
+      // ★ plan·PRD 의 4종(`abc`·`0`·`-5`·누락)으로는 **부족하다** — `Number.parseInt` 실측:
+      //     '1.9'→1 · '5e2'→**5**(500 아님) · ' 7'→7 · '0x10'→0 · ''→NaN · 'Infinity'→NaN
+      //   `Number.isFinite(n) && n > 0` 만으로는 `1.9`·`5e2`·`' 7'` 이 **조용히 다른 수**로 통과한다.
+      //   `String(n) !== raw` 대조가 유일한 방어층이다(`plugin.ts:243` 이 이미 그 형태다).
+      // ★ 전부 **등호 결합**이다 — 공백 형태는 값이 `-` 로 시작하는 순간 parseArgs 가 먼저 throw 한다.
+      for (const good of GOOD_COUNTS) {
+      const result = runFeedsCli(base.vault, { count: good })
+      expect(result.status, `정상값 ${JSON.stringify(good)}: ${result.stderr}`).toBe(0)
+    }
+
+      for (const bad of BAD_COUNTS) {
+        const result = runFeedsCli(base.vault, { count: bad })
+        expect(result.status, `무효값 ${JSON.stringify(bad)}: stdout=${result.stdout.slice(0, 80)}`).toBe(2) // prettier-ignore
+        expect(result.stdout, JSON.stringify(bad)).toBe('')
+        expect(result.stderr, `${JSON.stringify(bad)}: ${result.stderr}`).toMatch(COUNT_VOCAB)
+      }
+    },
+  )
+
+  it(
+    'CQ2-짝(pair): **공백 형태** `--count -5` 는 parseArgs 층이라 exit 2 가 아니다',
+    { timeout: 300_000 },
+    () => {
+      // prettier-ignore
+      // CR7-짝과 같은 층 갈림이다. PRD `:513` 의 _"`-5` 가 exit 2"_ 는 **`--count=-5`** 로 읽어야 참이다.
+      const result = runFeedsCli(base.vault, { extraArgs: ['--count', '-5'] })
+
+      expect(result.status).not.toBe(0)
+      expect(result.stdout).toBe('')
+    },
+  )
+})
+
+describe('침묵 폴백 소멸 · argv 잔재 0 (CQ3·CQ4·CQ5)', () => {
+  /** 프로덕션 스캔 대상 — `scripts/**.mjs` 중 테스트 자산을 뺀 것. */
+  function productionSources() {
+    const { files } = listTracked(REPO_ROOT)
+    return files.filter(
+      (rel) => rel.startsWith('scripts/') && rel.endsWith('.mjs') && !rel.includes('__tests__/'),
+    )
+  }
+
+  /** `feeds.mjs` **소스 텍스트**의 `parseArgs` 옵션 키. 상수를 import 하지 않는다(규범 A). */
+  function feedsOptionKeys() {
+    const source = readFileSync(path.join(SCRIPTS_DIR, 'feeds.mjs'), 'utf8')
+    const block = source.match(/options:\s*\{([\s\S]*?)\n {4}\},/)
+    if (block === null) return []
+    return [...block[1].matchAll(/^\s{6}([a-z][a-zA-Z]*):\s*\{/gm)].map((match) => match[1]).sort() // prettier-ignore
+  }
+
+  it('CQ3: `DEFAULT_FEED_LIMIT` 이 프로덕션에서 **0건**이다 (침묵 폴백 소멸)', () => {
+    const files = productionSources()
+    expect(files.length, '스캔 대상이 비었다').toBeGreaterThan(0) // 앵커 ①
+
+    // ★ 앵커 ②: 같은 스캐너가 **살아 있는** 상수는 실제로 관측한다(스캐너 사망 배제).
+    const alive = scanTracked({ files, pattern: /SCHEMA_VERSION/u, repoRoot: REPO_ROOT })
+    expect(alive.hits.length, 'SCHEMA_VERSION 앵커').toBeGreaterThan(0)
+
+    const dead = scanTracked({ files, pattern: /DEFAULT_FEED_LIMIT/u, repoRoot: REPO_ROOT })
+    expect(dead.hits.map((hit) => `${hit.path}:${hit.line}`)).toEqual([])
+  })
+
+  it('CQ4: `package.json` 의 `feeds` 스크립트가 `--count` 를 싣는다 (flip)', () => {
+    // ★ §4.5-⑤ 인계: `cli-contract.test.mjs:330`·`build.p5-plumbing.test.mjs:166` 이 이 문자열을
+    //   **정확 pin** 한다. 이 케이스가 green 이 되는 순간 그 둘이 red 가 되며 그것은 **의도된 부수
+    //   효과**다(C4 가 함께 flip 한다). 회귀로 읽지 마라.
+    const scripts = JSON.parse(readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')).scripts
+
+    // 앵커: 빌드 두 줄은 이미 `--count 200` 을 싣는다(스크립트 맵 자체가 죽은 것을 배제).
+    expect(scripts.build, 'build 앵커').toContain('--count 200')
+    expect(scripts['build-dev'], 'build-dev 앵커').toContain('--count 200')
+
+    expect(scripts.feeds, `현행: ${scripts.feeds}`).toContain('--count')
+  })
+
+  it('CQ5: 프로덕션 argv 층에 `--from`/`--to` 가 **0건**이다', () => {
+    // ★ **맨단어 `from`/`to` 로 세지 않는다**(plan Task 1 GOTCHA — `import … from` 이 걸린다).
+    //   옵션 형태와 window 파라미터 접근만 판정 토큰으로 쓴다.
+    const files = [...productionSources(), 'package.json']
+    expect(files.length).toBeGreaterThan(1) // 앵커 ①
+
+    // ★ 앵커 ②: 같은 스캐너가 `--env`·`--count` 는 **실재**로 관측한다(부재 단언의 실재 축).
+    const alive = scanTracked({ files, pattern: /--env|--count/u, repoRoot: REPO_ROOT })
+    expect(alive.hits.length, '--env/--count 앵커').toBeGreaterThan(0)
+
+    const dead = scanTracked({
+      files,
+      pattern: /--from|--to\b|window\.(from|to)\b|params\.(from|to)\b/u,
+      repoRoot: REPO_ROOT,
+    })
+    expect(dead.hits.map((hit) => `${hit.path}:${hit.line} ${hit.text}`.slice(0, 120))).toEqual([])
+
+    // ★ 둘째 축 — **인자 선언 자체**를 본다. 텍스트 스캔은 `from: { type: 'string' }` 같은 선언을
+    //   구조적으로 못 본다(맨단어 금지 규칙의 대가). `parseArgs` 옵션 키는 소스 구조로 읽는다.
+    const options = feedsOptionKeys()
+    expect(options, '앵커: parseArgs 옵션을 읽지 못했다').toContain('count')
+    expect(options, '`--from` 선언이 남아 있다').not.toContain('from')
+    expect(options, '`--to` 선언이 남아 있다').not.toContain('to')
+  })
+})
+
+describe('exit code 충돌 — 사유는 stderr 가 가른다 (CQ6 · 규범 P)', () => {
+  it('CQ6: `--env` 오타와 `--count` 무효가 **다른 어휘**로 말한다', { timeout: 300_000 }, () => {
+    // OQ-P2-4 (a) — `--env` 를 먼저 본다. 순서는 계약이되 **exit code 로 가르지 않는다**(둘 다 2).
+    const envOnly = runFeedsCli(base.vault, { count: 5, env: 'Dev' })
+    const countOnly = runFeedsCli(base.vault, { count: '0' })
+    const both = runFeedsCli(base.vault, { count: '0', env: 'Dev' })
+
+    expect(envOnly.status).toBe(2)
+    expect(countOnly.status).toBe(2)
+    expect(both.status).toBe(2)
+
+    // ★ 두 사유의 어휘가 **서로 다르다** — 같으면 규범 P 위반이고, 그때 exit 2 단언은 엉뚱한 사유로
+    //   green 이 된다.
+    expect(envOnly.stderr, envOnly.stderr).toMatch(ENV_VOCAB)
+    expect(countOnly.stderr, countOnly.stderr).toMatch(COUNT_VOCAB)
+    expect(countOnly.stderr, 'count 사유가 env 어휘로 말한다').not.toMatch(ENV_VOCAB)
+
+    // 둘 다 무효면 **어느 사유인지 stderr 가 말한다**(OQ-P2-4 (a) = env 먼저).
+    expect(both.stderr, both.stderr).toMatch(ENV_VOCAB)
+  })
+})
+
+// ── 형식 리터럴이 살아 있는지 (이 파일의 커서 입력이 12-hex 라는 전제) ────────────────────────
+describe('입력 전제', () => {
+  it('시딩 커서가 12-hex 다 (앵커)', { timeout: 300_000 }, () => {
+    expect(base.feedIds.length).toBe(4)
+    for (const id of base.feedIds) expect(id).toMatch(HEX12)
+  })
+})

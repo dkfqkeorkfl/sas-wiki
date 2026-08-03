@@ -95,7 +95,13 @@ beforeAll(async () => {
 
 describe('열거 오타는 즉시 비정상 종료한다 (EV1·EV2·EV7 · 🔴RED(flip) 오늘 무경고 prod)', () => {
   it('EV1: `feeds.mjs --env Dev` → exit 2 · stderr 가 **유효값을 제시**한다', () => {
-    const result = runCli(FEEDS, ['--vault', VAULT, '--env', TYPO_ENV])
+    // ★★ v3 P2 · §4.2 arm 갱신(규범 P). D15 로 `--count` 가 필수가 되면 **`--count` 누락도 exit 2** 라
+    //   두 사유가 **같은 코드**를 낸다 → arm 에 `--count=5` 를 넣지 않으면 이 케이스가 **엉뚱한 사유로
+    //   green** 이 된다("env 오타를 잡았다" 가 아니라 "count 가 없어서 죽었다"). 이 케이스가 무는 것은
+    //   **env 열거**이지 인자 개수가 아니다.
+    // ⓑ 기존 stderr 어휘 단언(`dev`·`prod`)은 **유지한다** — 그것이 사유 축이다.
+    // ⓒ 「둘 다 무효」(`--env Dev --count=0`)는 **CQ6**(`cursor.cli-contract.test.mjs`)이 별도로 문다.
+    const result = runCli(FEEDS, ['--vault', VAULT, '--env', TYPO_ENV, '--count=5'])
 
     expect(result.status).toBe(EXIT_ENUM_ERROR)
     // 문구를 리터럴로 박지 않고 **유효값 제시**라는 성질만 문다(clap `[possible values: …]` 형태).
@@ -116,7 +122,10 @@ describe('열거 오타는 즉시 비정상 종료한다 (EV1·EV2·EV7 · 🔴R
   it('EV7: `feeds.mjs --env ""`(빈 문자열) → exit 2 (경계값)', () => {
     // `if (!value)` 류가 빈 값을 "미지정" 으로 흡수하면 `--env=` 오타가 조용히 prod 가 된다 —
     //   EV6(진짜 미지정)과 **다른 입력**임을 못박는다.
-    const result = runCli(FEEDS, ['--vault', VAULT, '--env', ''])
+    // ★★ v3 P2 · §4.2 arm 갱신(규범 P) — EV1 과 같은 사유다. 이 케이스는 **exit code 만** 문으므로
+    //   `--count` 를 안 실으면 D15 착륙 뒤 사유가 뒤바뀌어도 아무도 모른다(EV1 은 stderr 축이 있지만
+    //   여기는 없다 — 그래서 arm 갱신이 더 중요하다).
+    const result = runCli(FEEDS, ['--vault', VAULT, '--env', '', '--count=5'])
 
     expect(result.status).toBe(EXIT_ENUM_ERROR)
   })
@@ -144,7 +153,10 @@ describe('세 CLI 의 문구가 하나다 (EV5 · 🔴RED)', () => {
 describe('정상값을 막지 않는다 (EV3·EV4 · 🟢pair)', () => {
   it.each(['dev', 'prod'])('EV3: `feeds.mjs --env %s` → exit 0 · 파싱 가능한 JSON', (env) => {
     // ★ 과잉 차단 배제. EV1·EV2 만 있으면 "무조건 exit 2" 인 구현도 통과한다.
-    const result = runCli(FEEDS, ['--vault', VAULT, '--env', env])
+    // ★★ v3 P2 · §4.2 arm 갱신: EV3 의 **주제**(_"정상값을 막지 않는다"_ · pair)는 **살아 있다.**
+    //   죽는 것은 _"`feeds.mjs --env dev` 만으로 exit 0"_ 이라는 **arm 의 전제**다 —
+    //   **D15 로 `--count` 가 필수가 됐다. 이 케이스가 무는 것은 env 열거이지 인자 개수가 아니다.**
+    const result = runCli(FEEDS, ['--vault', VAULT, '--env', env, '--count=5'])
 
     expect(result.status).toBe(0)
     expect(Array.isArray(JSON.parse(result.stdout).items)).toBe(true)
@@ -176,7 +188,10 @@ describe('미지정은 여전히 fail-closed(prod) 다 (EV6 · 🟢pin)', () => 
       const dev = runCli(SUMMARY, ['--vault', VAULT, '--env', 'dev'])
 
       expect([bare.status, prod.status, dev.status]).toEqual([0, 0, 0])
-      expect(runCli(FEEDS, ['--vault', VAULT]).status).toBe(0)
+      // ★★ v3 P2 · §4.2 arm 갱신 — **이 한 줄만** 바뀐다. EV6 의 주제(_"미지정은 여전히
+      //   fail-closed(prod)"_)는 그대로다: `--env` 는 계속 안 준다. D15 로 필수가 된 `--count` 만 싣는다.
+      //   ★ 위 `SUMMARY` 3벌과 아래 `WIKI` arm 은 **무변경**이다 — 그 둘에 `--count` 는 없는 인자다.
+      expect(runCli(FEEDS, ['--vault', VAULT, '--count=5']).status).toBe(0)
       expect(runCli(WIKI, ['--vault', VAULT, '--path', ACTIVE_REF]).status).toBe(0)
 
       const idsOf = (result) => JSON.parse(result.stdout).docs.map((doc) => doc.id).toSorted() // prettier-ignore

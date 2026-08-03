@@ -563,3 +563,83 @@ describe('불변식 번호 상호참조 (IV)', () => {
     expect(dangling, lineMessage(`표에 없는 불변식 번호를 가리킨다(실재 번호: ${numbers.join('·')})`, dangling)).toEqual([]) // prettier-ignore
   })
 })
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// LZ8 — v3 P2 · Task 6 「넷째 겹(텍스트)」: README `### feeds` **플래그표** ↔ CLI 옵션 계약 (양방향)
+//
+// 규범 I — **표 행만 결속하고 산문은 §4 원장·리뷰가 진다.** 그래서 이 케이스는 플래그표의 *행*과
+//   `feeds.mjs` `parseArgs` 옵션 *키*만 대조하고, 설명 문장은 한 글자도 정규식으로 박제하지 않는다.
+//
+// 🔴 왜 지금 red 인가 (README:219-225 실측):
+//   ① `--count` 행의 기본값 칸이 `` `50` `` 이다 — D15 로 **필수 인자**가 되므로 기본값이 없다.
+//   ② `--from`·`--to` 행이 살아 있다 — D6 이 그 인자를 없앤다.
+//   ③ `--ignore` 행이 없다 — D20 이 그 인자를 신설한다.
+// ✅ 지금도 green 인 축(앵커): 표가 파싱되고 · `--after`·`--out` 행이 실재하며 · **양방향 대조가
+//   성립한다**(표 ⊆ 옵션 · 창(window) 옵션 ⊆ 표). 이 축이 있어야 "표를 통째로 지워 통과" 가 막힌다.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+
+/** 사용법 코드블록이 소유하는 공통 플래그 — 플래그표의 결속 대상이 아니다(리터럴 · 규범 A). */
+const COMMON_FLAGS = ['env', 'vault']
+
+/** `### feeds` CLI 절(=`### wiki` 직전까지). `### feeds 반환값` 과 **정확 일치로** 가른다. */
+function feedsCliScope() {
+  const lines = readme().split('\n')
+  const start = lines.findIndex((line) => line.trim() === '### feeds')
+  if (start === -1) return { lines: [], offset: 0 }
+  const rest = lines.slice(start + 1)
+  const end = rest.findIndex((line) => line.trim() === '### wiki')
+  return { lines: end === -1 ? rest : rest.slice(0, end), offset: start + 1 }
+}
+
+/** 플래그표 행 → `{ flag, cells }`. `` | `--count` | `50` | … | `` 형태만 잡는다. */
+function flagRows(scope) {
+  return scope.lines
+    .map((line) => line.match(/^\|\s*`--([a-z][a-z-]*)[^`]*`\s*\|(.*)$/))
+    .filter(Boolean)
+    .map((match) => ({ cells: match[2].split('|').map((cell) => cell.trim()), flag: match[1] }))
+}
+
+/** `feeds.mjs` **소스 텍스트**의 `parseArgs` 옵션 키. 상수를 import 하지 않는다(규범 A). */
+function feedsCliOptions() {
+  const source = readSource('scripts/feeds.mjs')
+  const block = source.match(/options:\s*\{([\s\S]*?)\n {4}\},/)
+  if (block === null) return []
+  return sorted(unique(captures(block[1], /^\s{6}([a-z][a-zA-Z]*):\s*\{/gm)))
+}
+
+describe('결속 — feeds 플래그표 ↔ CLI 옵션 (LZ8 · 🔴RED(flip) v3 P2)', () => {
+  it('LZ8: `--count` 에 기본값이 없고 `--from`/`--to` 가 없고 `--ignore` 가 있다 (양방향)', () => {
+    const scope = feedsCliScope()
+    const rows = flagRows(scope)
+
+    // ── 앵커 ①: 표가 실제로 파싱됐다(행 수 > 0). 표를 지워 부재 단언을 자동 참으로 만드는 길을 막는다.
+    expect(rows.length, 'README `### feeds` 절에서 플래그표를 찾지 못했다').toBeGreaterThan(0)
+    // ── 앵커 ②: 살아남는 행이 **실재한다**.
+    const documented = sorted(unique(rows.map((row) => row.flag)))
+    expect(documented, '`--after` 행이 없다').toContain('after')
+    expect(documented, '`--out` 행이 없다').toContain('out')
+
+    // ── 앵커 ③(양방향 결속): 표의 모든 행이 실제 옵션이고, 창 옵션은 전부 표에 있다 ──────────
+    const options = feedsCliOptions()
+    expect(options.length, '`feeds.mjs` 의 parseArgs options 를 읽지 못했다').toBeGreaterThan(2)
+    const ghost = documented.filter((flag) => !options.includes(flag))
+    expect(ghost, `표에 있는데 CLI 가 모르는 플래그: ${ghost.join('·')}`).toEqual([])
+    const undocumented = options.filter(
+      (flag) => !COMMON_FLAGS.includes(flag) && !documented.includes(flag),
+    )
+    expect(undocumented, `CLI 가 받는데 표에 없는 플래그: ${undocumented.join('·')}`).toEqual([])
+
+    // ── 본 축 ─────────────────────────────────────────────────────────────────────────────
+    // D15 — `--count` 는 필수다. 기본값 칸에 값이 남아 있으면 독자는 "생략 가능" 으로 읽는다.
+    const count = rows.find((row) => row.flag === 'count')
+    expect(count, '`--count` 행이 사라졌다 — 필수 인자는 표에 남아야 한다').toBeDefined()
+    expect(count.cells[0], `기본값 칸: ${count.cells[0]}`).not.toMatch(/\d/u)
+
+    // D6 — 날짜 구간 소멸.
+    expect(documented, '`--from` 행이 남아 있다').not.toContain('from')
+    expect(documented, '`--to` 행이 남아 있다').not.toContain('to')
+
+    // D20 — 억제 인자 신설.
+    expect(documented, '`--ignore` 행이 없다').toContain('ignore')
+  })
+})

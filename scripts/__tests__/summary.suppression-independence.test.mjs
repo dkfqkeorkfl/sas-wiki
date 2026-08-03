@@ -136,23 +136,64 @@ describe('summary 산출물은 억제와 무관하다 (SU6 · 🔴RED 오늘 바
   )
 })
 
-describe('feeds 아티팩트도 억제와 무관하다 (SU7 · 🔴RED 파일 부재)', () => {
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// v3 P2 · Task 7 — **SU7 축 교체(flip)** (§4.3). 삭제가 아니라 **극성 반전**이다.
+//
+// 옛 축(SU7): _"두 실행의 feeds 아티팩트가 **바이트 동일**"_ — FA11(억제 **전** 전량)의 논리적
+//   귀결이었다. **D20 이 그 전제를 뒤집는다**: `feeds.mjs --ignore <경로>` 가 억제의 유일한 배선이 되고
+//   빌드가 그것을 붙이므로, 억제 유/무 두 실행의 아티팩트는 **달라야 한다**.
+//
+// ★ 이 파일의 **원래 주제는 산다** — 「억제는 summary 산출물에 영향을 주지 않는다」(SU6)는 그대로이고,
+//   그것이 IW2 의 앵커다. 방어가 약해진 것이 아니라 **무엇을 계약으로 삼는지가 바뀐 것**이다.
+//
+// ★ Arrange 를 `independence`(모듈 API `runFeedsGenerator` 경유)에서 **CLI** 로 옮긴 이유: D20 이후
+//   억제는 **명시 인자**로만 걸린다(IW6 — 암묵 `loadIgnoreFeeds` 소멸). 인자를 넘기지 않는 경로로
+//   관측하면 GREEN 이 옳게 착륙해도 두 실행이 계속 바이트 동일이라 **이 케이스가 영원히 red** 가 된다.
+// ────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('억제는 feeds 아티팩트를 바꾼다 (IW2 · SU7 축 교체 · 🔴RED(flip) `--ignore` 미구현)', () => {
   it(
-    'SU7: 두 실행의 feeds 아티팩트가 **바이트 동일**하되 응답은 다르다',
+    'IW2: 억제 유/무 두 실행의 feeds 아티팩트가 **바이트 다르다**',
     { timeout: 300_000 },
     async () => {
-      // FA11(억제 **전** 전량)의 논리적 귀결이다. 파일이 같고 응답이 다르다 = 억제가 **서빙 시점**에만
-      //   걸린다는 뜻이고, 그것이 R1 채택안(비-입력 선언)의 안전 조건이다.
-      expect(independence.withoutIgnore.feeds).not.toBeNull()
-      expect(independence.withIgnore.feeds).toBe(independence.withoutIgnore.feeds)
+      const { feedId, vault } = seedVault()
+      const artifact = feedsFile(vault, 'dev')
 
-      // 앵커: 같은 vault 의 **응답**은 서로 다르다(억제가 실제로 걸린다).
-      const feedsModule = await import(new URL('../feeds.mjs', import.meta.url).href)
-      const page = await feedsModule.feeds(independence.vault, 'dev', {})
-      expect(page.items.map((item) => item.id)).not.toContain(independence.feedId)
+      // ── arm A: 억제 **없이** 발행 ────────────────────────────────────────────────────────
+      const withoutIgnore = publishFeeds(vault)
+      expect(withoutIgnore.exitCode, withoutIgnore.stderr).toBe(0)
+      const bytesWithout = readOrNull(artifact)
+      expect(bytesWithout, 'arm A 가 파일을 내지 않았다').not.toBeNull()
+      // 앵커: 억제 대상이 **실제로 그 파일 안에 있었다**(부재 단언의 위험 실재 축).
+      expect(JSON.parse(bytesWithout).items.map((item) => item.id)).toContain(feedId)
+
+      // ── arm B: 같은 vault 를 `--ignore` 와 함께 발행 ─────────────────────────────────────
+      suppressAll(vault, feedId)
+      rmSync(artifact, { force: true })
+      const withIgnore = publishFeeds(vault, 'dev', path.join(vault, IGNORE_FILE))
+      expect(withIgnore.exitCode, withIgnore.stderr).toBe(0)
+      const bytesWith = readOrNull(artifact)
+      expect(bytesWith, 'arm B 가 파일을 내지 않았다').not.toBeNull()
+
+      // 🔴 flip — 오늘은 이 두 값이 **같다**(생성기가 억제를 아예 모른다).
+      expect(bytesWith, '억제를 붙여도 아티팩트가 바이트 동일하다').not.toBe(bytesWithout)
+      expect(JSON.parse(bytesWith).items.map((item) => item.id), '억제 id 가 파일에 남았다').not.toContain(feedId) // prettier-ignore
+      // 앵커: 항목이 통째로 사라진 것이 아니다(빈 파일로 통과하는 것을 배제).
+      expect(JSON.parse(bytesWith).items.length).toBeGreaterThan(0)
+
+      // ★ 짝 앵커 — **파일의 원래 주제는 산다**: summary 아티팩트는 억제 유/무에 여전히 바이트 동일이다.
+      expect(independence.withoutIgnore.summary).not.toBeNull()
+      expect(independence.withIgnore.summary).toBe(independence.withoutIgnore.summary)
     },
   )
 })
+
+/** CLI 로 feeds 아티팩트를 발행한다 — `--ignore` 는 **명시 인자**여야 관측이 성립한다(IW6). */
+function publishFeeds(vault, env = 'dev', ignorePath) {
+  const args = ['--env', env, '--count', '200', '--out', feedsFile(vault, env)]
+  if (ignorePath !== undefined) args.push('--ignore', ignorePath)
+  return runGeneratorOnce({ args, script: 'feeds.mjs', vault })
+}
 
 describe('수용한 손실을 계약으로 (SU8 · 🔴RED flip · OQ-P5-6 무변경)', () => {
   it(

@@ -136,18 +136,23 @@ describe('buildSummary', () => {
 })
 
 describe('buildFeeds', () => {
-  it('봉투 키 집합이 정확하고 items 를 그대로 싣는다 (v3 P1 · wire **정확히 4키**)', () => {
+  it('KY4(=LZ2): 봉투 키 집합이 정확하고 items 를 그대로 싣는다 (층 ② · **정확히 5키**)', () => {
     const item = aFeedItem().build()
     const feeds = buildFeeds({
+      env: 'dev',
       generatedAt: GENERATED_AT,
       items: [item],
       sourceCommit: SOURCE_COMMIT,
     })
 
-    // 🔴 v3 P1(§4.3 ③ · KY4 · D28): wire 봉투가 **4키**가 된다. ★ `env` 신설은 파이프라인 P2 소관이다.
+    // 🔴RED(flip) v3 P2(§4.5-① · KY4 · **D22**): 층 ②(`buildFeeds()` 반환)가 4 → **5키**가 된다 —
+    //   `env` 가 붙는다. `nextCursor` 는 **호출부가 얹으므로** 이 층에는 없다(층 ①·③ 이 6키다).
+    //   ★ 규범 Q — "출력 필드 6종" 은 층 ①(wire 실응답)의 수다. 여기서 6을 기대하면 층을 혼동한 것이다.
+    //   D22 축자: `SCHEMA_VERSION` 동결로 표지 대조의 구분력이 사라져 `env` 가 유일한 판별축으로 남는다.
     const wireKeys = Object.keys(feeds).toSorted()
-    expect(wireKeys).toHaveLength(4) // 규범 N
-    expect(wireKeys).toEqual(['generatedAt', 'items', 'schemaVersion', 'sourceCommit'])
+    expect(wireKeys).toHaveLength(5) // 규범 N
+    expect(wireKeys).toEqual(['env', 'generatedAt', 'items', 'schemaVersion', 'sourceCommit'])
+    expect(feeds.env).toBe('dev')
     expect(feeds.items).toEqual([item])
     // 🔴 v3 P1 · D29 — 3 페이로드 **공용** 상수라 feeds 도 함께 1 이 된다(쪼개지 않는다 · AR7 이 pin).
     expect(feeds.schemaVersion).toBe(1)

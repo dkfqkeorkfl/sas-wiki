@@ -49,6 +49,20 @@ const SCRIPTS_DIR = path.resolve(HERE, '..')
  */
 const READ_ONLY_GIT_CALLS = []
 
+/**
+ * ★ **v3 P2 · PU4 계약 소멸의 새 리터럴**(tdd §4.2). 조회가 라이브 커서 워크가 되면서 **반드시 내는**
+ * git 동사 집합이다 — `rev-parse`(커서 3단 검증 ② · D10)와 `rev-list`(배치 워크 · D12).
+ *
+ * 정렬 리터럴이다(규범 N — 개수 단독 금지 → **정렬 집합 단언을 동반**한다). 「전량 동등」이 아니라
+ * 「이 둘이 반드시 있다」인 이유: 워크는 문서 해석을 위해 `log`·`show` 도 내므로 전량을 리터럴로
+ * 박으면 GREEN 의 내부 분해에 결속되어 깨지기 쉬운 가드가 된다(규범 A 의 취지).
+ *
+ * ★★ **`READ_ONLY_GIT_CALLS`(위)를 지우지 마라** — `:157` **PU5**(`wiki.mjs`)가 같은 상수를 쓰고
+ * 그쪽은 **파이프라인 P4 소관이라 살아 있다.** 상수를 지우는 것이 가장 자연스러운 "정리" 이고,
+ * 그것이 PU5 를 죽인다(§4.6 무변경 pin).
+ */
+const LIVE_WALK_VERBS = ['rev-list', 'rev-parse']
+
 /** 로드 관측 좌표 — 경로 조각 리터럴. */
 const RENDER = '/lib/render.mjs'
 const DERIVE = '/lib/derive.mjs'
@@ -84,7 +98,11 @@ beforeAll(async () => {
   warm = runCliWithLoadLog('summary.mjs', ['--env', 'dev', '--out', summaryOut], { vault: control.vault }) // prettier-ignore
   warmFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--out', feedsOut], { vault: control.vault }) // prettier-ignore
 
-  hitFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev'], { vault: control.vault })
+  // ★ §4.5-③ arm 갱신 — D15 로 `--count` 가 **필수**가 되므로 PU4 가 관측하는 이 arm 이 그것을 실어야
+  //   한다. 안 실으면 C4 착륙 즉시 이 arm 이 exit 2(count 누락)가 되어 PU4 의 red 사유가 「조회가 git 을
+  //   안 부른다」에서 「인자가 모자란다」로 조용히 바뀐다 — 규범 P 가 막으려는 사유 뒤바뀜이다.
+  //   오늘은 `--count` 가 옵셔널이라 이 한 줄이 **현재 판정을 바꾸지 않는다**(피드 2건 < 5).
+  hitFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: control.vault })
   hitWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL], {
     vault: control.vault,
   })
@@ -101,6 +119,13 @@ const countUrls = (observation, fragment) =>
   observation.loadedUrls.filter((url) => url.includes(fragment)).length
 const gitVerbs = (observation) =>
   observation.gitCalls.map((argv) => argv.filter((token) => !token.startsWith('-')).join(' '))
+
+/**
+ * 그 동사를 낸 git 호출 수. `argv` **원소 동등**으로 센다 — `gitVerbs` 는 `-c core.quotepath=false`
+ * 의 값 토큰(대시로 시작하지 않는다)을 앞에 남기므로 첫 토큰을 동사로 삼으면 조용히 빗나간다.
+ */
+const verbCount = (observation, verb) =>
+  observation.gitCalls.filter((argv) => argv.includes(verb)).length
 
 /** 프로덕션 소스만 읽어 붙인다(`__tests__`·`helpers` 제외) — 트립와이어가 자기 자신을 물지 않게. */
 function productionSources() {
@@ -133,22 +158,31 @@ function testSources() {
   return chunks.join('\n')
 }
 
-describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip): 오늘 판정이 `rev-parse` 를 낸다)', () => {
-  it('PU4(구 TR1): `feeds.mjs` 조회 실행의 git 호출 multiset === `[]`', () => {
-    // 🔴 v3 P1 Task 6(§3.9 · §4.6 ①): 신선도 판정이 사라지므로 조회 도구는 git 을 **한 번도** 부르지
-    //   않는다. 오늘의 기대(`[['rev-parse','HEAD']]`)는 판정이 살아 있다는 사실 그 자체였다.
+describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip) v3 P2: 조회가 **라이브 워크**가 된다)', () => {
+  it('PU4(구 TR1): `feeds.mjs` 조회 실행이 `rev-parse`·`rev-list` 를 **각각 1회 이상** 낸다', () => {
+    // ★★ **계약 소멸의 기록**(`prd.md:31-33` 이 요구하는 사유 · tdd §4.2):
+    //   _"P1 의 「조회는 git 을 안 부른다」는 그때 참이었고 v3 P2 가 조회를 라이브 워크로 바꾸면서
+    //    거짓이 된다"_. 해석 A 의 직접 귀결이다 — `feeds.mjs` 의 조회 경로가 아티팩트 읽기에서
+    //   커서 기반 git 워크로 **교체**된다(D10 3단 검증 + D12 배치 워크).
+    //   옛 기대(`hitFeeds.gitCalls === []`)는 "판정이 사라졌다" 는 P1 의 사실이었고, 지금은
+    //   **관측 대상 자체가 바뀐 것**이지 방어가 약해진 것이 아니다.
     //
-    // ★ 앵커 교체가 이 케이스의 핵심이다(§4.1 변이 ⑤). 옛 앵커는 `coldFeeds`(아티팩트 부재 →
-    //   **재생성**)였는데 Task 6 이후 그 실행은 **throw** 한다 — 앵커가 무너지면 "0건" 이 관측기 사망과
-    //   구분되지 않는다. 그래서 위험 실재 앵커를 **`summary.mjs` 실행**으로 옮긴다: 생성기는 항상
-    //   히스토리를 훑으므로 같은 shim 에서 `log`·`rev-list` 가 실제로 나온다.
+    // ★ 앵커는 그대로 둔다(§4.1 변이 ⑤). 위험 실재 축 = `summary.mjs` 실행이 같은 shim 에서 실제로
+    //   `log`·`rev-list` 를 낸다 — 관측기(PATH shim)가 죽어 빈 배열인 상태를 배제한다.
     expect(warm.exitCode, warm.stderr).toBe(0)
     expect(warm.gitCalls.length).toBeGreaterThan(0)
     expect(gitVerbs(warm).some((verb) => verb.startsWith('rev-list'))).toBe(true)
     expect(gitVerbs(warm).some((verb) => verb.startsWith('log'))).toBe(true)
 
     expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
-    expect(hitFeeds.gitCalls).toEqual(READ_ONLY_GIT_CALLS)
+    // 앵커: 조회가 git 을 **한 번이라도** 부른다(0건이면 아래 집합 단언이 사유를 못 가른다).
+    expect(hitFeeds.gitCalls.length, `git 호출 0건 (exit=${hitFeeds.exitCode})`).toBeGreaterThan(0)
+
+    // 규범 N — 개수 단독 금지: **정렬 verb 집합 동등**과 verb 별 개수 하한을 함께 문다.
+    const observed = LIVE_WALK_VERBS.filter((verb) => verbCount(hitFeeds, verb) > 0)
+    expect(observed, `관측된 git 호출: ${JSON.stringify(gitVerbs(hitFeeds))}`).toEqual(LIVE_WALK_VERBS) // prettier-ignore
+    expect(verbCount(hitFeeds, 'rev-parse')).toBeGreaterThanOrEqual(1)
+    expect(verbCount(hitFeeds, 'rev-list')).toBeGreaterThanOrEqual(1)
   })
 
   it('PU5(구 TR2): `wiki.mjs` 히트 실행도 git 호출 multiset === `[]`', () => {

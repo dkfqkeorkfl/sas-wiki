@@ -35,12 +35,22 @@ const SCHEMA_DIR = path.resolve(HERE, '..', '..', 'schema')
 const FEEDS_ARTIFACT_SCHEMA = path.join(SCHEMA_DIR, 'feeds-artifact.schema.json')
 
 /**
- * feeds 아티팩트 봉투 — **정확 5키**. `items` 가 빠지면 봉투가 아니라 스탬프다.
+ * feeds 아티팩트 봉투(층 ③) — 🔴RED(flip) **v3 P2**: 5 → **6키**. `items` 가 빠지면 봉투가 아니라 스탬프다.
  *
- * 🔴 v3 P1(§4.3 ③ · KY2 · D28): 발행자 표지·상관 토큰이 사라진다. ★ `env` 는 **아티팩트에 남는다** —
- *   D22 상 그것이 잔여 판별층 중 **유일하게 실질 판별력을 갖는 축**이다.
+ * v3 P1(§4.3 ③ · KY2 · D28)에서 발행자 표지·상관 토큰이 사라졌고, `env` 는 **아티팩트에 남는다**
+ *   (D22 — 잔여 판별층 중 유일하게 실질 판별력을 갖는 축).
+ * 🔴 v3 P2(§4.5-① · **D48**): 캐시 파일과 라이브 응답이 **같은 형태**여야 하므로 `nextCursor` 가 붙는다.
+ *   오늘은 아티팩트에 그 필드가 없어 **실을 수조차 없고**, 그래서 "중간 페이지에서 파일 전체의 꼬리
+ *   커서를 흘리는" 함정이 아직 성립하지 않는다 — P2 가 그 경로를 신설하므로 QX2 가 그것을 문다.
  */
-const FEEDS_ARTIFACT_KEYS = ['env', 'generatedAt', 'items', 'schemaVersion', 'sourceCommit']
+const FEEDS_ARTIFACT_KEYS = [
+  'env',
+  'generatedAt',
+  'items',
+  'nextCursor',
+  'schemaVersion',
+  'sourceCommit',
+]
 
 /** 계약 버전 — 리터럴 **1**(v3 P1 · D29 · §4.3 ②). 리터럴 복제는 복제로 유지한다(규범 A). */
 const SCHEMA_VERSION = 1
@@ -104,17 +114,25 @@ describe('feeds 아티팩트 경로 — summary 와 다른 슬롯 (FA1 · 🔴RE
   })
 })
 
-describe('feeds 아티팩트 봉투 — 정확 5키 (FA3 · 🔴RED(flip) v3 P1 · 7 → 5)', () => {
-  it('FA3: top-level 키가 **정확히 5키**이고 `items` 를 그대로 싣는다', () => {
+describe('feeds 아티팩트 봉투 — 정확 6키 (FA3 · 🔴RED(flip) v3 P2 · 5 → 6)', () => {
+  it('FA3: top-level 키가 **정확히 6키**이고 `items` 를 그대로 싣는다', () => {
     // **정확 일치**다(하한이 아니다) — 필드를 흘리는 구현을 배제한다. `items` 는 `toEqual` 로 물어
     //   "봉투를 씌우면서 항목을 깎지 않았다" 를 함께 고정한다(파일을 자르면 필터가 조용히 틀어진다).
+    // ★★ **원장 충돌 — C4 담당자에게**: §4.5-① 은 이 리터럴의 **5 → 6 flip 을 C1** 에 두는데,
+    //   §4.4 삭제 원장은 같은 phase 에서 `buildFeedsArtifact` **자체를 폐지**(U2 통합)한다. 두 지시가
+    //   공존할 수 없으므로 이 자리는 C4 에서 **승계처로 재조준**된다 —
+    //   plan Files-to-Change 의 `artifact.feeds.test.mjs:107-129` UPDATE 가 그 작업이다.
+    //   승계처: 층 ③(파일)은 **KY2(=LZ3)**, 층 ②(반환)는 **KY4(=LZ2)** 가 각각 소유한다.
+    //   → 이 케이스는 "6키 계약" 을 C1 에 못박아 두는 자리이지, `buildFeedsArtifact` 존치 요구가 아니다.
     const built = buildFeedsArtifact({
       env: 'dev',
       generatedAt: '2026-05-01T00:00:00.000Z',
       items: [SAMPLE_ITEM],
+      nextCursor: null,
       sourceCommit: '0'.repeat(40),
     })
 
+    expect(Object.keys(built).toSorted()).toHaveLength(FEEDS_ARTIFACT_KEYS.length) // 규범 N
     expect(Object.keys(built).toSorted()).toEqual(FEEDS_ARTIFACT_KEYS)
     expect(built.items).toEqual([SAMPLE_ITEM])
     expect(built.schemaVersion).toBe(SCHEMA_VERSION)

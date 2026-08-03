@@ -96,9 +96,16 @@ const EXPECTED_ARTIFACT_PATHS = [
   'logs/summary.report.<env>.json',
   'logs/summary.report.<env>.txt',
 ]
+/**
+ * 🔴RED(flip) **v3 P2 · OQ-P2-5 (a)** — `feeds-artifact.schema.json` 이 폐지되고 `feeds.schema.json`
+ * 으로 단일화되어 **7종 → 6종**이 된다(U2 통합의 스키마 층 귀결 · design-notes `:227`·`:269`).
+ *
+ * ★ tdd §4.5-① 은 이 자리를 _"6종 → 5종"_ 이라 적었으나 **실측은 7종**이다(디스크·리터럴 모두).
+ *   원장의 수가 하나씩 어긋나 있으므로 **실물에 맞춰 7 → 6 으로 flip** 한다 — 메인 세션 보고 대상.
+ * ★ 규범 N — 개수만 줄이면 검사 대상이 줄어 **조용히 green** 이 되므로 집합 단언과 부재 축을 동반한다.
+ */
 const EXPECTED_SCHEMA_FILES = [
   'body.schema.json',
-  'feeds-artifact.schema.json',
   'feeds.schema.json',
   'ignore-feeds.schema.json',
   'report.schema.json',
@@ -155,17 +162,19 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     )
   })
 
-  it('PT2: 문서화된 스키마 파일 목록 == `scripts/schema/*.json` 7종 (양방향)', () => {
-    // 🔴 왜 지금 red 인가: README:49 는 _"frontmatter 1종 + 산출물 3종 + 억제목록 1종"_ = **5종**이라
-    //   적고 **파일 목록이 없다**. 실제는 **7종**이다.
+  it('PT2: 문서화된 스키마 파일 목록 == `scripts/schema/*.json` **6종** (양방향 · 🔴RED(flip) v3 P2)', () => {
+    // 🔴 왜 지금 red 인가(v3 P2 · OQ-P2-5 (a)): `feeds-artifact.schema.json` 이 **아직 디스크에 있다**.
+    //   그 파일은 `feeds.schema.json` 과 동형이 되는 순간 「합치지 않은 이유」를 설명할 수 없어 폐지된다.
     const onDisk = readdirSync(path.join(REPO_ROOT, 'scripts/schema'))
       .filter((name) => name.endsWith('.json'))
       .sort()
 
-    // 앵커: 디스크 목록이 비어 있지 않고, P3·P4 가 더한 2종이 **둘 다** 있다(리터럴 대조).
+    // 앵커: 디스크 목록이 비어 있지 않고, 살아남는 2종이 **둘 다** 있다(리터럴 대조).
+    expect(onDisk).toHaveLength(EXPECTED_SCHEMA_FILES.length) // 규범 N
     expect(onDisk).toEqual(EXPECTED_SCHEMA_FILES)
-    expect(onDisk).toContain('feeds-artifact.schema.json')
+    expect(onDisk).toContain('feeds.schema.json')
     expect(onDisk).toContain('report.schema.json')
+    expect(onDisk, 'feeds-artifact.schema.json 이 아직 살아 있다').not.toContain('feeds-artifact.schema.json') // prettier-ignore
 
     const scope = docScope('artifacts', ['.schema.json'])
     const documented = unique(captures(scopeText(scope), /([a-z][a-z-]*\.schema\.json)/g)).sort()

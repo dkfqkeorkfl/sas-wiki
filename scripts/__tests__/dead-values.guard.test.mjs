@@ -25,11 +25,19 @@
 //   · DV0~DV2·DV5·DV6 — pair(오늘도 green). 스캐너 생존 앵커다.
 //   · DV3 — 🔴RED. 실측 38파일 + README 7줄.
 //
+// ── ★ v3 P2(cursor-contract) 증분 — tdd §3.4 · §4.5-① ──────────────────────────────────────
+//   겹1·겹2 를 **출력 6층 정합(LZ)** 으로 넓히고, 같은 자리의 개수·집합 리터럴 3건을 flip 한다.
+//   · SC1  🔴RED(flip) 4종 → **3종** + `feeds-artifact.schema.json` **부재** (OQ-P2-5 (a) 폐지)
+//   · KY2(=LZ3) 🔴RED(flip) 아티팩트 5키 → **6키**(`nextCursor` · D48)
+//   · KY6  🔴RED(flip) 폐지되는 `feeds-artifact` 스키마 → **승계처 `feeds.schema.json`** 재조준
+//   · LZ1·LZ4~LZ7 🔴RED 신규 — 층 ①④⑤⑥ + 커서 정의. **규범 Q**(층 라벨)·**규범 M**(properties 먼저).
+//   ⇒ 위 flip 들은 **구현보다 먼저 뒤집힌 것**이라 C4 착륙 전까지 red 인 것이 정상이다(tdd §5.3).
+//
 // 규범 A: 기대 키 배열·스키마 required·계약 버전은 **전부 리터럴**이다(프로덕션 상수 import 금지).
 // 규범 B: 모든 부재 단언 앞에 **위험 실재 앵커**를 둔다.
 // 규범 C10: 신설 seam 은 `await import` 로 붙들어 **collection error 가 아니라 케이스 실패**로 만든다.
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -60,8 +68,21 @@ const VALIDATE_CLI = path.join(SCRIPTS_DIR, 'validate.mjs')
 // ── 계약 리터럴 (규범 A) ─────────────────────────────────────────────────────────────────────
 /** 발행 아티팩트 봉투 — **정확 7키**(v3 P1 · D28·D29). 긍정형 완전 열거다. */
 const SUMMARY_KEYS = ['docs', 'env', 'generatedAt', 'schemaVersion', 'sourceCommit', 'tags', 'tree']
-/** 내부 feeds 아티팩트 봉투 — **정확 5키**. `env` 는 아티팩트에 남는다(D22 — 유일한 실질 판별축). */
-const FEEDS_ARTIFACT_KEYS = ['env', 'generatedAt', 'items', 'schemaVersion', 'sourceCommit']
+/**
+ * feeds 봉투 — 🔴RED(flip) **v3 P2**: 5 → **6키**(`nextCursor` 추가 · §4.5-① KY2).
+ *
+ * ★ 규범 Q — 이 배열이 덮는 층은 **③ 아티팩트 파일**·**④⑤ `feeds.schema.json` properties/required**·
+ *   **① wire 실응답**이다. P2 가 여섯 층을 **한 형태**로 정합시키므로(D22 `env` + D48 `nextCursor`)
+ *   같은 리터럴이 세 자리에서 쓰인다 — 층 라벨 없이 "6종" 이라 부르지 않는다.
+ */
+const FEEDS_ARTIFACT_KEYS = [
+  'env',
+  'generatedAt',
+  'items',
+  'nextCursor',
+  'schemaVersion',
+  'sourceCommit',
+]
 /** 리포트 required — **정확 9키**(발행자 표지·상관 토큰·`regenerated` 가 함께 빠진다 · OQ-P1-3). */
 const REPORT_REQUIRED = [
   'env',
@@ -78,6 +99,19 @@ const REPORT_REQUIRED = [
 const SCHEMA_VERSION = 1
 const SOURCE_COMMIT = '9a1b2c3d4e5f60718293a4b5c6d7e8f901234567'
 const GENERATED_AT = '2026-07-27T00:00:00.000Z'
+
+/**
+ * 층 ① wire 실응답의 **정상 봉투**(v3 P2 · 6키) — 리터럴이다. `nextCursor: null` 은 「히스토리 끝」이며
+ * C16 상 `required` 를 통과한다(이름의 존재만 본다). LZ5·LZ7 의 pair 앵커가 이 값을 쓴다.
+ */
+const WIRE_ENVELOPE = {
+  env: 'dev',
+  generatedAt: GENERATED_AT,
+  items: [],
+  nextCursor: null,
+  schemaVersion: SCHEMA_VERSION,
+  sourceCommit: SOURCE_COMMIT,
+}
 
 /**
  * ★ **면제 목록은 비어 있다**(규범 H · DV6). 항목이 하나라도 생기면 DV6 이 red 가 되고, 그 red 는
@@ -146,13 +180,23 @@ beforeAll(() => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('겹1 스키마 — 부활 거부 (SC1~SC4)', () => {
-  it('SC1: 발행 스키마 4종이 전부 `additionalProperties: false` 다 (pin)', () => {
+  it('SC1: 발행 스키마 **3종**이 전부 `additionalProperties: false` 다 (🔴RED(flip) v3 P2 · 4 → 3)', () => {
     // 이 단언이 깨지면 SC2~SC4 가 통째로 약해진다 — 미선언 키가 그냥 통과한다.
-    const names = ['summary.schema.json', 'feeds.schema.json', 'feeds-artifact.schema.json', 'report.schema.json'] // prettier-ignore
+    // 🔴 flip 사유: **OQ-P2-5 (a)** — `feeds-artifact.schema.json` 이 폐지되고 `feeds.schema.json` 으로
+    //   단일화된다(U2 통합의 스키마 층 귀결 · design-notes `:227`·`:269`). 개수만 줄이면 이 케이스는
+    //   **조용히 green** 이 되므로(검사 대상이 줄 뿐이다) 폐지 자체를 부재 축으로 함께 문다(규범 N).
+    const names = ['summary.schema.json', 'feeds.schema.json', 'report.schema.json']
 
     for (const name of names) {
       expect(readSchema(name).additionalProperties, name).toBe(false)
     }
+
+    // ★ 앵커: 스키마 디렉토리가 비어 있지 않고, 3종이 **디스크에 실재한다**(부재 단언의 실재 축).
+    const onDisk = readdirSync(SCHEMA_DIR).filter((name) => name.endsWith('.json'))
+    expect(onDisk.length).toBeGreaterThan(names.length)
+    for (const name of names) expect(onDisk, name).toContain(name)
+
+    expect(onDisk, 'feeds-artifact.schema.json 이 아직 살아 있다 (OQ-P2-5 (a) 폐지 대상)').not.toContain('feeds-artifact.schema.json') // prettier-ignore
   })
 
   it('SC2: 발행자 표지를 되살린 summary 페이로드가 **"정의되지 않은 필드"** 로 거부된다', () => {
@@ -262,27 +306,144 @@ describe('겹2 산출물 — 키 집합 완전 열거 (KY1·KY2)', () => {
     expect(readArtifactKeys(built.artifact)).toEqual(SUMMARY_KEYS)
   })
 
-  it('KY2: 빌드가 쓴 feeds 아티팩트의 키가 **정확히 5키**다', () => {
+  it('KY2(=LZ3): 빌드가 쓴 feeds 아티팩트(층 ③)의 키가 **정확히 6키**다 (🔴RED(flip) v3 P2 · 5 → 6)', () => {
     // summary 실행은 더 이상 feeds 를 함께 쓰지 않는다. 빌드처럼 feeds 생산자를 명시 호출한 결과를 본다.
+    // 🔴 flip 사유: **D48** — 캐시 파일과 라이브 응답이 같은 형태여야 하므로 아티팩트도 `nextCursor` 를
+    //   싣는다(U2 통합 · §4.5-①). 이 키가 없으면 "중간 페이지에서 파일 꼬리 커서를 흘리는" 함정 자체가
+    //   성립하지 않아 QX2 가 관측할 대상이 사라진다.
     expect(built.feedsRun?.status, built.feedsRun?.stderr).toBe(0) // 앵커 ①
     expect(existsSync(built.feeds), built.feedsRun?.stderr).toBe(true) // 앵커 ②
     const parsed = JSON.parse(readFileSync(built.feeds, 'utf8'))
     expect(Array.isArray(parsed.items), 'items 가 배열이다').toBe(true) // 앵커 ③
 
+    expect(readArtifactKeys(built.feeds)).toHaveLength(FEEDS_ARTIFACT_KEYS.length) // 규범 N
     expect(readArtifactKeys(built.feeds)).toEqual(FEEDS_ARTIFACT_KEYS)
   })
 
-  it('KY6: `feeds-artifact`·`report` 스키마의 `required` 가 완전 열거와 일치한다', () => {
+  it('KY6: `feeds`·`report` 스키마의 `required` 가 완전 열거와 일치한다 (🔴RED(flip) v3 P2 · 승계처 재조준)', () => {
     // ★ `report.schema.json` 은 `regenerated` 도 함께 빠진다(OQ-P1-3 — plan Task 5 VALIDATE 가
     //   `scripts/` 하위 grep 0 을 요구하므로 이 파일은 그 요구의 대상이다).
+    // 🔴 재구성 사유: 이 케이스의 feeds 축은 **`feeds-artifact.schema.json`** 을 물던 자리다. 그 파일이
+    //   OQ-P2-5 (a) 로 폐지되므로 **승계처인 `feeds.schema.json`(층 ⑤)** 로 재조준한다 — 삭제가 아니다.
+    //   거동 축(이름 존재만 본다 · `nextCursor: null` 통과)은 같은 파일의 **LZ5** 가 따로 문다.
     // 규범 N: 개수와 **집합**을 함께 문다.
-    const feedsArtifact = readSchema('feeds-artifact.schema.json')
+    const feeds = readSchema('feeds.schema.json')
     const report = readSchema('report.schema.json')
 
-    expect(feedsArtifact.required).toHaveLength(FEEDS_ARTIFACT_KEYS.length)
-    expect([...feedsArtifact.required].sort()).toEqual(FEEDS_ARTIFACT_KEYS)
+    expect(feeds.required).toHaveLength(FEEDS_ARTIFACT_KEYS.length)
+    expect([...feeds.required].sort()).toEqual(FEEDS_ARTIFACT_KEYS)
     expect(report.required).toHaveLength(REPORT_REQUIRED.length)
     expect([...report.required].sort()).toEqual(REPORT_REQUIRED)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// LZ — 출력 6층 정합 (v3 P2 · Task 6 · tdd §3.4 · **규범 Q 가 지배한다**)
+//
+//   ① wire 실응답(stdout)          LZ1        · 5 → 6
+//   ② `buildFeeds()` 반환           (KY4 — `lib/__tests__/payloads.test.mjs`)  4 → 5
+//   ③ feeds 아티팩트 파일           KY2(=LZ3)  · 5 → 6
+//   ④ `feeds.schema.json` props     LZ4        · 5 → 6   ← **규범 M: properties 가 먼저다**
+//   ⑤ 같은 파일 `required`          LZ5        · 4 → 6
+//   ⑥ `validate.mjs` 인메모리 게이트 LZ6       · 4키 → 6키
+//   (+ 커서 정의 자체)              LZ7
+//
+// ★ 층 라벨 없이 "출력 필드 6종" 이라 쓰지 않는다 — 같은 말이 실측상 **6개의 수**를 가리킨다.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('출력 6층 정합 (LZ1·LZ4~LZ7 · 🔴RED v3 P2 미구현)', () => {
+  it('LZ1: 층 ① — `feeds.mjs` stdout 의 키가 **정확히 6키**다', { timeout: 300_000 }, () => {
+    // 🔴 오늘은 5키다(`env` 없음). D22 축자: 캐시 최소 검증의 **유일한 실질 판별축**이 `env` 라서
+    //   wire 에도 남긴다 — `SCHEMA_VERSION` 동결로 표지 대조의 구분력이 "1 vs 1" 로 사라졌기 때문이다.
+    const result = runCli(FEEDS_CLI, ['--vault', built.vault, '--env', 'dev', '--count=5'])
+
+    // 앵커: stdout 이 1줄 JSON 으로 파싱되고 `items` 가 배열이다.
+    expect(result.status, result.stderr).toBe(0)
+    const payload = JSON.parse(result.stdout)
+    expect(Array.isArray(payload.items)).toBe(true)
+
+    const wireKeys = Object.keys(payload).toSorted()
+    expect(wireKeys).toHaveLength(FEEDS_ARTIFACT_KEYS.length) // 규범 N
+    expect(wireKeys).toEqual(FEEDS_ARTIFACT_KEYS)
+  })
+
+  it('LZ4: 층 ④ — `feeds.schema.json` 의 `properties` 가 **정확히 6종**이다 (규범 M)', () => {
+    // ★ 규범 M — **properties 를 먼저** 문다. `required` 만 고치면 `additionalProperties:false` 가
+    //   미선언 키를 막아 스키마가 자기모순이 되고, 그 실패는 "생산자가 안 싣는다" 로 오독된다.
+    const properties = Object.keys(readSchema('feeds.schema.json').properties).toSorted()
+
+    expect(properties).toHaveLength(FEEDS_ARTIFACT_KEYS.length) // 규범 N
+    expect(properties).toEqual(FEEDS_ARTIFACT_KEYS)
+  })
+
+  it('LZ5: 층 ⑤ — `required` 가 **정확히 6종**이고 `nextCursor: null` 은 통과한다', () => {
+    // ★ 근거(C16 · JSON Schema 2020-12 §6.5.3 축자): `required` 는 _"every item in the array is the
+    //   **name of a property** in the instance"_ — **이름의 존재만** 본다. 그래서 `{"nextCursor": null}`
+    //   은 통과하고 **키 누락은 실패**한다. required 를 5로 두면 _"`nextCursor` 를 아예 안 싣는"_ 변이가
+    //   스키마를 그대로 통과해 **D48 등가 불변식이 조용히 무력화**된다(M6).
+    expectValidatorSeam()
+    const schema = validator.loadSchema(path.join(SCHEMA_DIR, 'feeds.schema.json'))
+    const required = [...readSchema('feeds.schema.json').required].sort()
+
+    expect(required).toHaveLength(FEEDS_ARTIFACT_KEYS.length) // 규범 N
+    expect(required).toEqual(FEEDS_ARTIFACT_KEYS)
+
+    // 거동 — 앵커: 정상 봉투(커서 null)는 오류 0건이다.
+    expect(validator.validateItem(WIRE_ENVELOPE, schema, '$feeds')).toEqual([])
+
+    const missingCursor = { ...WIRE_ENVELOPE }
+    delete missingCursor.nextCursor
+    expect(validator.validateItem(missingCursor, schema, '$feeds').length).toBeGreaterThan(0)
+  })
+
+  it(
+    'LZ6: 층 ⑥ — `validate.mjs` 가 스키마에 **`env`+`nextCursor` 를 넘긴다**',
+    { timeout: 300_000 },
+    () => {
+      // ★★ **하드 블로커의 관측점**이다. `validate.mjs:101-105` 는 `buildFeeds({generatedAt, items,
+      //   sourceCommit})` = **4키**를 이 스키마로 검증한다 — `required` 를 6으로 올리면서 이 자리를 함께
+      //   고치지 않으면 `pnpm validate`(= build 체인 1스텝)가 **죽는다**.
+      const seeded = seedCleanVault()
+      tmps.push(seeded.vault)
+
+      const pristine = mkdtempSync(path.join(tmpdir(), 'wiki-lz6-pristine-'))
+      tmps.push(pristine)
+      cpSync(SCHEMA_DIR, pristine, { recursive: true })
+
+      // ★ 앵커: 원본 스키마 사본에서는 exit 0 이다(vault·CLI 가 통째로 죽어서 실패하는 것을 배제).
+      const control = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', pristine]) // prettier-ignore
+      expect(control.status, control.stderr).toBe(0)
+
+      // 두 키를 **요구하는** 사본에서도 exit 0 이어야 한다 = 인메모리 게이트가 그 두 키를 실제로 넘긴다.
+      const demanding = mkdtempSync(path.join(tmpdir(), 'wiki-lz6-demanding-'))
+      tmps.push(demanding)
+      cpSync(SCHEMA_DIR, demanding, { recursive: true })
+      demandKeys(path.join(demanding, 'feeds.schema.json'), ['env', 'nextCursor'])
+
+      const result = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', demanding]) // prettier-ignore
+
+      expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
+    },
+  )
+
+  it('LZ7: 커서 정의가 **12-hex 문자열**이다 — 옛 `{ts,feedId}` 객체를 거부한다', () => {
+    // 🔴 오늘은 정반대다: `definitions.feedCursor` 가 `{ts, feedId}` **객체**라 문자열이 거부된다.
+    expectValidatorSeam()
+    // 선언 축을 **먼저** 본다 — 거동 축만 두면 같은 봉투의 `env` 결손(LZ4·LZ5)이 먼저 걸려
+    //   실패 메시지가 커서를 가리키지 못한다(진단이 층을 잃는다 · 규범 Q).
+    expect(readSchema('feeds.schema.json').definitions.feedCursor.type).toBe('string')
+
+    const schema = validator.loadSchema(path.join(SCHEMA_DIR, 'feeds.schema.json'))
+
+    // 앵커(pair): 정상 12-hex 는 통과 · **`null` 도 통과**(끝 표시) — "전부 거부" 구현 배제.
+    const withCursor = { ...WIRE_ENVELOPE, nextCursor: '65fc53636938' }
+    expect(validator.validateItem(withCursor, schema, '$feeds')).toEqual([])
+    expect(validator.validateItem(WIRE_ENVELOPE, schema, '$feeds')).toEqual([])
+
+    const legacy = { ...WIRE_ENVELOPE, nextCursor: { feedId: '65fc53636938', ts: '2026-05-01T00:00:00Z' } } // prettier-ignore
+    const notHex = { ...WIRE_ENVELOPE, nextCursor: 'main' }
+    expect(validator.validateItem(legacy, schema, '$feeds').length, '옛 객체 커서가 통과했다').toBeGreaterThan(0) // prettier-ignore
+    expect(validator.validateItem(notHex, schema, '$feeds').length, "'main' 이 통과했다").toBeGreaterThan(0) // prettier-ignore
   })
 })
 
@@ -432,5 +593,21 @@ function requireKey(schemaFile, key) {
   const schema = JSON.parse(readFileSync(schemaFile, 'utf8'))
   schema.properties[key] = { type: 'string' }
   if (!schema.required.includes(key)) schema.required.push(key)
+  writeFileSync(schemaFile, `${JSON.stringify(schema, null, 2)}\n`)
+}
+
+/**
+ * 스키마 사본이 주어진 키들을 **요구하게** 만든다 — `requireKey` 와 달리 **타입을 좁히지 않는다**.
+ *
+ * LZ6 이 요구하는 `nextCursor` 는 `string|null` 이라 `{type:'string'}` 로 덮으면 정상값(`null`)이
+ * 실패하고, 그러면 exit≠0 이 "게이트가 그 키를 안 넘긴다" 가 아니라 "우리가 타입을 틀리게 좁혔다" 를
+ * 재게 된다. 이미 있는 `properties` 는 **그대로 두고** `required` 에만 이름을 얹는다.
+ */
+function demandKeys(schemaFile, keys) {
+  const schema = JSON.parse(readFileSync(schemaFile, 'utf8'))
+  for (const key of keys) {
+    if (schema.properties[key] === undefined) schema.properties[key] = {}
+    if (!schema.required.includes(key)) schema.required.push(key)
+  }
   writeFileSync(schemaFile, `${JSON.stringify(schema, null, 2)}\n`)
 }

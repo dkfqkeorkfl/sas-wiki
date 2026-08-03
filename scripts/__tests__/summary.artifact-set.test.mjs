@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
+import { runPackageScript } from './helpers/artifact-keys.mjs'
 
 // 신설 모듈 부재가 파일 전체를 죽이는 collection error 가 되지 않도록 지연 import 로 붙든다(tdd §7.3).
 //   `rtk` 는 collection error 를 PASS 로 오보고하므로 부재는 **케이스별 명시 실패**여야 한다.
@@ -318,6 +319,79 @@ describe('feeds 아티팩트는 **억제 전 전량**이다 (FA11 · 🔴RED 파
     // 앵커 ②: **억제는 실제로 걸린다** — 같은 vault 의 응답에는 그 id 가 없다(서빙 시점 필터).
     const response = await feedsModule.feeds(vault, 'dev', {})
     expect(response.items.map((item) => item.id)).not.toContain(feedId)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────────────────────
+// v3 P2 · Task 7 — **FA11 축 교체**(§4.3). 삭제가 아니라 **대체**다.
+//
+// 옛 축(FA11): _"억제 id 가 **파일에는 있고** 응답에는 없다"_ — 아티팩트가 **억제 전** 전량이라는
+//   전제 위에 섰다. **D20 이후 그 전제가 사라진다**: 빌드가 `--ignore` 를 붙여 아티팩트를 **억제 후**로
+//   만들므로 FA11 의 앵커(_"파일에는 있다"_)가 공허해지고, 앵커만 지우면 남은 부재 단언이 **영구 자동
+//   참**이 된다(M7 · P1 tdd `:693` 이 경고한 형태).
+//
+// ★ 「승계」가 아니라 「대체」다 — CS8·HV5·FA11 의 원래 방어는 _"내부 아티팩트를 raw 로 흘리면 억제가
+//   통째로 무효"_ 였고, 아티팩트가 억제 후가 되면 **그 위험 자체가 소멸**한다(raw 서빙해도 억제는
+//   유효). 새 축은 **다른 계약**(_"억제가 빌드에 적용된다"_)이며 옛 목적의 승계가 아니다.
+//   이 문단이 없으면 다음 독자가 "방어가 약해졌다" 고 읽는다.
+//
+// 옛 축 FA11 의 **삭제는 C4(GREEN)** 소관이다 — 이 커밋(C1)은 새 축을 **추가만** 한다(규범 L).
+// ────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('빌드가 억제를 적용한다 (IW1 · FA11 축 교체 · 🔴RED `--ignore` 미배선)', () => {
+  it(
+    'IW1: `build-dev` 산출 파일에 억제 id 가 **없다** — `--ignore` 를 빼면 나타난다',
+    { timeout: 900_000 },
+    () => {
+      // prettier-ignore
+      // ★★ 대조 arm 이 **새 앵커**다. 이것을 빼면 부재 단언이 영구 자동 참이 된다(CX10 이 메타로 증명한다).
+      // ★ 체인을 재구현하지 않는다 — `runPackageScript` 가 `package.json` 문자열을 **읽어** vault 만
+      //   tmp 로 재조준한다. 재구현하면 "우리가 만든 체인으로는 되더라" 가 되어 IW5 가 무의미해진다.
+      const { feedId, vault } = seedVault()
+      writeFileSync(
+        path.join(vault, IGNORE_FILE),
+        JSON.stringify([{ id: feedId, when: IGNORE_WHEN }]),
+        'utf8',
+      )
+
+      // ── 대조 arm(앵커): `--ignore` **없이** 같은 vault 를 빌드하면 그 id 가 파일에 **나타난다** ──
+      const control = publishFeeds(vault, 'dev')
+      expect(control.status, control.stderr).toBe(0)
+      const controlItems = readJson(feedsFile(vault, 'dev')).items
+      expect(controlItems.length, '대조 arm 파일이 비었다').toBeGreaterThan(0)
+      expect(controlItems.map((item) => item.id), '앵커: 억제 없이 빌드하면 그 id 가 있다').toContain(feedId) // prettier-ignore
+
+      rmSync(feedsFile(vault, 'dev'), { force: true })
+
+      // ── 본 arm: 빌드 체인(`build-dev`)이 `--ignore` 를 붙인다 ──────────────────────────────
+      const build = runPackageScript('build-dev', { vault })
+      expect(build.exitCode, `${build.command}\n${build.stderr}`).toBe(0)
+
+      const items = readJson(feedsFile(vault, 'dev')).items
+      // 앵커: 산출 파일이 비어 있지 않다(빈 파일로 `not.toContain` 이 통과하는 것을 배제).
+      expect(items.length, '빌드 산출 파일이 비었다').toBeGreaterThan(0)
+      expect(
+        items.map((item) => item.id),
+        '억제 id 가 빌드 산출물에 남았다',
+      ).not.toContain(feedId)
+    },
+  )
+
+  it('IW5: `package.json` 의 `build`·`build-dev` 가 `--ignore` 를 싣는다 (텍스트 겹)', () => {
+    // ★ 행동 겹(IW1)과 **텍스트 겹**을 가른다 — CX9(인자를 받고도 무시하는 변이)에서 이 케이스는
+    //   green 인 채 IW1 만 red 가 되어야 한다. 둘을 합치면 그 진단이 사라진다.
+    const scripts = JSON.parse(readFileSync(path.join(SCRIPTS_DIR, '..', 'package.json'), 'utf8')).scripts // prettier-ignore
+
+    for (const name of ['build', 'build-dev']) {
+      // 앵커: 같은 문자열이 `--count 200`·`--out` 을 **여전히** 담고 순서가 validate → summary → feeds 다.
+      expect(scripts[name], `${name} 앵커: --count 200`).toContain('--count 200')
+      expect(scripts[name], `${name} 앵커: --out`).toContain('--out')
+      const order = ['validate.mjs', 'summary.mjs', 'feeds.mjs'].map((step) => scripts[name].indexOf(step)) // prettier-ignore
+      expect(order[0], `${name} 순서`).toBeLessThan(order[1])
+      expect(order[1], `${name} 순서`).toBeLessThan(order[2])
+
+      expect(scripts[name], `현행: ${scripts[name]}`).toContain('--ignore')
+    }
   })
 })
 
