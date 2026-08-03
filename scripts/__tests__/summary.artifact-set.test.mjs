@@ -372,8 +372,10 @@ describe('빌드가 억제를 적용한다 (IW1 · FA11 축 교체 · 🔴RED `-
   )
 
   it('IW5: `package.json` 의 `build`·`build-dev` 가 `--ignore` 를 싣는다 (텍스트 겹)', () => {
-    // ★ 행동 겹(IW1)과 **텍스트 겹**을 가른다 — CX9(인자를 받고도 무시하는 변이)에서 이 케이스는
-    //   green 인 채 IW1 만 red 가 되어야 한다. 둘을 합치면 그 진단이 사라진다.
+    // ★ 행동 겹(IW1)과 **텍스트 겹**을 가른다 — CX9(인자를 받고도 무시하는 변이)에서 **이 케이스만**
+    //   green 이고 행동 겹(IW1·IW2·IW6·IW7 + webfront IW3·IW4)은 전부 red 다(C6 실측). 둘을 합치면
+    //   그 진단이 사라진다. 반대로 CX8(`build-dev` 에서 `--ignore` 만 제거)에서는 이 케이스와 IW1 이
+    //   **함께** red 다 — 두 겹이 무는 층이 다르다는 것이 그 두 실측의 대조로 확정된다.
     const scripts = JSON.parse(readFileSync(path.join(SCRIPTS_DIR, '..', 'package.json'), 'utf8')).scripts // prettier-ignore
 
     for (const name of ['build', 'build-dev']) {
