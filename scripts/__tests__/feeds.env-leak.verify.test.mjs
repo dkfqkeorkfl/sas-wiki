@@ -132,23 +132,41 @@ function restoreEnv(name, value) {
   else process.env[name] = value
 }
 
+/**
+ * 실 vault 를 **전량 훑는** 케이스 전용 타임아웃 — **OQ-P1-2 (c) 「케이스별 `{ timeout: N }`」**.
+ * 전역 상향은 금지다(모든 케이스의 hang 감지가 둔해진다) — 대상은 §8-② 실측으로 확정했다.
+ *
+ * ★ 원인은 `cli-contract.test.mjs:74-77` 이 적은 것과 **같다**: Task 5 가 skip 블록을 없애 매 실행이
+ *   vault 를 전량 재계산한다. 다른 점은 층뿐이다 — 저쪽은 spawn, 이쪽은 `walkFeeds` **in-process
+ *   2회**(dev·prod). 이 컨테이너(9p 마운트)의 전체 스위트 부하에서 케이스가 기본 `testTimeout: 30000`
+ *   을 넘는다. 단독 실행은 훨씬 빠르므로 **문턱이 아니라 워크로드가 늘어난 것**이다.
+ *
+ * §8-② 실측(전체 스위트 1회): LK2 **37.9s** · LX2 38.1s · LX3 39.7s — 셋 다 초과.
+ *   커버리지 계측을 얹은 실행에서는 같은 케이스가 `Test timed out in 30000ms` 로 명시 실패했다.
+ */
+const REAL_VAULT_WALK_TIMEOUT = 120_000
+
 describe('prod 누출 가드 — 실 vault 신원 고정 (LK2 🔴RED(flip) · OQ-P2-1 = A)', () => {
-  it('LK2: dev 6건 · prod 는 **정확히 1건**이고 그 1건이 삭제 유래이며 draft 유래 5건은 전부 부재다', () => {
-    const { dev, prod } = withSafeDirectory(() => ({
-      dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
-      prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
-    }))
+  it(
+    'LK2: dev 6건 · prod 는 **정확히 1건**이고 그 1건이 삭제 유래이며 draft 유래 5건은 전부 부재다',
+    { timeout: REAL_VAULT_WALK_TIMEOUT },
+    () => {
+      const { dev, prod } = withSafeDirectory(() => ({
+        dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
+        prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
+      }))
 
-    // ★ 앵커: dev 6건이 먼저다(픽스처=실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
-    expect(dev).toHaveLength(6)
-    expect(titlesOf(dev)).toContain(DELETED_BACKED_TITLE)
-    for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(dev)).toContain(title)
+      // ★ 앵커: dev 6건이 먼저다(픽스처=실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
+      expect(dev).toHaveLength(6)
+      expect(titlesOf(dev)).toContain(DELETED_BACKED_TITLE)
+      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(dev)).toContain(title)
 
-    // 개수 → **신원**으로 승격. 오분류면 6건이 되고 예제 뉴스 5건이 상용으로 샌다.
-    expect(titlesOf(prod)).toEqual([DELETED_BACKED_TITLE])
-    expect(prod[0].docs).toEqual([]) // D9 — 삭제는 연결만 끊는다(문서는 draft 였던 적이 없다)
-    for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(prod)).not.toContain(title)
-  })
+      // 개수 → **신원**으로 승격. 오분류면 6건이 되고 예제 뉴스 5건이 상용으로 샌다.
+      expect(titlesOf(prod)).toEqual([DELETED_BACKED_TITLE])
+      expect(prod[0].docs).toEqual([]) // D9 — 삭제는 연결만 끊는다(문서는 draft 였던 적이 없다)
+      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(prod)).not.toContain(title)
+    },
+  )
 })
 
 describe('레거시 토큰 가드 — 신규 파일 한정 (LG1 🔴RED)', () => {

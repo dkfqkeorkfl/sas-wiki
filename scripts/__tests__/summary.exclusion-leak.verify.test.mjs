@@ -115,30 +115,45 @@ function restoreEnv(name, value) {
   else process.env[name] = value
 }
 
+/**
+ * 실 vault 를 **전량 훑는** 케이스 전용 타임아웃 — **OQ-P1-2 (c)**. 사유·실측은 형제 파일
+ * `feeds.env-leak.verify.test.mjs` 의 동명 상수 JSDoc 이 소유한다(같은 원인 · 같은 층).
+ * §8-② 실측: LX2 **38.1s** · LX3 **39.7s** — 기본 `testTimeout: 30000` 초과.
+ */
+const REAL_VAULT_WALK_TIMEOUT = 120_000
+
 describe('제외 누출 가드 — 실 vault 신원 고정 (LX2·LX3 · pin)', () => {
-  it('LX2: dev 6건 · prod **정확히 1건**이며 그 1건이 삭제 유래이고 docs 가 비어 있다', () => {
-    const { dev, prod } = withSafeDirectory(() => ({
-      dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
-      prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
-    }))
+  it(
+    'LX2: dev 6건 · prod **정확히 1건**이며 그 1건이 삭제 유래이고 docs 가 비어 있다',
+    { timeout: REAL_VAULT_WALK_TIMEOUT },
+    () => {
+      const { dev, prod } = withSafeDirectory(() => ({
+        dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
+        prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
+      }))
 
-    // ★ 앵커: dev 6건이 먼저다(실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
-    expect(dev).toHaveLength(6)
-    expect(titlesOf(dev)).toContain(DELETED_BACKED_TITLE)
+      // ★ 앵커: dev 6건이 먼저다(실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
+      expect(dev).toHaveLength(6)
+      expect(titlesOf(dev)).toContain(DELETED_BACKED_TITLE)
 
-    expect(titlesOf(prod)).toEqual([DELETED_BACKED_TITLE])
-    expect(prod[0].docs).toEqual([]) // D9 — 삭제는 연결만 끊는다(그 문서는 draft 였던 적이 없다)
-  })
+      expect(titlesOf(prod)).toEqual([DELETED_BACKED_TITLE])
+      expect(prod[0].docs).toEqual([]) // D9 — 삭제는 연결만 끊는다(그 문서는 draft 였던 적이 없다)
+    },
+  )
 
-  it('LX3: 실 vault prod 결과에 draft 유래 5건이 **전부 부재**하다', () => {
-    // ★ 오분류(사유를 `invalid-excluded`·`deleted` 로 뭉갬)면 prod 가 **6건**이 되어 예제 뉴스 5건이
-    //   상용으로 샌다. 앵커는 dev 6건이다 — 부재 단언 앞에 그 피드들이 실재함을 먼저 세운다.
-    const { dev, prod } = withSafeDirectory(() => ({
-      dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
-      prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
-    }))
+  it(
+    'LX3: 실 vault prod 결과에 draft 유래 5건이 **전부 부재**하다',
+    { timeout: REAL_VAULT_WALK_TIMEOUT },
+    () => {
+      // ★ 오분류(사유를 `invalid-excluded`·`deleted` 로 뭉갬)면 prod 가 **6건**이 되어 예제 뉴스 5건이
+      //   상용으로 샌다. 앵커는 dev 6건이다 — 부재 단언 앞에 그 피드들이 실재함을 먼저 세운다.
+      const { dev, prod } = withSafeDirectory(() => ({
+        dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
+        prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
+      }))
 
-    for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(dev)).toContain(title)
-    for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(prod)).not.toContain(title)
-  })
+      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(dev)).toContain(title)
+      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(prod)).not.toContain(title)
+    },
+  )
 })
