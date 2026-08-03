@@ -1,6 +1,8 @@
 import path from 'node:path'
+import { existsSync } from 'node:fs'
 
-import { runSummaryGenerator } from '../../lib/generator.mjs'
+import { feedsArtifactPath } from '../../lib/artifact.mjs'
+import { runFeedsGenerator, runSummaryGenerator } from '../../lib/generator.mjs'
 
 export function summaryArtifactPath(vault, env = 'dev') {
   return path.join(vault, 'cache', `summary.${env}.json`)
@@ -15,5 +17,14 @@ export function summaryArtifactPath(vault, env = 'dev') {
  */
 export async function prebuildArtifacts(vault, env = 'dev', options = {}) {
   const artifactPath = options.artifactPath ?? summaryArtifactPath(vault, env)
-  return await runSummaryGenerator({ ...options, artifactPath, env, vault })
+  const summary = await runSummaryGenerator({ ...options, artifactPath, env, vault })
+  const feedsPath = options.feedsArtifactPath ?? feedsArtifactPath(vault, env)
+  const feeds = await runFeedsGenerator({ ...options, artifactPath: feedsPath, env, vault })
+  if (!existsSync(artifactPath)) {
+    throw new Error(`summary 아티팩트 생성 실패: ${artifactPath}`)
+  }
+  if (!existsSync(feedsPath)) {
+    throw new Error(`feeds 아티팩트 생성 실패: ${feedsPath}`)
+  }
+  return { ...summary, feedsArtifactPath: feedsPath, feedsPayload: feeds.payload }
 }

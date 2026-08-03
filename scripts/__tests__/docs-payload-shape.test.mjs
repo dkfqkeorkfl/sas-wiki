@@ -6,7 +6,7 @@
 // ── 무엇이 틀렸나 (사후 감사 · P1~P6 종료 후) ────────────────────────────────────────────────
 // README `## 반환 데이터형` 은 서두에서 _"예시는 이 리포의 예제 vault 를 `--env dev` 로 돌린 **실제
 // 출력**"_ 이라고 **선언한다**. 그 선언이 거짓이다 — P2~P5 가 wire 계약을 세 번 바꾸는 동안 이 절만
-// 갱신되지 않았다. 실측(`node scripts/summary.mjs --env dev --stdout` · `node scripts/feeds.mjs
+// 갱신되지 않았다. 실측(`node scripts/summary.mjs --env dev` · `node scripts/feeds.mjs
 // --env dev` · `node scripts/wiki.mjs --env dev --path "company/삼성전자"`):
 //   ① summary 예시 `schemaVersion: 1` → 실제 **3**            (SP2)
 //   ② summary 예시·표가 6키 → 실제 7키(`env` 누락)  (SP1·SP3)

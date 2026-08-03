@@ -54,6 +54,7 @@ const SCRIPTS_DIR = path.resolve(HERE, '..')
 const REPO_ROOT = path.resolve(SCRIPTS_DIR, '..')
 const SCHEMA_DIR = path.join(SCRIPTS_DIR, 'schema')
 const SUMMARY_CLI = path.join(SCRIPTS_DIR, 'summary.mjs')
+const FEEDS_CLI = path.join(SCRIPTS_DIR, 'feeds.mjs')
 const VALIDATE_CLI = path.join(SCRIPTS_DIR, 'validate.mjs')
 
 // ── 계약 리터럴 (규범 A) ─────────────────────────────────────────────────────────────────────
@@ -102,7 +103,7 @@ const tmps = []
 afterAll(() => cleanup(...tmps))
 
 // ── 겹2 준비: tmp vault 에 실제로 산출물을 쓴다(규범 F — 실 vault 는 건드리지 않는다) ────────
-const built = { artifact: '', feeds: '', run: null, vault: '' }
+const built = { artifact: '', feeds: '', feedsRun: null, run: null, vault: '' }
 
 beforeAll(() => {
   const seeded = seedCleanVault()
@@ -113,6 +114,20 @@ beforeAll(() => {
   built.run = spawnSync(
     process.execPath,
     [SUMMARY_CLI, '--vault', seeded.vault, '--env', 'dev', '--out', built.artifact],
+    {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'safe.directory',
+        GIT_CONFIG_VALUE_0: '*',
+      },
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  )
+  built.feedsRun = spawnSync(
+    process.execPath,
+    [FEEDS_CLI, '--vault', seeded.vault, '--env', 'dev', '--out', built.feeds],
     {
       encoding: 'utf8',
       env: {
@@ -237,10 +252,12 @@ describe('겹2 산출물 — 키 집합 완전 열거 (KY1·KY2)', () => {
     expect(readArtifactKeys(built.artifact)).toEqual(SUMMARY_KEYS)
   })
 
-  it('KY2: 같은 실행이 쓴 feeds 아티팩트의 키가 **정확히 5키**다', () => {
-    expect(existsSync(built.feeds), built.run?.stderr).toBe(true) // 앵커 ①
+  it('KY2: 빌드가 쓴 feeds 아티팩트의 키가 **정확히 5키**다', () => {
+    // summary 실행은 더 이상 feeds 를 함께 쓰지 않는다. 빌드처럼 feeds 생산자를 명시 호출한 결과를 본다.
+    expect(built.feedsRun?.status, built.feedsRun?.stderr).toBe(0) // 앵커 ①
+    expect(existsSync(built.feeds), built.feedsRun?.stderr).toBe(true) // 앵커 ②
     const parsed = JSON.parse(readFileSync(built.feeds, 'utf8'))
-    expect(Array.isArray(parsed.items), 'items 가 배열이다').toBe(true) // 앵커 ②
+    expect(Array.isArray(parsed.items), 'items 가 배열이다').toBe(true) // 앵커 ③
 
     expect(readArtifactKeys(built.feeds)).toEqual(FEEDS_ARTIFACT_KEYS)
   })

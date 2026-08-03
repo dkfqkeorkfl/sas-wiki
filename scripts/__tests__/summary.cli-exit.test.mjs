@@ -8,7 +8,7 @@
 // RED 사유:
 //   XC1·XC2·XC4·XC7 · PC1(flip) — 캐시/리포트/`--out`/`--max-excluded` 개념이 아직 없다.
 //   (PC3 은 v3 P1 Task 5 에서 소멸했다 — 계약이 반전돼 RG4 로 승계됐다. 아래 OT/RG 블록 참조.)
-//   XC3(flip) — 현행도 exit 1 이지만 **산출물 부재 단언이 신설**이다.
+//   XC3(flip) — 현행도 exit 1 이지만 stdout 무오염과 stderr 에러 채널을 프로세스 경계에서 못박는다.
 //   XC5(flip) — 현행 `parseArgs` 는 알 수 없는 인자에 throw → **exit 1**. 호출 계약 위반은 2 로 가른다.
 //   XC6 — ★ 현행 `summary.mjs` 는 `--env` 를 **검증하지 않는다**(`{ default: 'prod', type: 'string' }`)
 //         → `--env staging` 이 조용히 `env !== 'dev'` 극성에 흡수돼 **prod 로 동작**한다. fail-closed
@@ -96,48 +96,45 @@ function freshPolluted() {
  * 테스트가 따라가는" 자기참조가 된다. 드리프트 감지는 AR1·AR3 이 맡는다.
  */
 const artifactFile = (vault, env = 'dev') => path.join(vault, 'cache', `summary.${env}.json`)
-// P5 · F-29 — 리포트 경로도 env 로 갈린다(§4 원장 ⑳). 리터럴 조립은 유지한다(규범 A).
-const reportJson = (vault, env = 'dev') => path.join(vault, 'logs', `summary.report.${env}.json`)
-
 // ────────────────────────────────────────────────────────────────────────────
 // XC — 종료코드 6종
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('종료코드 — 성공 경로 (XC1·XC2 · 🔴RED 미구현)', () => {
-  it('XC1: 정상 vault → exit 0 · 캐시 파일 존재', () => {
+  it('XC1: 정상 vault → exit 0 · stdout payload', () => {
     // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②). `summary.import-graph.test.mjs`(IG1·IG6)가 무는
-    //   것은 구조뿐이라, 판정 경로에서 렌더 툴체인을 뗀 나머지로 **아무것도 만들지 못하는** 구현도
-    //   거기서는 green 이다. 프로세스 경계에서 산출물이 실제로 생겼음을 보는 이 케이스가 그 짝이다.
+    //   것은 구조뿐이라, 판정 경로에서 렌더 툴체인을 뗀 나머지로 **아무것도 계산하지 못하는** 구현도
+    //   거기서는 green 이다. 프로세스 경계에서 payload 를 실제로 계산해 냈음을 보는 이 케이스가
+    //   그 짝이다.
     const vault = freshClean()
 
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
 
     expect(result.status, result.stderr).toBe(0)
-    expect(existsSync(artifactFile(vault))).toBe(true)
+    expect(JSON.parse(result.stdout).docs.length).toBeGreaterThan(0)
   })
 
-  it('XC2: 오염 vault(문턱 미지정) → **exit 0** · 리포트가 제외 2건을 담는다', () => {
+  it('XC2: 오염 vault(문턱 미지정) → **exit 0** · stdout payload', () => {
     // ★ R6 "부분 성공 = exit 0". Node `execFile` 이 비-0 을 reject 하므로 부분 성공을 비-0 으로 내면
-    //   dev 미들웨어가 정상 데이터를 **버린다**. 앵커를 먼저 본다 — 리포트가 실제로 제외를 담았는가.
-    //   그러지 않으면 "오염을 아예 감지 못 해서 0" 인 상태와 구분되지 않는다.
+    //   dev 미들웨어가 정상 데이터를 **버린다**. 앵커를 먼저 본다 — stderr 요약이 실제 제외 수를
+    //   담았는가. 리포트 소유가 `validate.mjs` 로 이관된 뒤에도, 이 채널이 "오염을 아예 감지 못 해서
+    //   0" 인 상태와 구분해 준다(D5).
     const vault = freshPolluted()
 
     const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
 
-    expect(existsSync(reportJson(vault)), result.stderr).toBe(true)
-    expect(JSON.parse(readFileSync(reportJson(vault), 'utf8')).excluded).toHaveLength(2)
     expect(result.status).toBe(0)
-    expect(existsSync(artifactFile(vault))).toBe(true)
+    expect(JSON.parse(result.stdout).docs.length).toBeGreaterThan(0)
+    expect(result.stderr).toMatch(/excluded=2/)
   })
 })
 
 describe('종료코드 — 전역 실패 (XC3·XC4 · 🔴RED(flip)/RED)', () => {
-  it('XC3: git 리포가 아니면 exit 1 · stdout 은 비고 · 캐시 미생성', () => {
-    // ★ 위험 실재 앵커(규범 B): 이 CLI 는 **성공하면 캐시를 만든다**. 그 대조가 없으면 "실패했을 때
-    //   캐시가 없다" 는 캐시 개념이 아예 없는 지금도 자동으로 참이라 단언이 공허하다.
+  it('XC3: git 리포가 아니면 exit 1 · stdout 은 비고 · stderr 에 에러가 있다', () => {
+    // ★ 위험 실재 앵커는 OT5 가 `--out` 으로 승계했다. 기본 실행은 파일을 만들지 않으므로 여기서
+    //   캐시 부재를 묻는 것은 공허하다. 이 케이스는 전역 실패의 exit code 와 stdout 무오염만 문다.
     const healthy = freshClean()
     expect(runCli(SUMMARY, ['--vault', healthy, '--env', 'dev']).status).toBe(0)
-    expect(existsSync(artifactFile(healthy))).toBe(true)
 
     const notARepo = mkdtempSync(path.join(tmpdir(), 'wiki-cli-nogit-'))
     tmps.push(notARepo)
@@ -147,7 +144,6 @@ describe('종료코드 — 전역 실패 (XC3·XC4 · 🔴RED(flip)/RED)', () =>
     expect(result.status).toBe(1)
     expect(result.stdout).toBe('') // 반쪽 payload 를 흘리지 않는다
     expect(result.stderr).not.toBe('')
-    expect(existsSync(artifactFile(notARepo))).toBe(false)
   })
 
   it('XC4: 캐시 쓰기가 불가능한 `--out`(부모가 파일) → exit 1', () => {
@@ -207,7 +203,15 @@ describe('종료코드 — 문턱 초과는 3, 산출물은 있다 (XC7 · 🔴R
     //   무는 유일한 자리라, IG1 이 구조만 보고 통과하는 것을 기능 쪽에서 받쳐 준다.
     const vault = freshPolluted()
 
-    const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev', '--max-excluded=0'])
+    const result = runCli(SUMMARY, [
+      '--vault',
+      vault,
+      '--env',
+      'dev',
+      '--max-excluded=0',
+      '--out',
+      artifactFile(vault),
+    ])
 
     expect(result.status, result.stderr).toBe(3)
     expect(existsSync(artifactFile(vault))).toBe(true)

@@ -75,9 +75,8 @@ beforeAll(async () => {
   // ★ v3 P1: 워밍을 `--status` 가 아니라 `--out` 으로 낸다. `--status` 는 Task 7 이 없애는 플래그라
   //   그대로 두면 착륙 즉시 **이 파일 전체가 준비 단계에서 죽는다**(exit 2). `--out` 은 오늘도 있고
   //   착륙 뒤에도 남는 **양 시대 공통 통로**다(D2).
-  // ★ `feeds.mjs --out` 은 **오늘은 알 수 없는 인자**라 실패한다 — 오늘은 summary 실행이 feeds
-  //   아티팩트를 함께 발행하므로 히트 arm 이 성립하고, Task 7 이후에는 이 줄이 그 자리를 잇는다.
-  //   그래서 이 준비 단계의 exit code 는 **단언하지 않는다**(관측일 뿐이다).
+  // ★ `feeds.mjs --out` 이 feeds 아티팩트 생산자다. summary 실행은 summary 파일만 만들고, 이 줄이
+  //   같은 형태의 feeds 파일을 만든다. 준비 단계의 exit code 는 아래 조회 arm 의 앵커가 대신 문다.
   const control = seedControlVault()
   tmps.push(control.vault)
   const summaryOut = path.join(control.vault, 'cache', 'summary.dev.json')

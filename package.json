@@ -12,6 +12,8 @@
     "summary": "node scripts/summary.mjs",
     "feeds": "node scripts/feeds.mjs",
     "wiki": "node scripts/wiki.mjs",
+    "build": "node scripts/validate.mjs --env prod --report logs && node scripts/summary.mjs --env prod --out cache/summary.prod.json && node scripts/feeds.mjs --env prod --count 200 --out cache/feeds.prod.json",
+    "build-dev": "node scripts/validate.mjs --env dev --report logs && node scripts/summary.mjs --env dev --out cache/summary.dev.json && node scripts/feeds.mjs --env dev --count 200 --out cache/feeds.dev.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write .",

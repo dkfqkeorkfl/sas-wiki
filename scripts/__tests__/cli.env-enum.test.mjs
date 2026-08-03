@@ -170,10 +170,10 @@ describe('미지정은 여전히 fail-closed(prod) 다 (EV6 · 🟢pin)', () => 
       // ★ NOT Building 존중: 미지정의 에러화는 이 phase 의 범위가 **아니다**. 열거 오타만 exit 2 다.
       //   이 pin 이 없으면 GREEN 이 "검증을 넣었다" 며 미지정까지 막아도 아무도 모른다(과잉 구현).
       //
-      // `--stdout` 은 부작용 없는 조회다(P3 OQ-P3-2) — 이 케이스가 tmp vault 에 캐시를 남기지 않는다.
-      const bare = runCli(SUMMARY, ['--vault', VAULT, '--stdout'])
-      const prod = runCli(SUMMARY, ['--vault', VAULT, '--stdout', '--env', 'prod'])
-      const dev = runCli(SUMMARY, ['--vault', VAULT, '--stdout', '--env', 'dev'])
+      // 기본 summary 실행이 부작용 없는 stdout 조회다 — 이 케이스가 tmp vault 에 캐시를 남기지 않는다.
+      const bare = runCli(SUMMARY, ['--vault', VAULT])
+      const prod = runCli(SUMMARY, ['--vault', VAULT, '--env', 'prod'])
+      const dev = runCli(SUMMARY, ['--vault', VAULT, '--env', 'dev'])
 
       expect([bare.status, prod.status, dev.status]).toEqual([0, 0, 0])
       expect(runCli(FEEDS, ['--vault', VAULT]).status).toBe(0)

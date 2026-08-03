@@ -1,16 +1,14 @@
 // @vitest-environment node
 //
-// P3 · Task 5 — `summary` 를 생성기로 (`runSummaryGenerator`) — tdd §3.6 (GN1~GN8 · RP1~RP5)
+// P3 · Task 5 — `summary` 를 생성기로 (`runSummaryGenerator`) — tdd §3.6 (GN1~GN8)
 //
 // RED 사유(전 케이스 공통 · **미구현**): `scripts/summary.mjs` 에 `runSummaryGenerator` export 가
 //   **없다**. 파일 자체는 존재하므로 collection error 는 나지 않지만, 케이스별 명시 실패로 바꿔
 //   "어느 축이 미구현인가" 가 실패 메시지에 드러나게 한다(tdd §2.4).
 //
 // 이 파일이 확정하는 seam (tdd §3.0 · **P4 갱신분 반영**):
-//   await runSummaryGenerator({ artifactPath, env, maxExcluded, reportDir, runGit, vault,
-//                               writeSideEffects = true })
-//     → { artifactPath, excluded, excludedCount, payload, report: { error, jsonPath, txtPath },
-//         sourceCommit, status }
+//   await runSummaryGenerator({ artifactPath, env, runGit, vault })
+//     → { artifactPath, excluded, excludedCount, payload, sourceCommit, status }
 //        status: 'clean' | 'partial'
 //        runGit 기본값 = makeGitRunner(vault) — **테스트가 주입해 호출을 계수한다**(FR7)
 //   순수 export `summary(vault, env)` 는 **시그니처·동기성 그대로 `lib/summary-endpoint.mjs` 로
@@ -22,16 +20,15 @@
 //     `await`, `toThrow` 는 `rejects.toThrow`(⑫). 단언 **내용**은 한 글자도 안 바뀌었다.
 //   · **D-D** — 봉투가 7키이며 `env` 스탬프를 포함한다.
 //     옵션·반환 키가 `cachePath` → `artifactPath`(plan 「후속」 F-28) — 그 파일은 생산자의 사적
-//     캐시가 아니라 소비자가 직접 읽는 **발행 아티팩트**이고 `--status` 는 이미 그 이름이었다.
+//     캐시가 아니라 소비자가 직접 읽는 **발행 아티팩트**다.
 //   · **D-G ②** — 아티팩트 경로가 `cache/summary.json` → `cache/summary.<env>.json`(㉖).
 //
 // 관측 층 분리(tdd §7.4): 여기서는 **반환 객체와 파일**만 본다. exit code·stdout·stderr 는
 //   `summary.cli-exit.test.mjs`(XC·PC)가 별도로 문다 — 두 층을 한 케이스에 섞으면 실패 원인이
 //   프로세스 경계인지 로직인지 구분되지 않는다(P2 CX12 가 "층이 달라 미발동" 한 교훈).
 //
-// OQ-P3-2 = A 확정: 기본 동작 = **캐시 원자 발행 + 리포트 + 기존 payload 유지**. `--stdout`(=
-//   `writeSideEffects: false`) 은 **부작용 없는 조회**다. 생성기 상태는 `--status` 로 나간다.
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+// v3 P1 Task 7: `artifactPath` 가 있을 때만 summary 아티팩트를 쓴다. 리포트는 validate 소유다.
+import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,9 +109,6 @@ function freshPolluted() {
  * 테스트가 따라가는" 자기참조가 된다. 드리프트 감지는 AR1·AR3 이 맡는다.
  */
 const artifactFile = (vault, env = 'dev') => path.join(vault, 'cache', `summary.${env}.json`)
-// P5 · F-29 — 리포트 경로도 env 로 갈린다(§4 원장 ⑳). 리터럴 조립은 유지한다(규범 A).
-const reportJson = (vault, env = 'dev') => path.join(vault, 'logs', `summary.report.${env}.json`)
-const reportTxt = (vault, env = 'dev') => path.join(vault, 'logs', `summary.report.${env}.txt`)
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -182,8 +176,8 @@ describe('runSummaryGenerator — 부분 성공과 경로 (GN4·GN5 · 🔴RED �
   it('GN5: `artifactPath` 를 주면 그 경로에 쓰고 `<vault>/cache/` 는 만들지 않는다', async () => {
     // 옵션·반환 키가 P3 의 `cachePath` 에서 `artifactPath` 로 바뀌었다(plan 「후속」 F-28). 계약이
     //   바뀐 이유는 **D-D** 다 — 이 phase 가 그 파일을 생산자의 사적 캐시가 아니라 소비자가 직접 읽는
-    //   **발행 아티팩트**로 재규정했고, `--status` 출력은 이미 `artifactPath` 였다. 한 파일이 두 이름을
-    //   갖는 상태를 없앤 것이지 **단언을 완화한 것이 아니다**(대상·강도·개수 무변경).
+    //   **발행 아티팩트**로 재규정했다. 한 파일이 두 이름을 갖는 상태를 없앤 것이지
+    //   **단언을 완화한 것이 아니다**(대상·강도·개수 무변경).
     const vault = freshClean()
     const out = path.join(mkdtempSync(path.join(tmpdir(), 'wiki-gen-out-')), 'other.json')
     tmps.push(path.dirname(out))
@@ -212,19 +206,18 @@ describe('runSummaryGenerator — 항상 결정적으로 계산한다 (GN6 · �
 })
 
 describe('runSummaryGenerator — 부작용 없는 조회 · 전역 실패 (GN7·GN8 · 🔴RED 미구현)', () => {
-  it('GN7: `writeSideEffects:false` → payload 는 나오지만 `cache/`·`logs/` 둘 다 미생성', async () => {
+  it('GN7: `artifactPath` 미지정 → payload 는 나오지만 `cache/`·`logs/` 둘 다 미생성', async () => {
     const vault = freshClean()
 
-    const result = await generate({ env: 'dev', vault, writeSideEffects: false })
+    const result = await loaded.runSummaryGenerator({ env: 'dev', vault })
 
     expect(result.payload.docs.map((doc) => doc.id)).toContain(ID_A) // 앵커: 조회는 됐다
     expect(existsSync(path.join(vault, 'cache'))).toBe(false)
     expect(existsSync(path.join(vault, 'logs'))).toBe(false)
 
-    // 대조군: 같은 픽스처의 **기본 실행**은 두 디렉토리를 만든다 → 위 부재가 "원래 안 만든다" 가 아니다.
+    // 대조군: 같은 픽스처에 `artifactPath` 를 주면 summary 파일을 만든다.
     await generate({ env: 'dev', vault })
     expect(existsSync(path.join(vault, 'cache'))).toBe(true)
-    expect(existsSync(path.join(vault, 'logs'))).toBe(true)
   })
 
   it('GN8: git 리포가 아니면 throw 하고 캐시 파일을 남기지 않는다 (전역 실패)', async () => {
@@ -235,81 +228,6 @@ describe('runSummaryGenerator — 부작용 없는 조회 · 전역 실패 (GN7�
 
     await expect(generate({ env: 'dev', vault: notARepo })).rejects.toThrow()
     expect(existsSync(artifactFile(notARepo))).toBe(false)
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────────────
-// RP — 리포트 (D-F)
-// ────────────────────────────────────────────────────────────────────────────
-
-describe('리포트 발행 (RP1~RP3 · 🔴RED 미구현)', () => {
-  it('RP1: `logs/` 가 없어도 json·txt **2파일**이 만들어진다', async () => {
-    const vault = freshClean()
-    expect(existsSync(path.join(vault, 'logs'))).toBe(false) // 앵커: 실행 전 부재
-
-    const result = await generate({ env: 'dev', vault })
-
-    expect(existsSync(reportJson(vault))).toBe(true)
-    expect(existsSync(reportTxt(vault))).toBe(true)
-    expect(result.report.jsonPath).toBe(reportJson(vault))
-    expect(result.report.txtPath).toBe(reportTxt(vault))
-  })
-
-  it('RP2: 두 리포트가 **캐시와 같은 `sourceCommit`** 을 담는다 (세대 어긋남 방어)', async () => {
-    // ★ D-F. 리포트는 같은 생성 사이클의 summary 아티팩트와 세대 좌표를 공유해야 한다.
-    const vault = freshClean()
-
-    const result = await generate({ env: 'dev', vault })
-
-    const cached = readJson(artifactFile(vault))
-    expect(readJson(reportJson(vault)).sourceCommit).toBe(cached.sourceCommit)
-    expect(readFileSync(reportTxt(vault), 'utf8')).toContain(cached.sourceCommit)
-    expect(result.sourceCommit).toBe(cached.sourceCommit)
-  })
-
-  it('RP3: 오염 vault 리포트의 excluded 가 2건이고 각 항목이 4키다 · summary 카운터와 정합', async () => {
-    const vault = freshPolluted()
-
-    await generate({ env: 'dev', vault })
-
-    const report = readJson(reportJson(vault))
-    expect(report.excluded).toHaveLength(2)
-    for (const entry of report.excluded) {
-      expect(Object.keys(entry).toSorted()).toEqual(['id', 'message', 'path', 'reasonCode'])
-      expect(entry.reasonCode).toBe('DUPLICATE_ID')
-    }
-    // 배열 길이와 카운터의 **정합**까지 본다 — 둘이 갈리면 리포트를 믿을 수 없다.
-    expect(report.summary.excluded).toBe(2)
-  })
-})
-
-describe('리포트 실패는 산출물 실패가 아니다 (RP4 · 🔴RED 미구현)', () => {
-  it('RP4: `logs` 가 파일이면 report.error 가 채워지고 캐시·status 는 정상이다', async () => {
-    // ★ D-F "관측 실패를 산출물 실패로 승격하지 않는다". 로그를 못 썼다고 **서빙 데이터를 안 만드는**
-    //   것은 우선순위가 뒤집힌 것이다(tdd §6 CX20).
-    const vault = freshClean()
-    writeFileSync(path.join(vault, 'logs'), 'not a directory')
-
-    const result = await generate({ env: 'dev', vault })
-
-    expect(existsSync(artifactFile(vault))).toBe(true) // 앵커: 캐시는 **실제로** 만들어졌다
-    expect(result.status).toBe('clean')
-    // `toBeTruthy()` 로는 부족하다 — 구현이 원인과 무관하게 상수를 채워도 통과한다.
-    //   **문자열**이어야 하고(형태), 실패한 자원을 지목해야 한다(무엇이 왜).
-    expect(typeof result.report.error).toBe('string')
-    expect(result.report.error).toContain('logs')
-  })
-
-  it('RP5: 생성된 report.json 이 `report.schema.json` 을 통과한다', async () => {
-    const vault = freshPolluted()
-    const schemaPath = path.join(SCHEMA_DIR, 'report.schema.json')
-
-    await generate({ env: 'dev', vault })
-
-    expect(existsSync(schemaPath)).toBe(true) // 앵커: 스키마가 실재한다(자기 스키마 드리프트 차단)
-    expect(
-      validateItem(readJson(reportJson(vault)), loadSchema(schemaPath), 'report.json'),
-    ).toEqual([])
   })
 })
 

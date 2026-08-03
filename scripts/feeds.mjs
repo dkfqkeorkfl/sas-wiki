@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// feeds 엔드포인트 — **아티팩트 소비자**(D-E·D-G). 파싱·렌더·파생 툴체인을 **정적으로 물지 않는다**
-//   (FC1). 이 스크립트는 캐시 파일을 읽기만 하며, 생성 시점은 명시 빌드 호출자의 몫이다.
-//   하는 일은 아티팩트를 읽고, 억제 필터를 걸고, 페이지를 내는 것뿐이다 — 정렬·슬라이스·억제는
-//   `pageFeeds` 에 **위임**한다(재구현 금지 · FC5 · `ignore.mjs` 헤더의 "두 번째 필터 경로" 금지).
+// feeds 엔드포인트 — **아티팩트 생산자 + 소비자**(D-E·D-G). 조회 경로는 파싱·렌더·파생 툴체인을
+//   정적으로 물지 않는다(FC1). `--out` 이 있으면 빌드 단계가 같은 형태의 feeds 아티팩트를 만들고,
+//   없으면 서빙 경로가 그 파일을 읽는다. 같은 파일이 만들고 읽어야 형태 드리프트가 생기지 않는다.
+//   조회 모드가 하는 일은 아티팩트를 읽고, 억제 필터를 걸고, 페이지를 내는 것뿐이다 — 정렬·슬라이스·
+//   억제는 `pageFeeds` 에 **위임**한다(재구현 금지 · FC5 · `ignore.mjs` 헤더의 "두 번째 필터 경로" 금지).
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -84,6 +85,7 @@ export async function main(argv = process.argv.slice(2)) {
       count: { type: 'string' },
       env: { default: 'prod', type: 'string' },
       from: { type: 'string' },
+      out: { type: 'string' },
       to: { type: 'string' },
       vault: { type: 'string' },
     },
@@ -101,6 +103,14 @@ export async function main(argv = process.argv.slice(2)) {
     return
   }
   const vault = values.vault ?? REPO_ROOT
+  if (values.out) {
+    const artifactPath = resolveFromVault(vault, values.out)
+    const count = values.count === undefined ? undefined : Number.parseInt(values.count, 10)
+    const { runFeedsGenerator } = await import('./lib/generator.mjs')
+    await runFeedsGenerator({ artifactPath, count, env: values.env, vault })
+    console.error(`[wiki] feeds generated artifact=${artifactPath}`)
+    return
+  }
   const result = await feeds(vault, values.env, {
     after: values.after ? JSON.parse(values.after) : undefined,
     count: values.count === undefined ? undefined : Number.parseInt(values.count, 10),
@@ -108,6 +118,10 @@ export async function main(argv = process.argv.slice(2)) {
     to: values.to,
   })
   process.stdout.write(`${JSON.stringify(result)}\n`)
+}
+
+function resolveFromVault(vault, value) {
+  return path.isAbsolute(value) ? value : path.join(path.resolve(vault), value)
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

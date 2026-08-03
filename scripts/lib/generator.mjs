@@ -9,12 +9,11 @@
 // ★ 이 파일의 **정적** import 그래프에 파싱·렌더 툴체인이 들어오면 안 된다(규범 G). 판정에 실제로
 //   필요한 일은 git HEAD 조회와 파일 쓰기뿐인데, 마크다운 렌더러를 정적으로 물면 호출할 때마다
 //   그 로드 비용(수 초)을 전부 낸다. 그래서 파싱은 실행 본문에서 동적으로 연다.
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { SCHEMA_VERSION, artifactPath, feedsArtifactPath, reportPath } from './artifact.mjs'
 import { writeFileAtomic } from './atomic.mjs'
+import { byRecencyThenId } from './feed.mjs'
 import { makeGitRunner } from './git.mjs'
 import { buildFeedsArtifact, buildSummary } from './payloads.mjs'
 
@@ -22,12 +21,12 @@ import { buildFeedsArtifact, buildSummary } from './payloads.mjs'
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
 
 /**
- * 3 산출물(summary·feeds·report)을 발행한다.
+ * summary 산출물을 계산하고, `artifactPath` 가 있을 때만 발행한다.
  *
  * 신선도 판정은 지운 값을 다른 값으로 대체하지 않는다. 약화된 판정을 남기면 어떤 산출물도 항상
  * fresh 처럼 보이므로 PRD D34 가 금지한 "발동 불가능한 방어층"이 된다. 쓰기 순서는
- * **summary → feeds → report** 다(계약 · FA6). feeds 아티팩트 쓰기 실패는 **산출물 실패**다.
- * 리포트만 실패를 `result.report.error` 로 흡수한다(RP4 — 관측 실패는 산출물 실패가 아니다).
+ * feeds 아티팩트는 `runFeedsGenerator` / `feeds.mjs --out` 이 소유하고, 리포트는 `validate.mjs` 가
+ * 게이트 전에 쓴다. 이 파일은 더 이상 형제 경로를 파생하지 않는다.
  *
  * 예전 스킵 판정의 교훈 중 살아남는 것은 "모르면 다시 만든다"가 아니라 "모르면 서빙하지 않는다"다.
  * 조회 스크립트는 이제 직접 만들지 않고, 부재·손상 캐시는 fail-loud 로 드러낸다.
@@ -37,21 +36,16 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
  * 무엇을 할지는 정하지 않는다. 예전에는 구조분해에 남아 있었으나 본문에서 쓰이지 않아, 이 함수가
  * 임계를 강제한다는 **거짓 인상**만 줬다(리뷰 지적).
  *
- * @param {{ artifactPath?: string, env?: 'dev'|'prod',
- *           reportDir?: string, runGit?: Function, vault: string, writeSideEffects?: boolean }} input
+ * @param {{ artifactPath?: string, env?: 'dev'|'prod', runGit?: Function, vault: string }} input
  */
 export async function runSummaryGenerator({
-  // `--out` 로 들어오는 경로 **덮어쓰기**다(미지정이면 아래에서 파생한다). 같은 이름의 import 를
-  //   가리지 않도록 지역 이름만 바꿔 받는다 — 옵션 키 자체는 반환 키·`--status` 와 같은 낱말이다.
+  // `--out` 로 들어오는 경로 **덮어쓰기**다. 미지정이면 파일을 쓰지 않는다.
   artifactPath: artifactPathOverride,
   env = 'prod',
-  reportDir,
   runGit,
   vault,
-  writeSideEffects = true,
 }) {
   const vaultDir = path.resolve(vault)
-  const paths = resolvePaths({ artifactPathOverride, env, reportDir, vaultDir })
   const git = runGit ?? makeGitRunner(vaultDir)
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
 
@@ -68,131 +62,45 @@ export async function runSummaryGenerator({
     tags: parsed.wire.tags,
     tree: parsed.wire.tree,
   })
-  const feedsPayload = buildFeedsArtifact({
-    env,
-    generatedAt: parsed.wire.generatedAt,
-    // ★ **억제 전 전량**이다(D-C). 억제 필터는 서빙 시점(`feeds.mjs`)의 몫이지 이 단계의 몫이 아니다.
-    items: parsed.wire.items,
-    sourceCommit: parsed.wire.sourceCommit,
-  })
   const excluded = parsed.stats.excluded ?? []
   const result = {
-    artifactPath: paths.effectiveArtifactPath,
+    artifactPath: artifactPathOverride ?? null,
     excluded,
     excludedCount: excluded.length,
     payload,
-    report: { error: null, jsonPath: null, txtPath: null },
     sourceCommit,
     status: excluded.length > 0 ? 'partial' : 'clean',
   }
 
-  if (!writeSideEffects) return result
-
-  const report = buildReport({
-    env,
-    excluded,
-    // ★ Task 10(F-17) — prune 진단은 **리포트에만** 싣는다(아티팩트가 아니다). 부정 정보(무엇이
-    //   버려졌는가)를 발행 아티팩트에 실으면 D-C·D-B 가 근절한 누출이 관측 채널로 되돌아온다.
-    invalidExcludedRefs: parsed.stats.invalidExcludedRefs ?? [],
-    prunedFeeds: parsed.stats.prunedFeeds ?? 0,
-    sourceCommit,
-    total: parsed.gate.visibleDocs.length + excluded.length,
-    unresolvedPaths: parsed.stats.unresolvedPaths ?? [],
-  })
-  result.report = publishSet({ feedsPayload, paths, payload, report })
+  if (artifactPathOverride) {
+    writeFileAtomic(artifactPathOverride, `${JSON.stringify(payload)}\n`)
+  }
   return result
 }
 
-function resolvePaths({ artifactPathOverride, env, reportDir, vaultDir }) {
-  const effectiveArtifactPath = artifactPathOverride ?? artifactPath(vaultDir, env)
-  // ★ GN5 sibling-path 판정(메인 세션 승인 · 원장에 없던 결정이므로 사유를 여기 남긴다):
-  //   feeds 아티팩트는 summary 와 **한 세트로 co-derive** 된다(D-C) — 기본은 vault 기준 경로다.
-  //   `--out`(artifactPath override)으로 summary 를 vault 밖 임의 경로에 쓰게 하면, feeds 도 그
-  //   **형제 경로**(같은 디렉토리)에 나란히 쓴다 — vault 밖으로 재배치된 산출물 세트가 vault/cache
-  //   에 반쪽(feeds 만)을 남기지 않게 하기 위해서다. 이 규칙이 없으면 override 요청이 있어도 매번
-  //   `<vaultDir>/cache/` 를 건드리게 되어, "이 요청은 산출물을 딴 곳에 두고 싶다" 는 호출자 의도와
-  //   `<vault>/cache/` 를 만들지 않는다는 기존 계약(P3-era GN5)이 동시에 깨진다. report 는 `reportDir`
-  //   이 이미 같은 패턴(override 시 그 디렉토리, 아니면 vault 기준)을 쓰므로 대칭이다.
-  const effectiveFeedsArtifactPath = artifactPathOverride
-    ? path.join(path.dirname(effectiveArtifactPath), `feeds.${env}.json`)
-    : feedsArtifactPath(vaultDir, env)
-  const reportJsonPath = reportDir
-    ? path.join(reportDir, `summary.report.${env}.json`)
-    : reportPath(vaultDir, env, 'json')
-  const reportTxtPath = reportDir
-    ? path.join(reportDir, `summary.report.${env}.txt`)
-    : reportPath(vaultDir, env, 'txt')
-
-  return {
-    effectiveArtifactPath,
-    effectiveFeedsArtifactPath,
-    effectiveReportDir: path.dirname(reportJsonPath),
-    reportJsonPath,
-    reportTxtPath,
-  }
-}
-
-function publishSet({ feedsPayload, paths, payload, report }) {
-  // ★ 쓰기 순서는 계약이다: summary → feeds → report. 크래시(또는 feeds 쓰기 실패)가 나면 (신 summary,
-  //   구/부재 feeds) 조합만 발생한다. **feeds 쓰기 실패는 여기서 흡수하지 않는다** — OQ-P5-5: feeds 는 서빙 데이터라 산출물
-  //   실패(throw)와 같은 극성이어야 한다. 리포트만 아래에서 예외로 흡수한다.
-  writeFileAtomic(paths.effectiveArtifactPath, `${JSON.stringify(payload)}\n`)
-  writeFileAtomic(paths.effectiveFeedsArtifactPath, `${JSON.stringify(feedsPayload)}\n`)
-
-  try {
-    fs.mkdirSync(paths.effectiveReportDir, { recursive: true })
-    writeFileAtomic(paths.reportJsonPath, `${JSON.stringify(report, null, 2)}\n`)
-    writeFileAtomic(paths.reportTxtPath, formatReportText(report))
-    return { error: null, jsonPath: paths.reportJsonPath, txtPath: paths.reportTxtPath }
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : String(error),
-      jsonPath: null,
-      txtPath: null,
-    }
-  }
-}
-
 /**
- * 리포트 봉투 — 관측 채널이다. 자체 리터럴 대신 **공용 `SCHEMA_VERSION`** 을 쓴다.
+ * feeds 아티팩트 생성기 — `feeds.mjs --out` 의 동적 import 대상이다.
+ *
+ * 빌드 아티팩트도 조회 경로(`pageFeeds`)와 같은 정렬 권위(`byRecencyThenId`)를 쓴 뒤 자른다. git 의
+ * `--author-date-order` 만 믿고 먼저 slice 하면 backdate/rebase 히스토리에서 최신 피드를 놓칠 수 있다.
+ *
+ * @param {{ artifactPath: string, count?: number, env?: 'dev'|'prod', runGit?: Function, vault: string }} input
  */
-function buildReport({
-  env,
-  excluded,
-  invalidExcludedRefs,
-  prunedFeeds,
-  sourceCommit,
-  total,
-  unresolvedPaths,
-}) {
-  return {
+export async function runFeedsGenerator({ artifactPath, count, env = 'prod', runGit, vault }) {
+  const vaultDir = path.resolve(vault)
+  const git = runGit ?? makeGitRunner(vaultDir)
+  const sourceCommit = git(['rev-parse', 'HEAD']).trim()
+  const { parseVault } = await import('./parse-vault.mjs')
+  const parsed = parseVault(vaultDir, env, SCHEMA_DIR, { runGit: git })
+  const sortedItems = parsed.wire.items.toSorted(byRecencyThenId)
+  const items = typeof count === 'number' ? sortedItems.slice(0, count) : sortedItems
+  const payload = buildFeedsArtifact({
     env,
-    excluded,
-    generatedAt: new Date().toISOString(),
-    // ★ Task 10(F-17) — prune 진단 3키. `unresolvedPaths`(fail-closed 드랍된 feed 참조)·
-    //   `invalidExcludedRefs`(제외된 문서를 가리킨 feed 참조)·`prunedFeeds`(생존하지 못한 feed 수).
-    invalidExcludedRefs,
-    prunedFeeds,
-    schemaVersion: SCHEMA_VERSION,
-    sourceCommit,
-    summary: { excluded: excluded.length, included: total - excluded.length, total },
-    unresolvedPaths,
-  }
-}
+    generatedAt: parsed.wire.generatedAt,
+    items,
+    sourceCommit: parsed.wire.sourceCommit,
+  })
 
-function formatReportText(report) {
-  const lines = [
-    `summary report ${report.generatedAt}`,
-    `sourceCommit: ${report.sourceCommit}`,
-    `env: ${report.env}`,
-    `total=${report.summary.total} included=${report.summary.included} excluded=${report.summary.excluded}`,
-    `prunedFeeds=${report.prunedFeeds} unresolvedPaths=${report.unresolvedPaths.length} invalidExcludedRefs=${report.invalidExcludedRefs.length}`,
-  ]
-  for (const entry of report.excluded) {
-    lines.push(`- ${entry.reasonCode} ${entry.path} ${entry.id ?? 'null'} ${entry.message}`)
-  }
-  for (const entry of report.unresolvedPaths) {
-    lines.push(`- unresolved: ${String(entry.sha).slice(0, 12)} ${entry.path}`)
-  }
-  return `${lines.join('\n')}\n`
+  writeFileAtomic(artifactPath, `${JSON.stringify(payload)}\n`)
+  return { artifactPath, payload, sourceCommit }
 }

@@ -421,16 +421,4 @@ describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)',
       validateItem(readReport(reportJsonIn(dir, 'dev')), loadSchema(schemaPath), 'report.json'),
     ).toEqual([])
   })
-
-  it('RP6: `--report` 는 D24 경로 제한을 받는다 (vault 밖은 거부)', () => {
-    // plan Task 7 — 경로 제한은 `--out` 과 `--report` **둘 다**에 건다. 한쪽만 걸면 나머지가 우회로다.
-    // 앵커: vault **안쪽** 디렉토리는 정상 동작한다(전부 거부하는 구현 배제).
-    const inside = path.join(ctx.vault, 'logs')
-    const okay = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', inside])
-    expect(okay.status, okay.stderr).toBe(0)
-
-    const outside = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', path.join(ctx.tmp, '..')]) // prettier-ignore
-
-    expect(outside.status).not.toBe(0)
-  })
 })

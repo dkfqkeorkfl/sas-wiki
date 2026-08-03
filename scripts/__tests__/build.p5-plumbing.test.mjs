@@ -6,9 +6,9 @@
 //   (env 로 갈린다 · `cache/` 하위다 · 공존한다) 여기서 한 번만 리터럴로 못박는다 — 둘이 같은 것을
 //   두 번 물면 이름을 바꿀 때 두 곳이 따로 논다.
 //
-// RED 사유:
-//   · PL9 — **RED(미구현)**. `feedsArtifactPath`·`reportPath` 가 없다.
-//   · PL11 — **RED(미구현)**. 리포트에 prune 진단 3키가 없고 `report.schema.json` 도 선언하지 않는다.
+// 이 파일의 앵커:
+//   · PL9 — `feedsArtifactPath`·`reportPath` 의 리터럴 경로를 고정한다.
+//   · PL11 — 리포트에 prune 진단 3키가 있고 `report.schema.json` 이 선언한다.
 //   · PL10 — `.gitignore` 가 이미 `cache`·`logs` 를 덮으므로 **오늘도 성립**한다. 그러나 "덮는다" 를
 //     추정하지 않고 **실측**하는 것이 이 케이스의 값이다 — 새 산출물이 그 규칙 밖으로 나가는 순간
 //     red 가 된다(예: `.cache/` 나 `reports/` 로 옮기는 구현).
@@ -49,7 +49,7 @@ const STRAY_PATH = 'wiki/concept/메모장.md'
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
-describe('경로 정확 형태 고정 (PL9 · 🔴RED 함수 부재)', () => {
+describe('경로 정확 형태 고정 (PL9)', () => {
   it('PL9: `feedsArtifactPath`·`reportPath` 가 리터럴 형태와 정확히 일치한다', () => {
     const vault = path.resolve('/v')
 

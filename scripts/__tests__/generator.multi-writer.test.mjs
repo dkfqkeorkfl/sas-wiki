@@ -29,8 +29,16 @@ const REL_B = 'concept/온디바이스-AI'
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
 const FEED_TS = '2026-05-01T00:00:00Z'
 
-/** 생성기 자식 1개 = `summary.mjs --env dev --status`(판정 + 필요 시 재생성 + stdout 판정 JSON). */
-const GENERATOR = { args: ['--env', 'dev', '--status'], script: 'summary.mjs' }
+/** 생성기 자식 2종 = summary/feeds 를 각자 `--out` 으로 발행한다(Task 7 이후 3스텝 체인과 동일한 분리). */
+const SUMMARY_GENERATOR = {
+  args: ['--env', 'dev', '--out', 'cache/summary.dev.json'],
+  script: 'summary.mjs',
+}
+const FEEDS_GENERATOR = {
+  args: ['--env', 'dev', '--out', 'cache/feeds.dev.json'],
+  script: 'feeds.mjs',
+}
+const GENERATORS = [SUMMARY_GENERATOR, FEEDS_GENERATOR]
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -62,20 +70,15 @@ describe('동시 생성기 — 찢어진 세트 0건 (MW1 · 🔴RED feeds 아�
       const vault = seedVault()
 
       const race = await runGeneratorRace({
-        children: [GENERATOR, GENERATOR],
+        children: [...GENERATORS, ...GENERATORS],
         env: 'dev',
         vault,
       })
 
-      // 앵커 ①: 두 자식 다 정상 종료했다(둘 다 죽어서 "아무도 안 썼다" 가 0건으로 통과하는 것을 배제).
-      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0])
+      // 앵커 ①: 네 자식 다 정상 종료했다(둘 다 죽어서 "아무도 안 썼다" 가 0건으로 통과하는 것을 배제).
+      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0, 0, 0])
       // 앵커 ②: 두 파일이 **전부 존재한다**(파싱 성공 = null 이 아니다).
       expect(race.artifacts.map((artifact) => artifact.parsed === null)).toEqual([false, false])
-      // 앵커 ③: stdout 은 파싱 가능한 상태 JSON 이다.
-      expect(race.producers.map((producer) => parseStdout(producer) === null)).toEqual([
-        false,
-        false,
-      ])
 
       const sourceCommits = race.artifacts.map((artifact) => artifact.sourceCommit)
       for (const value of sourceCommits) expect(value).toMatch(/^[0-9a-f]{40}$/u)
@@ -107,18 +110,16 @@ describe('한 세대의 새 정의 — 축 교체 (SG1~SG4)', () => {
       const vault = seedVault()
 
       const race = await runGeneratorRace({
-        children: [GENERATOR, GENERATOR],
+        children: [...GENERATORS, ...GENERATORS],
         env: 'dev',
         vault,
       })
 
       // ── SG4: MW1 의 앵커 3종을 그대로 물려받는다(①②는 무변경 · ③은 계약 반전) ──────────────
-      // 앵커 ①: 두 자식 다 정상 종료했다(둘 다 죽어서 "아무도 안 썼다" 가 통과하는 것을 배제).
-      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0])
+      // 앵커 ①: 네 자식 다 정상 종료했다(둘 다 죽어서 "아무도 안 썼다" 가 통과하는 것을 배제).
+      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0, 0, 0])
       // 앵커 ②: 두 파일이 **전부 존재한다**(파싱 성공 = null 이 아니다).
       expect(race.artifacts.map((artifact) => artifact.parsed === null)).toEqual([false, false])
-      // 앵커 ③: stdout 이 파싱 가능한 상태 JSON 이다.
-      expect(race.producers.map((producer) => parseStdout(producer) === null)).not.toContain(true)
 
       const sourceCommits = race.artifacts.map((artifact) => artifact.sourceCommit)
       const generatedAts = race.artifacts.map((artifact) => artifact.generatedAt)
@@ -135,7 +136,7 @@ describe('한 세대의 새 정의 — 축 교체 (SG1~SG4)', () => {
       expect(new Set(sourceCommits).size).toBe(1)
 
       // ── SG3: 두 번째 축 — 한 축이 죽어도 다른 축이 문다 ──────────────────────────────────────
-      // ★ 리포트는 이 축에서 **제외한다**: `generator.mjs` 의 `buildReport` 가 `generatedAt` 을
+      // ★ 리포트는 이 축에서 **제외한다**: `validate.mjs` 의 `buildReport` 가 `generatedAt` 을
       //   `new Date().toISOString()`(**벽시계**)로 찍는다 — summary·feeds 아티팩트의
       //   `parse-vault` 파생값(`max(doc.updated)`, 결정적)과 좌표계가 다르다. 셋을 한 집합으로 묶으면
       //   이 케이스는 **영원히 red** 이거나 조용히 완화된다(tdd §2.5 ④ 가 이 차이를 놓쳤다 — 보고 대상).
@@ -156,7 +157,7 @@ describe('경합 중 소비자 관측 (MW2 · 🔴RED feeds 가 영원히 missin
     let round = 0
 
     const race = await runGeneratorRace({
-      children: [GENERATOR, GENERATOR],
+      children: [...GENERATORS, ...GENERATORS],
       env: 'dev',
       // 라운드마다 문서를 바꿔 **세대를 실제로 굴린다** — 세대가 안 움직이면 "2세대 이상" 이 성립하지 않는다.
       //
@@ -199,17 +200,27 @@ describe('경합 중 소비자 관측 (MW2 · 🔴RED feeds 가 영원히 missin
 
 describe('세 엔드포인트 동시 트리거 (MW3 · 🔴RED feeds 아티팩트 부재)', () => {
   it(
-    'MW3: `summary --status`·`feeds`·`wiki` 를 동시에 띄워도 세 산출물이 정합하다',
+    'MW3: summary/feeds 생성과 `feeds`·`wiki` 조회를 동시에 띄워도 두 아티팩트가 정합하다',
     { timeout: 300_000 },
     async () => {
       // ★ D-K 의 실제 하중이다 — summary 는 생성하고, serving 스크립트는 사전 발행물을 읽는다.
       const vault = seedVault()
-      const arranged = runGeneratorOnce({ args: ['--env', 'dev', '--status'], vault })
-      expect(arranged.exitCode).toBe(0)
+      const arrangedSummary = runGeneratorOnce({
+        args: SUMMARY_GENERATOR.args,
+        script: SUMMARY_GENERATOR.script,
+        vault,
+      })
+      const arrangedFeeds = runGeneratorOnce({
+        args: FEEDS_GENERATOR.args,
+        script: FEEDS_GENERATOR.script,
+        vault,
+      })
+      expect([arrangedSummary.exitCode, arrangedFeeds.exitCode]).toEqual([0, 0])
 
       const race = await runGeneratorRace({
         children: [
-          GENERATOR,
+          SUMMARY_GENERATOR,
+          FEEDS_GENERATOR,
           { args: ['--env', 'dev'], script: 'feeds.mjs' },
           { args: ['--env', 'dev', '--path', REL_A], script: 'wiki.mjs' },
         ],
@@ -217,10 +228,9 @@ describe('세 엔드포인트 동시 트리거 (MW3 · 🔴RED feeds 아티팩�
         vault,
       })
 
-      // 앵커: 셋 다 exit 0 이고 stdout 이 **파싱 가능한 JSON**(200 상당)이다.
-      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0, 0])
-      expect(race.producers.map((producer) => parseStdout(producer) === null)).toEqual([
-        false,
+      // 앵커: 네 자식 다 exit 0 이고 조회 자식 stdout 은 **파싱 가능한 JSON**(200 상당)이다.
+      expect(race.producers.map((producer) => producer.exitCode)).toEqual([0, 0, 0, 0])
+      expect(race.producers.slice(2).map((producer) => parseStdout(producer) === null)).toEqual([
         false,
         false,
       ])

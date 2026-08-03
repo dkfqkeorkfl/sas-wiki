@@ -18,7 +18,7 @@
 //   · FC4 — tdd §3.3 은 RED 로 적었으나 **오늘도 억제는 걸린다**(경로만 다르다) → 이 파일에서는
 //     green 이 정상이다. 짝인 "파일에는 있다" 는 **FA11** 이 소유한다(둘이 같은 것을 두 번 물지 않는다).
 //   · FC10 — **극성 pin**. 형태를 async 로 못박지 않는다(그 축은 FC2 소유) — 동기 throw 도 rejection 도
-//     같은 의미로 받도록 감싼다. Task 8 이 `--status` 의 조기 검출을 없애도 **여기는 남는다**(SU8 과 짝).
+//     같은 의미로 받도록 감싼다. summary 상태 조회가 없어져도 **여기는 남는다**(SU8 과 짝).
 //
 // 규범 A: 억제 엔트리·경로 조각·기대 시각은 **리터럴**이다. 아티팩트 대조는 `buildFeedsArtifact` 가
 //   아니라 **파일을 읽어** 한다 — 생성기 출력과 생성기 함수를 비교하면 완전히 공허하다(tdd §2.3 함정 ①).
@@ -225,7 +225,7 @@ describe('생산자가 자기 출력을 스탬프한다 (FC8 · 🔴RED 필드 �
 
 describe('malformed 억제 목록은 fail-loud 다 (FC10 · 🟢pin · OQ-P5-6 무변경)', () => {
   it('FC10: 스키마 위반 `ignore-feeds.json` 이면 실패한다(조용히 무시하지 않는다)', async () => {
-    // Task 8 이후 `summary --status` 의 조기 검출은 사라지지만(D-H 수용) **여기는 남는다** — SU8 이
+    // 상태 조회의 조기 검출은 사라지지만(D-H 수용) **여기는 남는다** — SU8 이
     //   그 경계를 계약으로 못박는다. 동기 throw 든 rejection 이든 같은 의미로 받는다(형태 축은 FC2 소유).
     const { vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()

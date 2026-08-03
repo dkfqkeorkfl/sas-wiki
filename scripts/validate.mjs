@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // vault 무결성 CLI (구 build.mjs). payload 를 in-memory 로 조립해 게이트(컨벤션·id 유일·불변·
 // 데드링크·산출물 스키마·불변식)를 전량 실행하고, 통과 시 exit 0 / 위반 시 throw→exit 1(fail-loud).
-// 리포트 출력은 validate 소유다. summary payload 쓰기는 생성기/빌드 경로가 담당한다.
+// validate 는 명시된 리포트 경로도 소유한다. summary payload 쓰기는 생성기/빌드 경로가 담당한다.
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { SCHEMA_VERSION } from './lib/artifact.mjs'
+import { writeFileAtomic } from './lib/atomic.mjs'
 import { envEnumError } from './lib/cli-env.mjs'
 import { checkAnchorExists } from './lib/derive.mjs'
 import { parseCommitForFeed } from './lib/feed.mjs'
@@ -29,21 +31,47 @@ const PAYLOAD_FILES = {
 }
 
 /**
- * vault 무결성 검증 — parseVault(파싱) 위에 **모든 검증 게이트**를 얹는다(JSON 쓰기는 없다).
+ * vault 무결성 검증 — parseVault(파싱) 위에 **모든 검증 게이트**를 얹는다(summary JSON 쓰기는 없다).
  *
  * 레이어 분리(검증 / read-path=파싱): parseVault 는 순수 파싱만 하고, throw-게이트는 여기서만 돈다.
- * 순서는 conventions→schema→deadlinks→feedResolution 를 보존한다(컨벤션 위반이 unresolved-feed 보다
- * 먼저 진단돼야 한다). 반환은 in-memory 3 payload — 소비/쓰기는 하지 않는다(검증용).
+ * 리포트는 게이트 실패를 설명하는 관측 채널이므로, 요청된 경우 게이트보다 먼저 쓴다.
+ * 반환은 in-memory 3 payload — 소비/summary 쓰기는 하지 않는다(검증용).
  *
- * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod', schema?: string, vault: string }} options
+ * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod', report?: string,
+ *           schema?: string, vault: string }} options
  * @returns {{ body: object, feeds: object, stats: object, summary: object }}
  */
-export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0, schema, vault }) {
+export function buildContent({
+  deadlinks = 'warn',
+  env = 'prod',
+  maxExcluded = 0,
+  report,
+  schema,
+  vault,
+}) {
   const vaultDir = path.resolve(vault)
   const schemaDir = schema ? path.resolve(schema) : SCHEMA_DIR
 
   // P5 Task 9(D-I) — parseVault 는 이제 항상 깊은 티어다(얕은 티어 선택 스위치를 제거했다).
   const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
+
+  const reportResult =
+    report === undefined
+      ? { error: null, jsonPath: null, txtPath: null }
+      : writeReport({
+          dir: report,
+          env,
+          report: buildReport({
+            env,
+            excluded: stats.excluded ?? [],
+            invalidExcludedRefs: stats.invalidExcludedRefs ?? [],
+            prunedFeeds: stats.prunedFeeds ?? 0,
+            sourceCommit: wire.sourceCommit,
+            total: gate.visibleDocs.length + (stats.excluded ?? []).length,
+            unresolvedPaths: stats.unresolvedPaths ?? [],
+          }),
+        })
+
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
   gateExcluded(stats.excluded ?? [], maxExcluded, stats.invalidExcludedRefs ?? [])
   const deadlinkReport = collectDeadlinks(gate.visibleDocs, gate.derived)
@@ -61,9 +89,6 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0
       .filter((commit) => parseCommitForFeed(commit) !== null)
       .map((commit) => commit.hash.slice(0, 12)),
   )
-  for (const stale of reportIgnoreHygiene(ignore, allFeedIds)) {
-    stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
-  }
   const feedItems = applyIgnoreFeeds(wire.items, ignore)
   const summary = buildSummary({
     docs: wire.docs,
@@ -83,7 +108,11 @@ export function buildContent({ deadlinks = 'warn', env = 'prod', maxExcluded = 0
   validatePayloads({ body, feeds, summary }, schemaDir)
   checkInvariants(summary, feeds, body)
 
-  return { body, feeds, stats, summary }
+  for (const stale of reportIgnoreHygiene(ignore, allFeedIds)) {
+    stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
+  }
+
+  return { body, feeds, report: reportResult, stats, summary }
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -92,7 +121,8 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(usage())
     return
   }
-  const { body, feeds, stats, summary } = buildContent(options)
+  const { body, feeds, report, stats, summary } = buildContent(options)
+  if (report.error) console.error(`[wiki] report error: ${report.error}`)
   reportStats({ body, feeds, stats, summary })
 }
 
@@ -104,6 +134,7 @@ export async function main(argv = process.argv.slice(2)) {
  */
 export function parseArgs(argv) {
   const options = { deadlinks: 'warn', env: null, maxExcluded: 0, schema: SCHEMA_DIR, vault: null }
+  let reportRaw
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -147,6 +178,13 @@ export function parseArgs(argv) {
       i += 1
       continue
     }
+    if (arg === '--report') {
+      const value = argv[i + 1]
+      if (!value) throw new Error('--report 에는 디렉토리가 필요합니다')
+      reportRaw = value
+      i += 1
+      continue
+    }
     const target = { '--schema': 'schema', '--vault': 'vault' }[arg]
     if (!target) throw new Error(`알 수 없는 인자: ${arg}`)
     const value = argv[i + 1]
@@ -158,6 +196,9 @@ export function parseArgs(argv) {
   // --vault 미지정 → 스크립트 자기 리포 루트(REPO_ROOT). cwd 폴백이 아니라 import.meta.url 파생이라
   // 엉뚱한 리포를 읽지 않는다(cwd 무관·결정적). 다른 vault 는 --vault 로 override.
   if (!options.vault) options.vault = REPO_ROOT
+  // validate 기본 실행은 검증 전용이라 vault 를 더럽히지 않는다. 리포트를 쓰는 주체는 `--report` 를
+  // 명시하는 빌드 체인이다(summary `--out` 과 같은 "명시 출력만 쓴다" 계약).
+  if (reportRaw !== undefined) options.report = resolveFromVault(options.vault, reportRaw)
 
   // Layer B fail-closed: --env 미지정 → prod(draft 숨김) + 관측 가능한 warning(silent 폴백 금지).
   if (options.env === null) {
@@ -167,6 +208,10 @@ export function parseArgs(argv) {
     )
   }
   return options
+}
+
+function resolveFromVault(vault, value) {
+  return path.isAbsolute(value) ? value : path.join(vault, value)
 }
 
 function collectDeadlinks(parsedDocs, derived) {
@@ -270,7 +315,62 @@ function reportStats({ body, feeds, stats, summary }) {
 }
 
 function usage() {
-  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error]'
+  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error] [--report <dir>]'
+}
+
+function writeReport({ dir, env, report }) {
+  const jsonPath = path.join(dir, `summary.report.${env}.json`)
+  const txtPath = path.join(dir, `summary.report.${env}.txt`)
+  try {
+    writeFileAtomic(jsonPath, `${JSON.stringify(report, null, 2)}\n`)
+    writeFileAtomic(txtPath, formatReportText(report))
+    return { error: null, jsonPath, txtPath }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+      jsonPath: null,
+      txtPath: null,
+    }
+  }
+}
+
+function buildReport({
+  env,
+  excluded,
+  invalidExcludedRefs,
+  prunedFeeds,
+  sourceCommit,
+  total,
+  unresolvedPaths,
+}) {
+  return {
+    env,
+    excluded,
+    generatedAt: new Date().toISOString(),
+    invalidExcludedRefs,
+    prunedFeeds,
+    schemaVersion: SCHEMA_VERSION,
+    sourceCommit,
+    summary: { excluded: excluded.length, included: total - excluded.length, total },
+    unresolvedPaths,
+  }
+}
+
+function formatReportText(report) {
+  const lines = [
+    `summary report ${report.generatedAt}`,
+    `sourceCommit: ${report.sourceCommit}`,
+    `env: ${report.env}`,
+    `total=${report.summary.total} included=${report.summary.included} excluded=${report.summary.excluded}`,
+    `prunedFeeds=${report.prunedFeeds} unresolvedPaths=${report.unresolvedPaths.length} invalidExcludedRefs=${report.invalidExcludedRefs.length}`,
+  ]
+  for (const entry of report.excluded) {
+    lines.push(`- ${entry.reasonCode} ${entry.path} ${entry.id ?? 'null'} ${entry.message}`)
+  }
+  for (const entry of report.unresolvedPaths) {
+    lines.push(`- unresolved: ${String(entry.sha).slice(0, 12)} ${entry.path}`)
+  }
+  return `${lines.join('\n')}\n`
 }
 
 /** 산출물 strict 검증 — 제거된 필드가 하나라도 남아 있으면 여기서 죽는다(in-memory payload 대상). */

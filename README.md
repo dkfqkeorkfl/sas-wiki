@@ -1,10 +1,10 @@
 # sas-wiki
 
-마크다운 vault(→ [저장소 구조](#저장소-구조) 에서 정의) 와 **git 히스토리**를 입력으로 받아, 위키 화면과 뉴스 피드에 필요한 JSON 을 세 개의 CLI 로 뱉는 데이터 리포지토리다.
+마크다운 vault(→ [저장소 구조](#저장소-구조) 에서 정의) 와 **git 히스토리**를 입력으로 받아, 위키 화면과 뉴스 피드에 필요한 JSON 을 CLI 로 뱉는 데이터 리포지토리다.
 
-서버가 아니다. `node scripts/<이름>.mjs` 로 실행하면 stdout 에 JSON 한 줄이 나온다. `summary` 는 **생성기**이기도 해서 발행 아티팩트 3종(summary·feeds·리포트)을 한 세트로 쓴다 — [산출물](#산출물). 소비자(개발 서버·미래의 실서버)는 프로세스를 띄워 stdout JSON 을 받아간다.
+서버가 아니다. `node scripts/<이름>.mjs` 로 실행하면 endpoint CLI 는 stdout 에 JSON 한 줄을 낸다. 빌드 경로는 `summary --out` 이 summary 아티팩트를, `feeds --out` 이 feeds 아티팩트를, `validate --report` 가 리포트를 쓴다 — [산출물](#산출물). 소비자(개발 서버·미래의 실서버)는 프로세스를 띄워 stdout JSON 을 받아간다.
 
-**검증은 생성의 전제다.** 생성기가 문서 단위로 검증해 불량 문서를 제외한 뒤에야 아티팩트가 발행되고, 세 엔드포인트는 그 아티팩트를 읽는다. 그래서 _서빙되는 데이터 = 검증 통과 데이터_ 가 구조로 보장된다 — [게이트는 어디서 도는가](#게이트는-어디서-도는가).
+**검증은 생성의 전제다.** `validate` 가 문서 단위 제외와 검증 게이트를 먼저 통과시킨 뒤에야 빌드 체인이 아티팩트를 발행하고, 세 엔드포인트는 그 아티팩트를 읽는다. 그래서 _서빙되는 데이터 = 검증 통과 데이터_ 가 구조로 보장된다 — [게이트는 어디서 도는가](#게이트는-어디서-도는가).
 
 핵심 아이디어 두 개만 알면 나머지는 따라온다.
 
@@ -18,7 +18,8 @@
 ```bash
 pnpm install                 # 최초 1회 (런타임 의존성: unified/remark/rehype)
 
-pnpm run summary --env dev   # 화면 뼈대(문서 목록·폴더 트리·태그)
+pnpm run build-dev           # validate → summary 아티팩트 → feeds 아티팩트
+pnpm run summary --env dev   # 화면 뼈대(문서 목록·폴더 트리·태그), stdout 전용
 pnpm run feeds --env dev --count 20
 pnpm run wiki --env dev --path 'company/삼성전자'
 pnpm run validate            # vault 무결성 검사 — --env dev 고정, JSON 대신 exit code 로 말한다
@@ -43,8 +44,8 @@ node scripts/feeds.mjs --env dev --count 20
 ```text
 wiki/**/*.md            문서 원본. 폴더 구조가 곧 위키의 계층이다
 scripts/
-  summary.mjs           엔드포인트 겸 생성기 — 화면 뼈대 + 아티팩트 3종 발행
-  feeds.mjs             엔드포인트 — 뉴스 피드
+  summary.mjs           엔드포인트 겸 생성기 — 화면 뼈대 + summary 아티팩트
+  feeds.mjs             엔드포인트 겸 생성기 — 뉴스 피드 + feeds 아티팩트
   wiki.mjs              엔드포인트 — 문서 1건 본문
   validate.mjs          무결성 검사 CLI (엔드포인트 아님 — JSON 을 안 낸다)
   lib/                  순수 함수 부품 (파싱·git 워크·렌더·불변식)
@@ -56,7 +57,7 @@ ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone
 
 ## 산출물
 
-생성기가 **한 번의 파싱에서** summary 와 feeds 아티팩트를 함께 만든다(co-derive). 경로와 버전은 아래가 정본이다.
+`build`/`build-dev` 체인이 validate → summary → feeds 순서로 만든다. 경로와 버전은 아래가 정본이다.
 
 <!-- contract:artifacts -->
 
@@ -68,7 +69,7 @@ ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone
 | 리포트(문) | `logs/summary.report.<env>.txt`  | 위와 같은 내용의 사람용                  |
 
 - 봉투는 `schemaVersion: 1` 을 싣는다. summary·feeds 아티팩트와 wire 페이로드가 같은 값을 쓴다.
-- **쓰기 순서는 계약이다: summary → feeds.** 도중에 죽으면 (신 summary, 구 feeds) 조합이 생길 수 있다.
+- **쓰기 순서는 계약이다: validate → summary → feeds.** 도중에 죽으면 뒤 단계 산출물이 갱신되지 않는다.
   신선도 판정은 없고, 호출자는 빌드를 명시적으로 다시 실행해야 한다.
 - 생성기는 재생성 건너뛰기를 하지 않는다. 같은 입력을 주면 같은 payload 를 계산하고, 쓰기 여부는 호출자가
   명시한 출력 경로가 결정한다.
@@ -193,16 +194,13 @@ wiki/company/삼성전자.md
 
 ```bash
 node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
-                         [--out <file>] [--stdout] [--status]
-                         [--max-excluded <n>]
+                         [--out <file>] [--max-excluded <n>]
 ```
 
-| 플래그             | 의미                                                             |
-| ------------------ | ---------------------------------------------------------------- |
-| `--out`            | summary 아티팩트 경로 override. 기본은 [산출물](#산출물) 표      |
-| `--stdout`         | 부작용 없는 조회. 캐시·리포트를 쓰지 않고 stdout payload 만 낸다 |
-| `--status`         | payload 대신 생성 상태 JSON 을 stdout 으로 낸다                  |
-| `--max-excluded n` | 제외 문서가 n건을 넘으면 exit 3. 산출물은 이미 발행된다          |
+| 플래그             | 의미                                                           |
+| ------------------ | -------------------------------------------------------------- |
+| `--out`            | summary 아티팩트 경로. 상대 경로는 `--vault` 기준으로 해석한다 |
+| `--max-excluded n` | 제외 문서가 n건을 넘으면 exit 3. 산출물은 이미 발행된다        |
 
 기본 실행은 캐시 봉투를 만들지 않는다. 산출물 발행은 명시 출력 경로를 받은 빌드 경로가 담당한다.
 
@@ -213,15 +211,18 @@ node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
 ```bash
 node scripts/feeds.mjs [--vault <dir>] [--env dev|prod]
                        [--count <n>] [--after <cursor-json>]
-                       [--from <ISO>] [--to <ISO>]
+                       [--from <ISO>] [--to <ISO>] [--out <file>]
 ```
 
-| 플래그    | 기본값 | 의미                                                         |
-| --------- | ------ | ------------------------------------------------------------ |
-| `--count` | `50`   | 페이지 크기. 0 이하·미지정이면 50                            |
-| `--after` | 없음   | 커서. 반환값의 `nextCursor` 를 **JSON 문자열 그대로** 넘긴다 |
-| `--from`  | 없음   | 이 시각 이후(포함). ISO 날짜                                 |
-| `--to`    | 없음   | 이 시각 이전(포함). ISO 날짜                                 |
+| 플래그    | 기본값 | 의미                                                            |
+| --------- | ------ | --------------------------------------------------------------- |
+| `--count` | `50`   | 페이지 크기. 0 이하·미지정이면 50                               |
+| `--after` | 없음   | 커서. 반환값의 `nextCursor` 를 **JSON 문자열 그대로** 넘긴다    |
+| `--from`  | 없음   | 이 시각 이후(포함). ISO 날짜                                    |
+| `--to`    | 없음   | 이 시각 이전(포함). ISO 날짜                                    |
+| `--out`   | 없음   | feeds 아티팩트 생성 모드. stdout 은 비고 상대 경로는 vault 기준 |
+
+빌드 체인은 `--count 200 --out cache/feeds.<env>.json` 을 넘긴다. 200은 그 인자 자체가 소유하는 윈도우 크기이며 별도 상수는 없다.
 
 ```bash
 # 1페이지 → items: bd8bf74279b0, 4eb6ee1c9d6b
@@ -256,6 +257,7 @@ vault 무결성 검사와 리포트 출력의 소유자. 페이로드를 메모�
 ```bash
 node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
                           [--deadlinks ignore|warn|error] [--max-excluded <n>]
+                          [--report <dir>]
 ```
 
 | 플래그           | 의미                                                                  |
@@ -264,6 +266,7 @@ node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
 | `--schema`       | 스키마 디렉토리 override (기본 `scripts/schema`)                      |
 | `--deadlinks`    | 데드링크 심각도. `ignore`, `warn`(기본), `error` 중 하나              |
 | `--max-excluded` | 문서 단위 제외 허용치. 기본 0. 초과 시 validate 는 exit 1             |
+| `--report`       | 리포트 디렉토리. 미지정 시 쓰지 않는다; 상대 경로는 `--vault` 기준    |
 | `--help` `-h`    | 사용법 출력                                                           |
 | `--out` `--root` | **제거됨**. 넘기면 에러로 끊는다 (JSON 을 안 만드니 출력 인자도 없다) |
 
@@ -271,13 +274,15 @@ node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
 
 돌리는 게이트: 커밋 컨벤션 → 문서 단위 제외(`NO_FRONTMATTER`, `MISSING_TYPE`, `SCHEMA_VIOLATION`, `DUPLICATE_PATH`, `DUPLICATE_ID`, `ID_TAMPERED`, `DELETED_ID_REUSE`) → 데드링크 → 피드 해석 실패 → 산출물 스키마(strict) → [불변식 7종](#불변식-7종).
 
-출력은 JSON 이 아니라 요약 한 줄이다.
+출력은 JSON 이 아니라 요약 한 줄이다. `--report` 를 명시하면 리포트는 게이트보다 먼저 기록되므로, 피드 해석 실패처럼 검증이 막히는 상황에서도 진단 JSON/TXT 가 남는다. 리포트 쓰기 실패는 검증 판정을 실패로 승격하지 않고 stderr 로만 알린다. 기본 실행은 리포트를 쓰지 않아 vault 를 더럽히지 않는다.
 
 ```text
 [wiki] docs=6 body=5 feeds=5 prune=1 prunedFeeds=1 unresolved=0 warnings=0
 ```
 
 경고가 있으면 그 아래로 항목별 줄이 더 붙는다. 라벨은 4종이다.
+
+`build`/`build-dev` 의 feeds 단계는 `--count 200` 으로 feeds 아티팩트를 최근 200건까지 줄인다. validate 의 게이트 5(산출물 스키마), 6(불변식), 7(억제 목록 위생)은 `parseVault` 가 조립한 전체 vault와 validate 내부 wire 를 대상으로 돈다. 그래서 캐시 윈도우가 200건이어도 게이트 전제는 바뀌지 않는다.
 
 <!-- contract:warning-labels -->
 
