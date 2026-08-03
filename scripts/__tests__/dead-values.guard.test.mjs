@@ -204,33 +204,43 @@ describe('겹1 스키마 — 부활 거부 (SC1~SC4)', () => {
   })
 
   it(
-    'SC4: **프로세스 경계** — 두 키를 지운 스키마로 `validate.mjs` 가 exit 0 이다',
+    'SC4: **프로세스 경계** — 두 키를 **요구하는** 스키마로 돌리면 `validate.mjs` 가 exit≠0 이다',
     { timeout: 300_000 },
     () => {
       // ★ tdd §3.5 는 _"되살린 페이로드를 산출물 경로에 둔 tmp vault"_ 라 적었으나, `validate.mjs` 는
       //   **산출물 파일을 읽지 않는다** — in-memory 로 조립한 payload 를 자기 스키마로 검증한다
       //   (`validate.mjs` 헤더 · `PAYLOAD_FILES` 는 라벨 매핑일 뿐이다). 그래서 같은 계약을 **뒤집어**
-      //   관측한다: 두 키를 지운 스키마 사본을 `--schema` 로 물리면, 생산자가 여전히 그 키를 발행하는
-      //   한 `additionalProperties:false` 가 **프로세스 경계에서** 거부한다(exit 1).
-      //   즉 이 케이스가 무는 것은 그대로다 — "생산자가 그 두 키를 더 이상 발행하지 않는가".
+      //   관측한다. 이 케이스가 무는 것은 그대로다 — "생산자가 그 두 키를 더 이상 발행하지 않는가".
+      //
+      // ★★ **뒤집는 방향이 중요하다(C6 CX10 이 실측으로 잡은 결함).** 처음 구현은 두 키를 *지운*
+      //   스키마 사본으로 돌렸는데, 두 키는 실 스키마에서 **이미 지워져 있다** — `stripKeys` 가
+      //   아무것도 지우지 않아 두 사본이 **바이트 동일**이었고, 케이스는 control 을 두 번 돌린 것과
+      //   같았다(CX10 에서 SC4 가 green 인 것으로 드러났다). 그래서 방향을 **요구**로 바꾼다:
+      //     · 오늘  — 생산자가 그 키를 발행하지 않는다 → 필수 필드 누락 → **exit≠0** (이 단언)
+      //     · 부활시 — 발행한다 → 통과 → exit 0 → **red** (CX1 이 그것을 증명한다)
+      //   키마다 **사본을 따로** 둔다. 한 사본에 둘을 함께 요구하면 하나만 부활해도 다른 하나가
+      //   여전히 실패시켜 exit≠0 이 유지되고, 그 부활이 **관측되지 않는다**.
       const seeded = seedCleanVault()
       tmps.push(seeded.vault)
 
       const pristine = mkdtempSync(path.join(tmpdir(), 'wiki-schema-pristine-'))
-      const stripped = mkdtempSync(path.join(tmpdir(), 'wiki-schema-stripped-'))
-      tmps.push(pristine, stripped)
+      tmps.push(pristine)
       cpSync(SCHEMA_DIR, pristine, { recursive: true })
-      cpSync(SCHEMA_DIR, stripped, { recursive: true })
-      stripKeys(path.join(stripped, 'summary.schema.json'), ['producer', TOKEN.CORRELATION_FIELD])
-      stripKeys(path.join(stripped, 'feeds.schema.json'), [TOKEN.CORRELATION_FIELD])
 
       // ★ 앵커: **원본 스키마 사본에서는 exit 0** 이다(vault·CLI 가 통째로 죽어서 실패하는 것을 배제).
       const control = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', pristine]) // prettier-ignore
       expect(control.status, control.stderr).toBe(0)
 
-      const result = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', stripped]) // prettier-ignore
+      for (const key of ['producer', TOKEN.CORRELATION_FIELD]) {
+        const demanding = mkdtempSync(path.join(tmpdir(), 'wiki-schema-demanding-'))
+        tmps.push(demanding)
+        cpSync(SCHEMA_DIR, demanding, { recursive: true })
+        requireKey(path.join(demanding, 'summary.schema.json'), key)
 
-      expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
+        const result = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', demanding]) // prettier-ignore
+
+        expect(result.status, `${key}: ${result.stderr}${result.stdout}`).not.toBe(0)
+      }
     },
   )
 })
@@ -411,10 +421,16 @@ function runCli(script, args) {
   })
 }
 
-/** 스키마 사본에서 주어진 키를 `required`·`properties` **양쪽에서** 지운다(규범 M 의 순서 규범). */
-function stripKeys(schemaFile, keys) {
+/**
+ * 스키마 사본이 주어진 키를 **요구하게** 만든다 — `properties`·`required` **양쪽**에 넣는다.
+ *
+ * 규범 M 의 순서 규범이 여기에도 걸린다: `required` 에만 넣으면 `additionalProperties:false` 가
+ * 그 키를 미선언으로 막아 *어떤* 페이로드도 통과할 수 없고, 그러면 exit≠0 이 "생산자가 발행하지
+ * 않는다" 가 아니라 "스키마가 자기모순이다" 를 재는 단언이 된다.
+ */
+function requireKey(schemaFile, key) {
   const schema = JSON.parse(readFileSync(schemaFile, 'utf8'))
-  for (const key of keys) delete schema.properties[key]
-  schema.required = schema.required.filter((name) => !keys.includes(name))
+  schema.properties[key] = { type: 'string' }
+  if (!schema.required.includes(key)) schema.required.push(key)
   writeFileSync(schemaFile, `${JSON.stringify(schema, null, 2)}\n`)
 }
