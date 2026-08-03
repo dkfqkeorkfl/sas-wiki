@@ -304,13 +304,32 @@ export function readIdAtCreation(runGit, relFilePath) {
   return id === undefined ? null : id
 }
 
-export function makeGitRunner(cwd) {
+/**
+ * vault 를 cwd 로 고정한 git 러너. 비0 종료는 **throw** 다(`execFileSync` 극성 그대로).
+ *
+ * ★ **`timeoutMs` 가 D23 의 spawn 타임아웃 자리다**(v3 P2). 미지정이면 옵션 자체를 붙이지 않아
+ * 오늘과 **바이트 동일한 동작**이다 — Node `child_process` 의 `timeout` 기본값이 `undefined` 이고
+ * (문서 축자: _"the maximum amount of time the process is allowed to run. **Default:**
+ * `undefined`"_), 값을 정하는 것은 이 커밋이 아니라 **실측**이다.
+ *
+ * 값을 채울 때의 구조적 제약은 하나다 — **`SCRIPT_TIMEOUT_MS`(webfront `dev/wiki-backend/
+ * plugin.ts:22` = 30초) 미만**이어야 한다. 그래야 서버가 자기 상한에 먼저 걸려 500 을 내는 대신
+ * 스크립트가 스스로 끝내 의미 있는 에러를 낼 수 있다.
+ *
+ * ★ `killSignal` 기본은 `SIGTERM`(문서)이고 **포착 가능한 신호**다 — "타임아웃 = 즉시 회수" 를
+ * 가정하지 않는다.
+ *
+ * @param {string} cwd
+ * @param {{ timeoutMs?: number }} [options]
+ */
+export function makeGitRunner(cwd, { timeoutMs } = {}) {
   return (args) =>
     execFileSync('git', args, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
       stdio: ['ignore', 'pipe', 'pipe'],
+      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     })
 }
 
