@@ -415,19 +415,39 @@ describe('항상 생성한다 — 프로세스 층 (RG4·RG5 · 🔴RED(flip) �
   })
 })
 
+/**
+ * 실 spawn + `prebuildArtifacts` 를 함께 지는 케이스의 상한 — **P1 OQ-P1-2 (c) 「케이스별
+ * `{ timeout: N }`」의 적용**이다(전역 `testTimeout` 상향은 금지 · 모든 케이스의 hang 감지가 둔해진다).
+ * `cli-contract.test.mjs` 의 `REAL_REPO_SPAWN_TIMEOUT` 과 같은 형태이고 대상은 **실측으로 확정**했다.
+ *
+ * ★ 실측(2026-08-04 · 전 스위트 동시 실행 3회):
+ *   | 격리 실행       | < 20,000ms  | 통과                                       |
+ *   | 전 스위트 동시  | 28,405ms    | 통과했으나 기본 30s 의 **95%**             |
+ *   | 전 스위트 동시  | 35,170ms    | **초과** — `Test timed out in 30000ms`     |
+ *   | 전 스위트 동시  | 38,019ms    | **초과**                                   |
+ *   문턱을 느슨하게 한 것이 아니라 **워크로드가 커졌다**: v3 P2 에서 `prebuildArtifacts` 의 feeds 단계가
+ *   커서 워크(D48 등가 불변식)를 함께 지므로 Arrange 비용이 올라간다. 격리하면 green 인 것을 「환경
+ *   경합」으로 결론짓지 않는다 — 부하를 얹으면 재현되는 **부하 의존 타임아웃**이다(tdd §7.3).
+ */
+const PREBUILD_SPAWN_TIMEOUT = 120_000
+
 describe('중복 id vault 가 서빙을 죽이지 않는다 (PC4 · 🔴RED(flip))', () => {
-  it('PC4: `summary.mjs`·`wiki.mjs` 가 **둘 다 exit 0** 이다 (현행 실측은 둘 다 exit 1)', async () => {
-    // ★ plan 결함 프로브의 직접 반전 — 이 phase 의 존재 이유. 문서 하나가 깨졌다고 위키 전체가
-    //   500 으로 죽는 상태를 끝낸다.
-    const vault = freshPolluted()
-    await prebuildArtifacts(vault, 'dev')
+  it(
+    'PC4: `summary.mjs`·`wiki.mjs` 가 **둘 다 exit 0** 이다 (현행 실측은 둘 다 exit 1)',
+    { timeout: PREBUILD_SPAWN_TIMEOUT },
+    async () => {
+      // ★ plan 결함 프로브의 직접 반전 — 이 phase 의 존재 이유. 문서 하나가 깨졌다고 위키 전체가
+      //   500 으로 죽는 상태를 끝낸다.
+      const vault = freshPolluted()
+      await prebuildArtifacts(vault, 'dev')
 
-    const summaryResult = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
-    const wikiResult = runCli(WIKI, ['--vault', vault, '--env', 'dev', '--path', 'company/정상'])
+      const summaryResult = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
+      const wikiResult = runCli(WIKI, ['--vault', vault, '--env', 'dev', '--path', 'company/정상'])
 
-    expect(summaryResult.status, summaryResult.stderr).toBe(0)
-    expect(wikiResult.status, wikiResult.stderr).toBe(0)
-    // 앵커: 죽지 않았을 뿐 아니라 **정상 문서는 실제로 서빙된다**.
-    expect(JSON.parse(wikiResult.stdout)).not.toBeNull()
-  })
+      expect(summaryResult.status, summaryResult.stderr).toBe(0)
+      expect(wikiResult.status, wikiResult.stderr).toBe(0)
+      // 앵커: 죽지 않았을 뿐 아니라 **정상 문서는 실제로 서빙된다**.
+      expect(JSON.parse(wikiResult.stdout)).not.toBeNull()
+    },
+  )
 })

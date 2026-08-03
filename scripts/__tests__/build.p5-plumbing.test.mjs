@@ -163,7 +163,8 @@ describe('소비자 spawn 경로 결속 (PL12 · 🟢pin)', () => {
     const scripts = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8')).scripts
 
     expect(scripts.summary).toBe('node scripts/summary.mjs')
-    expect(scripts.feeds).toBe('node scripts/feeds.mjs')
+    // ★ v3 P2 · D15(§4.5-⑤ flip) — `--count` 필수화의 귀결. 결속의 주제(파일명·경로)는 그대로다.
+    expect(scripts.feeds).toBe('node scripts/feeds.mjs --count 40')
     expect(scripts.wiki).toBe('node scripts/wiki.mjs')
     expect(scripts.validate).toBe('node scripts/validate.mjs --env dev')
     for (const name of ['summary.mjs', 'feeds.mjs', 'wiki.mjs', 'validate.mjs']) {

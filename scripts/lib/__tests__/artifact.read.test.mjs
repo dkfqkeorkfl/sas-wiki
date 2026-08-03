@@ -359,9 +359,11 @@ describe('독자 단일화 트립와이어 (RD11 · 🔴RED 서빙 2스크립트
     const feedsSource = readFileSync(SERVING_SOURCES['feeds.mjs'], 'utf8')
     const wikiSource = readFileSync(SERVING_SOURCES['wiki.mjs'], 'utf8')
 
-    // 앵커(규범 B): 부재 단언 앞에 **존재** 단언 — 단일 독자가 두 파일에 실제로 배선돼 있다.
-    //   이 앵커는 착륙 후에도 성립한다(Task 6 이 `readArtifact` 를 남기고 생성기 호출만 걷어낸다).
-    expect(feedsSource).toContain('readArtifact')
+    // 앵커(규범 B): 부재 단언 앞에 **존재** 단언 — 단일 독자가 실제로 배선돼 있다.
+    // ★ v3 P2 — 앵커가 `wiki.mjs` **한 파일**로 좁아진다. `feeds.mjs` 의 조회 경로가 아티팩트 읽기에서
+    //   **라이브 커서 워크**로 교체되면서(PU4·PU6b) 그 파일에는 읽을 아티팩트가 없다 — 「독자가 하나」의
+    //   대상 자체가 사라진 것이지 규율이 약해진 것이 아니다. 아래 부재 3종은 **두 파일 모두**에 그대로
+    //   남는다(그것이 이 케이스의 본 축이고, feeds 쪽은 "직접 파일을 열지 않는다" 가 계속 유효하다).
     expect(wikiSource).toContain('readArtifact')
 
     // 🔴 부재 ①: 조회 경로가 **생성기를 부르지 않는다**. 부르면 판정·재생성이라는 두 번째 읽기

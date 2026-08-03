@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/feeds.schema.json",
   "title": "wiki_feeds",
-  "description": "뉴스 카드 — 서빙 시점에 걸러진 항목만 담는다(자르는 것은 getFeed({limit}) 다. 파일을 자르면 필터가 그 안에서만 맞는다). wire 응답이므로 env 는 P2 소관이며 내부 feeds 아티팩트와 구분된다.",
+  "description": "뉴스 카드 — 커서 위치에서 계산한 한 페이지. stdout 라이브 응답과 cache/feeds.<env>.json 아티팩트가 같은 형태다(설계 §3-3 「모드 개념이 없다」). 그래서 내부 아티팩트 전용 스키마(feeds-artifact.schema.json)는 v3 P2 에서 폐지하고 이 파일로 단일화했다 — 분리 근거 둘(env 부재·억제 전 전량)이 D22·D20 으로 모두 소멸했기 때문이다.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generatedAt", "sourceCommit", "items"],
+  "required": ["schemaVersion", "env", "generatedAt", "sourceCommit", "items", "nextCursor"],
   "properties": {
     "schemaVersion": { "type": "integer", "minimum": 1 },
+    "env": { "enum": ["dev", "prod"], "type": "string" },
     "generatedAt": { "type": "string", "minLength": 1 },
     "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "items": { "type": "array", "items": { "$ref": "#/definitions/feedItem" } },
@@ -44,13 +45,9 @@
       }
     },
     "feedCursor": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ts", "feedId"],
-      "properties": {
-        "ts": { "type": "string", "minLength": 1 },
-        "feedId": { "type": "string", "pattern": "^[0-9a-f]{12}$" }
-      }
+      "description": "재개 지점 — 12-hex 커밋 해시(D8). 옛 {ts, feedId} 객체는 폐기했다: git 워크가 순서를 정하므로 ts 가 불필요하고 커서 하나로 재개 지점이 완전히 결정된다. 클라이언트에게는 불투명 문자열이다(D7) — 값이 item id 와 같아도 그 계약은 성립한다.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
     }
   }
 }

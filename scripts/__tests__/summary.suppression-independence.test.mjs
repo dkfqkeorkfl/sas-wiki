@@ -157,6 +157,11 @@ describe('억제는 feeds 아티팩트를 바꾼다 (IW2 · SU7 축 교체 · �
     { timeout: 300_000 },
     async () => {
       const { feedId, vault } = seedVault()
+      // ★ 억제되지 **않는** 피드를 하나 더 둔다. `seedVault()` 의 피드는 1건뿐이라 그것을 억제하면
+      //   arm B 의 파일이 통째로 비고, 그러면 아래 앵커(_"항목이 통째로 사라진 것이 아니다"_)가
+      //   성립할 수 없다 — 그 앵커가 「억제만 걸렸다」와 「전부 사라졌다」를 가르는 축이다.
+      writeDoc(vault, REL_B, { body: '## 정의\n\n생존 피드용 갱신.\n', id: ID_B, title: '온디바이스 AI' }) // prettier-ignore
+      feedCommit(vault, { date: FEED_TS, subject: '살아남는 소식' })
       const artifact = feedsFile(vault, 'dev')
 
       // ── arm A: 억제 **없이** 발행 ────────────────────────────────────────────────────────
@@ -219,8 +224,10 @@ describe('수용한 손실을 계약으로 (SU8 · 🔴RED flip · OQ-P5-6 무�
         script: 'validate.mjs',
         vault: clean.vault,
       })
+      // ★ v3 P2(§4.5-③ · D15·D20) — `--count` 는 CLI 필수이고 억제는 **명시 인자**로만 걸린다.
+      //   둘 다 안 주면 이 arm 의 exit≠0 사유가 「인자가 모자라다」로 바뀌어 케이스가 공허해진다.
       const cleanFeeds = runGeneratorOnce({
-        args: ['--env', 'dev'],
+        args: ['--env', 'dev', '--count', '5', '--ignore', path.join(clean.vault, IGNORE_FILE)],
         script: 'feeds.mjs',
         vault: clean.vault,
       })
@@ -235,7 +242,7 @@ describe('수용한 손실을 계약으로 (SU8 · 🔴RED flip · OQ-P5-6 무�
         vault: broken.vault,
       })
       const brokenFeeds = runGeneratorOnce({
-        args: ['--env', 'dev'],
+        args: ['--env', 'dev', '--count', '5', '--ignore', path.join(broken.vault, IGNORE_FILE)],
         script: 'feeds.mjs',
         vault: broken.vault,
       })

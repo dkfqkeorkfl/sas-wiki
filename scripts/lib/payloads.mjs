@@ -44,31 +44,25 @@ export function buildBody({ docs, sourceCommit }) {
 }
 
 /**
- * `wiki_feeds.json`(wire) — **서빙 시점에 이미 걸러진** 항목만 담는다(자르는 것은 API 다. 파일을
- * 자르면 필터가 조용히 틀어진다).
+ * feeds 봉투 — **wire 응답과 `cache/feeds.<env>.json` 아티팩트가 같은 함수를 쓴다**(층 ②).
  *
- */
-export function buildFeeds({ generatedAt, items, sourceCommit }) {
-  return { generatedAt, items, schemaVersion: SCHEMA_VERSION, sourceCommit }
-}
-
-/**
- * 내부 발행 아티팩트 `cache/feeds.<env>.json` — **억제 전 전량**을 담는다. `buildFeeds`(wire)와는
- * **다른 함수**다(FA3b) — 합치면 억제 전 항목이 wire 로 새어 나간다(R2 가 기각한 부정 정보 적재로
- * 되돌아간다). 이 파일은 raw 로 서빙되지 않는다(CS8·HV5 가 가드).
+ * ★ v3 P2 · U2 통합 — 예전에는 `buildFeedsArtifact`(내부 아티팩트)가 **별도 함수**였고 그 분리
+ * 근거(FA3b)는 둘이었다:
+ *   ① wire 는 `env` 를 싣지 않는다 → **소멸(D22)**. `SCHEMA_VERSION` 동결로 표지 대조의 구분력이
+ *      "1 vs 1" 이 되면서 `env` 가 캐시 최소 검증의 **유일한 판별축**이 됐고, 그래서 wire 에도 남긴다.
+ *   ② 아티팩트는 **억제 전 전량**을 담는다 → **소멸(D20)**. 억제 배선이 `--ignore` 한 곳으로 모이면서
+ *      캐시 빌드도 억제를 적용한다 — 아티팩트가 억제 **후**가 되면 "raw 서빙하면 억제가 무효" 라는
+ *      비대칭 자체가 사라진다.
+ * 근거 둘이 모두 사라진 함수 분리는 「합치지 않은 이유」를 설명할 수 없다 → 하나로 합쳤다.
+ * 스키마도 같은 이유로 `feeds-artifact.schema.json` 이 폐지되고 `feeds.schema.json` 으로 단일화됐다.
  *
- * ★ 왜 wire 가 아니라 별도 파일인가(R4-3): vault 가 public 이라 "기밀 결속"은 근거가 아니다. 진짜
- * 이유는 ① wire `feeds.schema.json` 이 정확히 5키 `additionalProperties:false` 이고 ② 이 파일은
- * 억제 전 항목을 담으므로 raw 서빙되면 억제가 통째로 무효가 된다는 것이다.
+ * ★ **`nextCursor` 는 여기 없다** — 호출부가 얹는다(층 ①·③ 은 6키, 이 층은 5키). 커서는 「무엇을
+ * 담았는가」가 아니라 「어디서 이어받는가」라 봉투 조립이 아니라 **페이지 계산**의 산출이다.
+ *
+ * 담기는 항목은 **이미 걸러진** 것뿐이다(자르는 것은 호출부다 — 여기서 자르면 필터가 조용히 틀어진다).
  */
-export function buildFeedsArtifact({ env, generatedAt, items, sourceCommit }) {
-  return {
-    env,
-    generatedAt,
-    items,
-    schemaVersion: SCHEMA_VERSION,
-    sourceCommit,
-  }
+export function buildFeeds({ env, generatedAt, items, sourceCommit }) {
+  return { env, generatedAt, items, schemaVersion: SCHEMA_VERSION, sourceCommit }
 }
 
 /**
@@ -80,8 +74,8 @@ export function buildFeedsArtifact({ env, generatedAt, items, sourceCommit }) {
  * 내는데 실제로 서빙되는 파일은 7키가 되어 **형태가 둘**이 된다. 그러면 이 함수를 계약 기준으로
  * 쓰는 소비자 테스트가 실제 계약과 다른 모양을 단언하게 된다. 파일 = stdout = 응답이 같은 7키다.
  *
- * `buildFeeds`(wire)·`buildBody` 는 `env` 를 스탬프하지 **않는다** — 이 둘은 발행 아티팩트가
- * 아니라 서빙 응답/파생 페이로드다. feeds wire 의 env 신설은 P2 소관이다.
+ * `buildBody` 는 `env` 를 스탬프하지 **않는다** — 본문은 발행 아티팩트가 아니라 파생 페이로드다.
+ * `buildFeeds` 는 v3 P2(D22)에서 `env` 를 얻었다 — 캐시 최소 검증의 유일한 판별축이기 때문이다.
  */
 export function buildSummary({ docs, env, generatedAt, sourceCommit, tags, tree }) {
   return {

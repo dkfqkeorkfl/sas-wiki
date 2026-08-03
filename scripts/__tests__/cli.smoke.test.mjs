@@ -100,7 +100,7 @@ describe('feeds.mjs CLI smoke', () => {
   })
 
   it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
-    const json = JSON.parse(await run(feedsMain, ['--env', 'dev']))
+    const json = JSON.parse(await run(feedsMain, ['--env', 'dev', '--count', '5']))
     expect(Array.isArray(json.items)).toBe(true)
   })
 })

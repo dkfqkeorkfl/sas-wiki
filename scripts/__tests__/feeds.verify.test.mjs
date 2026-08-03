@@ -7,6 +7,12 @@
 //   visible E-F1~F3 만으로는 "endpoints.feeds 가 자체 억제·정렬·슬라이스를 재구현" 해도 통과할 수
 //   있다 — 아래가 그 우회를 막는다(Complete Mediation).
 //
+// ★ v3 P2 재조준 사유(tdd §4.5-⑥ · D20·D39): 조회 경로가 **라이브 커서 워크**로 교체되면서 두 축이
+//   움직인다. ① 억제는 **명시 인자**(`--ignore`/`{ignore}`)로만 걸린다(D20 — 암묵 로드 소멸 · IW6)라
+//   각 arm 이 경로를 넘긴다. ② **정렬 권위가 JS 재정렬에서 git 워크 순서로 이전**된다(D39) —
+//   `git-walk.test.mjs` GW3 가 같은 사유로 정리됐고, V2 는 그 이전을 **엔드포인트 층에서** 문다
+//   (기대를 뒤집은 것이지 약화가 아니다: 재정렬을 되살린 구현이 이제 red 다).
+//
 // P5 재작성 사유(§4 원장 ②): 전환 전에는 `endpoints.feeds(vault,opts).items` 를 `walkFeeds(vault,opts)`
 //   와 직접 deep-equal 로 대조했다 — **같은 얕은 엔진**을 두 경로가 각자 불렀기 때문에 성립하는
 //   동치였다. P5 이후 `feeds()` 는 발행 아티팩트(깊은 티어 · 생성기 co-derive)를 읽고, `walkFeeds` 는
@@ -75,7 +81,7 @@ describe('endpoints.feeds.verify — 억제 ⟂ 슬라이스 위임 (V1 🔴RED)
       seedFeed(vault, { date: T5, subject: 'n5' })
       writeIgnore(vault, [suppressed])
       await prebuildArtifacts(vault, 'dev')
-      const opts = { count: 3 }
+      const opts = { count: 3, ignore: path.join(vault, 'ignore-feeds.json') }
 
       const page = await feeds(vault, 'dev', opts)
 
@@ -88,8 +94,14 @@ describe('endpoints.feeds.verify — 억제 ⟂ 슬라이스 위임 (V1 🔴RED)
   })
 })
 
-describe('endpoints.feeds.verify — 정렬 위임 (V2 🔴RED)', () => {
-  it('V2: author-date 를 커밋순서와 역행 시딩 → ts 내림차순(재정렬 위임 · 입력 순서 무의존)', async () => {
+describe('endpoints.feeds.verify — 정렬 권위는 git 워크 순서다 (V2 · v3 P2 · D39)', () => {
+  it('V2: author-date 를 커밋순서와 역행 시딩 → **커밋 순서**대로 나온다(JS 재정렬 없음)', async () => {
+    // ★★ **기대를 뒤집었다(D39).** 옛 계약은 _"walkFeeds 가 무엇을 주든 ts 내림차순으로 재정렬한다"_
+    //   였고 `byRecencyThenId` 가 그 권위였다. v3 P2 는 조회를 커서 기반 git 워크로 바꾸면서 권위를
+    //   **워크 순서**로 옮긴다 — `nextCursor` 가 「이 페이지 마지막 항목의 커밋」이라 페이지 순서가
+    //   워크 순서와 어긋나면 다음 페이지의 시작점 자체가 틀어지기 때문이다(중복·누락).
+    //   ⇒ 이 케이스는 **재정렬을 되살린 구현을 red 로 만드는** 자리로 극성이 반전됐다. 옛 방향의
+    //   보상(클라이언트가 한 번 더 시간순 정렬)은 **D37 = 파이프라인 P5** 소관이다.
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
@@ -103,7 +115,9 @@ describe('endpoints.feeds.verify — 정렬 위임 (V2 🔴RED)', () => {
       const page = await feeds(vault, 'dev', opts)
 
       expectDelegated(page, vault)
-      expect(titlesOf(page.items)).toEqual(['최신', '중간', '최고참'])
+      // 커밋 순서(최신 커밋 → 과거)다. ts 내림차순이면 `['최신','중간','최고참']` 이 됐을 것이다 —
+      //   두 배열이 **다르다**는 것이 이 시딩의 존재 이유이고, 그래서 이 단언이 방향을 가른다.
+      expect(titlesOf(page.items)).toEqual(['중간', '최신', '최고참'])
     } finally {
       cleanup(vault)
     }
@@ -123,7 +137,7 @@ describe('endpoints.feeds.verify — offset 무드리프트 (V3 🔴RED)', () =>
       seedFeed(vault, { date: T5, subject: 'n5' })
       writeIgnore(vault, [suppressed])
       await prebuildArtifacts(vault, 'dev')
-      const opts = { count: 3 }
+      const opts = { count: 3, ignore: path.join(vault, 'ignore-feeds.json') }
 
       const page = await feeds(vault, 'dev', opts)
 

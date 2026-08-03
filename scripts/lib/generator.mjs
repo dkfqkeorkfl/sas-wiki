@@ -13,9 +13,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { writeFileAtomic } from './atomic.mjs'
-import { byRecencyThenId } from './feed.mjs'
+import { CURSOR_LENGTH, walkCursorPage } from './feed-cursor.mjs'
 import { makeGitRunner } from './git.mjs'
-import { buildFeedsArtifact, buildSummary } from './payloads.mjs'
+import { loadIgnoreFeedsAt } from './ignore.mjs'
+import { buildFeeds, buildSummary } from './payloads.mjs'
 
 /** 생산 JSON Schema 디렉토리 — 이 모듈은 scripts/lib/ 이므로 상위 scripts/schema. */
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
@@ -81,26 +82,69 @@ export async function runSummaryGenerator({
 /**
  * feeds 아티팩트 생성기 — `feeds.mjs --out` 의 동적 import 대상이다.
  *
- * 빌드 아티팩트도 조회 경로(`pageFeeds`)와 같은 정렬 권위(`byRecencyThenId`)를 쓴 뒤 자른다. git 의
- * `--author-date-order` 만 믿고 먼저 slice 하면 backdate/rebase 히스토리에서 최신 피드를 놓칠 수 있다.
+ * ★ v3 P2(D48·D39·D20) — **페이지 계산을 조회 경로와 같은 코드로 한다.** 예전에는 이 함수가
+ * `parseVault` 가 전량 수집한 items 를 `byRecencyThenId` 로 다시 정렬한 뒤 잘랐고, 그 근거는
+ * "조회 경로(`pageFeeds`)도 같은 정렬 권위를 쓴다" 였다. **P2 에서 그 전제가 거짓이 된다** —
+ * 조회는 커서 기반 git 워크가 되고 정렬 권위가 워크 순서로 이전된다(D39). 두 경로가 다른 순서를
+ * 쓰면 D48 등가 불변식("캐시 슬라이스와 라이브 워크가 같은 페이지를 낸다")이 **구조적으로** 깨지므로,
+ * 여기서도 `walkCursorPage` 를 부른다. 그 결과 캐시 파일과 라이브 응답이 형태뿐 아니라 **계산까지**
+ * 같아진다(설계 §3-3 "모드 개념이 없다" 의 귀결).
  *
- * @param {{ artifactPath: string, count?: number, env?: 'dev'|'prod', runGit?: Function, vault: string }} input
+ * ★ `generatedAt` 만 `parseVault` 에서 온다 — 아티팩트의 그 값은 **`max(doc.updated)`**(D-B)이고
+ * summary 아티팩트와 같아야 한다(FA12: 두 산출물은 같은 커밋·같은 세대에서 나온다). 응답 층의
+ * `generatedAt`(억제 후 item ts 의 max)과는 층이 다르다.
+ *
+ * @param {{ artifactPath: string, count?: number, env?: 'dev'|'prod', ignore?: string,
+ *           runGit?: Function, vault: string }} input
  */
-export async function runFeedsGenerator({ artifactPath, count, env = 'prod', runGit, vault }) {
+export async function runFeedsGenerator({
+  artifactPath,
+  count,
+  env = 'prod',
+  ignore,
+  runGit,
+  vault,
+}) {
   const vaultDir = path.resolve(vault)
   const git = runGit ?? makeGitRunner(vaultDir)
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
   const { parseVault } = await import('./parse-vault.mjs')
   const parsed = parseVault(vaultDir, env, SCHEMA_DIR, { runGit: git })
-  const sortedItems = parsed.wire.items.toSorted(byRecencyThenId)
-  const items = typeof count === 'number' ? sortedItems.slice(0, count) : sortedItems
-  const payload = buildFeedsArtifact({
-    env,
-    generatedAt: parsed.wire.generatedAt,
-    items,
-    sourceCommit: parsed.wire.sourceCommit,
+  // ★ 해석기를 **다시 돌리지 않는다.** `parseVault` 가 이미 `collectFeedItems`(전량 워크)로 모든
+  //   `feed:` 커밋을 해석해 뒀고(`wire.items`), 그것이 `resolveItems` 가 낼 값 **그 자체**다 —
+  //   같은 HEAD·같은 생존 판정이므로 다시 부르면 HEAD 문서 상태와 경로 역인덱스를 통째로 재구성하는
+  //   비용만 낸다. 커서 워크에는 **순서·경계·`nextCursor`** 만 맡긴다(그것이 이 함수가 워크를 부르는
+  //   유일한 이유다 — D48 등가 불변식이 두 경로의 페이지 계산을 같게 요구한다).
+  // ★ `parsed.gate.runGit` 은 메모이즈된 러너다. 같은 리포는 한 파싱 안에서 변하지 않으므로 배치
+  //   워크가 내는 질의도 그 캐시를 그대로 탄다.
+  const walkGit = parsed.gate.runGit ?? git
+  const byFeedId = new Map(parsed.wire.items.map((item) => [item.id, item]))
+  const { items, nextCursor } = walkCursorPage(vaultDir, {
+    count,
+    ignoreEntries:
+      ignore === undefined ? [] : loadIgnoreFeedsAt(resolveIgnorePath(vaultDir, ignore)),
+    resolveItems: (shas) =>
+      shas.map((sha) => byFeedId.get(sha.slice(0, CURSOR_LENGTH))).filter((item) => item !== undefined), // prettier-ignore
+    runGit: walkGit,
   })
+  const payload = {
+    ...buildFeeds({
+      env,
+      generatedAt: parsed.wire.generatedAt,
+      items,
+      sourceCommit: parsed.wire.sourceCommit,
+    }),
+    nextCursor,
+  }
 
   writeFileAtomic(artifactPath, `${JSON.stringify(payload)}\n`)
   return { artifactPath, payload, sourceCommit }
+}
+
+/**
+ * `--ignore <경로>` → 억제 목록 **파일 경로**. 상대 경로는 vault 기준이다(D20).
+ * basename 을 버리면 사용자가 지정하지 않은 파일을 조용히 읽게 된다 — 경로를 그대로 보존한다.
+ */
+function resolveIgnorePath(vaultDir, ignoreArg) {
+  return path.isAbsolute(ignoreArg) ? ignoreArg : path.join(vaultDir, ignoreArg)
 }

@@ -98,11 +98,18 @@ export function buildContent({
     tags: wire.tags,
     tree: wire.tree,
   })
-  const feeds = buildFeeds({
-    generatedAt: wire.generatedAt,
-    items: feedItems,
-    sourceCommit: wire.sourceCommit,
-  })
+  // ★ v3 P2 — `feeds.schema.json` 이 6키(`env`·`nextCursor` 추가)를 **required** 로 요구한다(D22·D48).
+  //   이 인메모리 게이트가 그 둘을 함께 넘기지 않으면 `pnpm validate`(= build 체인 1스텝)가 죽는다.
+  //   여기서 조립하는 것은 페이지가 아니라 **전량**이므로 `nextCursor` 는 「끝」을 뜻하는 `null` 이다.
+  const feeds = {
+    ...buildFeeds({
+      env,
+      generatedAt: wire.generatedAt,
+      items: feedItems,
+      sourceCommit: wire.sourceCommit,
+    }),
+    nextCursor: null,
+  }
   const body = buildBody({ docs: wire.bodies, sourceCommit: wire.sourceCommit })
 
   validatePayloads({ body, feeds, summary }, schemaDir)

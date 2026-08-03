@@ -9,8 +9,18 @@
 //
 // RED 사유(전부 **미구현**):
 //   · FA1 — `artifact.mjs` 에 `feedsArtifactPath` 가 없다(오늘 `artifactPath` 하나뿐 · §2.5).
-//   · FA3 — `buildFeedsArtifact` 가 없다.
-//   · FA4 — `scripts/schema/feeds-artifact.schema.json` 파일 자체가 없다.
+//
+// ★★ v3 P2 · U2 통합(tdd §4.4 삭제 원장) — **FA3·FA3b·FA4 는 여기서 사라진다.** 이 파일의 나머지
+//   주제(경로 슬롯 분리 = FA1)는 그대로다. 삭제가 아니라 **승계**이며 승계처가 원장에 있다:
+//     · FA3 (아티팩트 봉투 6키) → 층 ③은 `dead-values.guard.test.mjs` **KY2(=LZ3)** 가, 층 ②는
+//       `lib/__tests__/payloads.test.mjs` **KY4(=LZ2)** 가 각각 **파일과 반환값**으로 문다.
+//       (이 자리의 `buildFeedsArtifact` 는 `buildFeeds` 로 **통합**됐다 — 함수 자체가 없다.)
+//     · FA3b (`buildFeeds` ⟂ `buildFeedsArtifact` 분리) → **근거 ①② 가 둘 다 소멸**했다:
+//       ① wire 에 `env` 가 없다 → D22 가 wire 에도 `env` 를 남긴다  ② 아티팩트는 억제 전 전량이다
+//       → D20 이 캐시 빌드에도 `--ignore` 를 붙인다. 근거가 사라진 분리는 계약이 아니다.
+//     · FA4 (`feeds-artifact.schema.json` 거동) → **OQ-P2-5 (a)** 로 파일이 폐지되고
+//       `feeds.schema.json` 으로 단일화됐다. 승계처 = **LZ4**(properties) · **LZ5**(required) ·
+//       **LZ7**(커서 정의) · **SC1·PT2**(파일 부재 자체).
 //
 // ★ 왜 named import 가 아니라 namespace import 인가(tdd §7.3): 없는 export 를 named 로 물면 ESM 링크가
 //   **파일을 통째로 죽여** collection error 가 되고, `rtk` 는 그것을 PASS 로 오보고한다. 그래서 모듈
@@ -19,80 +29,17 @@
 // 규범 A: 기대 키 집합·env 값·경로 조각은 **리터럴**이다. 프로덕션 상수를 import 해
 //   기대값을 만들면 공허한 단언이 된다. 정확 경로 형태의 고정은
 //   **PL9** 한 곳이 맡는다 — FA1 은 **성질**만 문다(둘이 같은 것을 두 번 물지 않는다 · P4 AR1↔㉖ 선례).
-import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { loadSchema, validateItem } from '../schema-validator.mjs'
-
 const artifactModule = await import(new URL('../artifact.mjs', import.meta.url).href)
-const payloadsModule = await import(new URL('../payloads.mjs', import.meta.url).href)
-
-const HERE = path.dirname(fileURLToPath(import.meta.url))
-const SCHEMA_DIR = path.resolve(HERE, '..', '..', 'schema')
-const FEEDS_ARTIFACT_SCHEMA = path.join(SCHEMA_DIR, 'feeds-artifact.schema.json')
-
-/**
- * feeds 아티팩트 봉투(층 ③) — 🔴RED(flip) **v3 P2**: 5 → **6키**. `items` 가 빠지면 봉투가 아니라 스탬프다.
- *
- * v3 P1(§4.3 ③ · KY2 · D28)에서 발행자 표지·상관 토큰이 사라졌고, `env` 는 **아티팩트에 남는다**
- *   (D22 — 잔여 판별층 중 유일하게 실질 판별력을 갖는 축).
- * 🔴 v3 P2(§4.5-① · **D48**): 캐시 파일과 라이브 응답이 **같은 형태**여야 하므로 `nextCursor` 가 붙는다.
- *   오늘은 아티팩트에 그 필드가 없어 **실을 수조차 없고**, 그래서 "중간 페이지에서 파일 전체의 꼬리
- *   커서를 흘리는" 함정이 아직 성립하지 않는다 — P2 가 그 경로를 신설하므로 QX2 가 그것을 문다.
- */
-const FEEDS_ARTIFACT_KEYS = [
-  'env',
-  'generatedAt',
-  'items',
-  'nextCursor',
-  'schemaVersion',
-  'sourceCommit',
-]
-
-/** 계약 버전 — 리터럴 **1**(v3 P1 · D29 · §4.3 ②). 리터럴 복제는 복제로 유지한다(규범 A). */
-const SCHEMA_VERSION = 1
-
-/** 스키마에 먹일 유효 feed item(정확 7키 · feeds.schema.json feedItem 과 같은 모양) — 리터럴이다. */
-const SAMPLE_ITEM = {
-  body: '본문 문단이다.',
-  docs: [{ id: '0192a000-0000-7000-8000-0000000000aa' }],
-  id: '0123456789ab',
-  importance: 'normal',
-  keywords: ['반도체'],
-  title: '샘플 소식',
-  ts: '2026-05-01T00:00:00Z',
-}
-
-const SAMPLE_ENVELOPE = {
-  env: 'dev',
-  generatedAt: '2026-05-01T00:00:00.000Z',
-  items: [SAMPLE_ITEM],
-  schemaVersion: SCHEMA_VERSION,
-  sourceCommit: '0'.repeat(40),
-}
 
 function feedsArtifactPath(vaultDir, env) {
   if (typeof artifactModule.feedsArtifactPath !== 'function') {
     throw new Error('[RED] scripts/lib/artifact.mjs 에 feedsArtifactPath export 가 아직 없다')
   }
   return artifactModule.feedsArtifactPath(vaultDir, env)
-}
-
-function buildFeedsArtifact(input) {
-  if (typeof payloadsModule.buildFeedsArtifact !== 'function') {
-    throw new Error('[RED] scripts/lib/payloads.mjs 에 buildFeedsArtifact export 가 아직 없다')
-  }
-  return payloadsModule.buildFeedsArtifact(input)
-}
-
-function feedsArtifactSchema() {
-  if (!existsSync(FEEDS_ARTIFACT_SCHEMA)) {
-    throw new Error(`[RED] scripts/schema/feeds-artifact.schema.json 이 아직 없다`)
-  }
-  return loadSchema(FEEDS_ARTIFACT_SCHEMA)
 }
 
 const posix = (value) => value.split(path.sep).join('/')
@@ -111,58 +58,5 @@ describe('feeds 아티팩트 경로 — summary 와 다른 슬롯 (FA1 · 🔴RE
     // ★ 이 절이 핵심이다 — 같은 파일에 쓰면 두 산출물이 서로를 덮어쓴다(그러면 3중 신선도가 무의미).
     expect(dev).not.toBe(artifactModule.artifactPath('/v', 'dev'))
     expect(prod).not.toBe(artifactModule.artifactPath('/v', 'prod'))
-  })
-})
-
-describe('feeds 아티팩트 봉투 — 정확 6키 (FA3 · 🔴RED(flip) v3 P2 · 5 → 6)', () => {
-  it('FA3: top-level 키가 **정확히 6키**이고 `items` 를 그대로 싣는다', () => {
-    // **정확 일치**다(하한이 아니다) — 필드를 흘리는 구현을 배제한다. `items` 는 `toEqual` 로 물어
-    //   "봉투를 씌우면서 항목을 깎지 않았다" 를 함께 고정한다(파일을 자르면 필터가 조용히 틀어진다).
-    // ★★ **원장 충돌 — C4 담당자에게**: §4.5-① 은 이 리터럴의 **5 → 6 flip 을 C1** 에 두는데,
-    //   §4.4 삭제 원장은 같은 phase 에서 `buildFeedsArtifact` **자체를 폐지**(U2 통합)한다. 두 지시가
-    //   공존할 수 없으므로 이 자리는 C4 에서 **승계처로 재조준**된다 —
-    //   plan Files-to-Change 의 `artifact.feeds.test.mjs:107-129` UPDATE 가 그 작업이다.
-    //   승계처: 층 ③(파일)은 **KY2(=LZ3)**, 층 ②(반환)는 **KY4(=LZ2)** 가 각각 소유한다.
-    //   → 이 케이스는 "6키 계약" 을 C1 에 못박아 두는 자리이지, `buildFeedsArtifact` 존치 요구가 아니다.
-    const built = buildFeedsArtifact({
-      env: 'dev',
-      generatedAt: '2026-05-01T00:00:00.000Z',
-      items: [SAMPLE_ITEM],
-      nextCursor: null,
-      sourceCommit: '0'.repeat(40),
-    })
-
-    expect(Object.keys(built).toSorted()).toHaveLength(FEEDS_ARTIFACT_KEYS.length) // 규범 N
-    expect(Object.keys(built).toSorted()).toEqual(FEEDS_ARTIFACT_KEYS)
-    expect(built.items).toEqual([SAMPLE_ITEM])
-    expect(built.schemaVersion).toBe(SCHEMA_VERSION)
-    expect(built.env).toBe('dev')
-  })
-
-  it('FA3b: `buildFeeds`(wire)와 `buildFeedsArtifact`(내부)는 **다른 함수**다', () => {
-    // plan Task 2 GOTCHA. 합치면 **억제 전 항목이 wire 로 샌다**(FA11·CS8·HV5 의 전제).
-    expect(typeof payloadsModule.buildFeeds).toBe('function')
-    expect(typeof payloadsModule.buildFeedsArtifact).toBe('function')
-    expect(payloadsModule.buildFeeds).not.toBe(payloadsModule.buildFeedsArtifact)
-  })
-})
-
-describe('feeds 아티팩트 스키마 — 선언이 아니라 거동 (FA4 · 🔴RED 스키마 파일 부재)', () => {
-  it('FA4: 정상 봉투는 통과하고, 제거된 표지·미지 env·잉여 키는 **실제로 거부된다**', () => {
-    const schema = feedsArtifactSchema()
-
-    // 앵커: 정상 봉투는 오류 0건이다(전부 거부하는 스키마로 통과하는 것을 배제).
-    expect(validateItem(SAMPLE_ENVELOPE, schema, 'cache/feeds.<env>.json')).toEqual([])
-
-    const removedStamp = { ...SAMPLE_ENVELOPE, [['pro', 'ducer'].join('')]: 'legacy' }
-    const unknownEnv = { ...SAMPLE_ENVELOPE, env: 'staging' }
-    const extraKey = { ...SAMPLE_ENVELOPE, leaked: 'x' }
-    const missingItems = { ...SAMPLE_ENVELOPE }
-    delete missingItems.items
-
-    expect(validateItem(removedStamp, schema, 'removed-stamp').length).toBeGreaterThan(0)
-    expect(validateItem(unknownEnv, schema, 'unknown-env').length).toBeGreaterThan(0)
-    expect(validateItem(extraKey, schema, 'extra-key').length).toBeGreaterThan(0)
-    expect(validateItem(missingItems, schema, 'missing-items').length).toBeGreaterThan(0)
   })
 })

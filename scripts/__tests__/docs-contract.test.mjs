@@ -318,6 +318,8 @@ const EN_ENUM_CONTRACTS = [
       const fromSchema = schema.definitions.feedItem.properties.importance.enum
       // ★ 앵커는 **선언이 아니라 거동**이다: 검증기가 `fix` 봉투를 통과시키고 `bogus` 를 거부한다.
       const envelope = (importance) => ({
+        // v3 P2 · D22 — wire 봉투에 `env` 가 남는다(캐시 최소 검증의 유일한 판별축).
+        env: 'dev',
         generatedAt: '2023-11-14T22:13:20.000Z',
         items: [{ body: '', docs: [], id: 'abcdef012345', importance, keywords: [], title: 'x', ts: '2026-01-01T00:00:00Z' }], // prettier-ignore
         nextCursor: null,

@@ -39,10 +39,11 @@ const T4 = '2026-01-04T00:00:00Z'
  *   **부분집합** 판정이라 착륙 후 잉여 키가 응답에 그대로 남아 있어도 **green** 이다 —
  *   "빠졌다" 를 검사하겠다는 케이스가 정확히 그 반대를 통과시킨다. §4.3-③ 이 요구한 「원소 제거 +
  *   정렬 일치」(규범 N)를 여기서 이행한다.
- *   ★ `env` 는 **여기 신설되지 않는다** — 그것은 파이프라인 P2 소관이고, 이 배열은 "지금 상태"
- *   이지 미래 계약이 아니다(tdd §9). 값은 **리터럴**이다 — 구현 상수를 import 하지 않는다(규범 A).
+ *   ★ **v3 P2(D22) 로 `env` 가 들어왔다** — 이 배열이 예고한 그 변경이다. `SCHEMA_VERSION` 동결로
+ *   표지 대조의 구분력이 "1 vs 1" 이 되면서 `env` 가 캐시 최소 검증의 유일한 판별축으로 남았고,
+ *   그래서 wire 응답에도 실린다(규범 Q 층 ① = **6키**). 값은 **리터럴**이다(규범 A).
  */
-const PAGE_KEYS = ['generatedAt', 'items', 'nextCursor', 'schemaVersion', 'sourceCommit']
+const PAGE_KEYS = ['env', 'generatedAt', 'items', 'nextCursor', 'schemaVersion', 'sourceCommit']
 const titlesOf = (page) => page.items.map((item) => item.title)
 const idsOf = (page) => page.items.map((item) => item.id)
 
@@ -105,8 +106,8 @@ describe('endpoints.feeds — nextCursor 연속 seam (E-F2 🔴RED 신규 필드
   })
 })
 
-describe('endpoints.feeds — 억제·정렬 재구현 안 함(pageFeeds 위임) (E-F3 🔴RED SSOT)', () => {
-  it('E-F3: 억제·정렬이 pageFeeds 로 위임돼 결과에 반영된다(자체 재구현 아님)', async () => {
+describe('endpoints.feeds — 억제는 `ignore.mjs` 한 곳이다 (E-F3 🔴RED SSOT)', () => {
+  it('E-F3: 명시한 억제 목록이 결과에 반영된다(자체 재구현 아님)', async () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
@@ -121,9 +122,11 @@ describe('endpoints.feeds — 억제·정렬 재구현 안 함(pageFeeds 위임)
       )
       await prebuildArtifacts(vault, 'dev')
 
-      const page = await feeds(vault, 'dev', { count: 10 })
+      // ★ v3 P2 · D20 — 억제는 **명시 인자로만** 걸린다(암묵 `loadIgnoreFeeds` 소멸 · IW6). 배선이
+      //   호출부 책임이 되면서 이 arm 이 경로를 넘긴다 — 필터의 단일 구현(`lib/ignore.mjs`)은 그대로다.
+      const page = await feeds(vault, 'dev', { count: 10, ignore: path.join(vault, 'ignore-feeds.json') }) // prettier-ignore
 
-      expect(titlesOf(page)).toEqual(['n3-남음', 'n1']) // 억제(n2) + ts 내림차순 위임 결과
+      expect(titlesOf(page)).toEqual(['n3-남음', 'n1']) // 억제(n2) + git 워크 순서(최신 → 과거)
     } finally {
       cleanup(vault)
     }

@@ -112,7 +112,16 @@ function runCli(script, args) {
 const publishSummary = (vault, env = 'dev') =>
   runCli(SUMMARY_CLI, ['--vault', vault, '--env', env, '--out', summaryFile(vault, env)])
 const publishFeeds = (vault, env = 'dev') =>
-  runCli(FEEDS_CLI, ['--vault', vault, '--env', env, '--out', feedsFile(vault, env)])
+  runCli(FEEDS_CLI, [
+    '--vault',
+    vault,
+    '--env',
+    env,
+    '--count',
+    '200',
+    '--out',
+    feedsFile(vault, env),
+  ])
 const publishReport = (vault, env = 'dev') =>
   runCli(VALIDATE_CLI, ['--vault', vault, '--env', env, '--report', path.join(vault, 'logs')])
 
@@ -297,31 +306,6 @@ describe('버전은 하나다 — 5 산출물 공용 (FA10 · 🔴RED(flip) v3 P
   )
 })
 
-describe('feeds 아티팩트는 **억제 전 전량**이다 (FA11 · 🔴RED 파일 부재)', () => {
-  it('FA11: 억제된 피드 id 가 **파일에는 있고** 응답에는 없다', async () => {
-    // ★ D-C 의 심장이자 R-6 가드(CS8·HV5)의 전제다. 아티팩트를 억제 **후** 로 만들면(CX-N)
-    //   FC4 는 우연히 green 인 채 이 행만 red 가 된다 — 그래서 이 짝이 필요하다.
-    const { feedId, vault } = seedVault()
-    writeFileSync(
-      path.join(vault, IGNORE_FILE),
-      JSON.stringify([{ id: feedId, when: IGNORE_WHEN }]),
-      'utf8',
-    )
-
-    await generate({ env: 'dev', vault })
-    await generateFeeds({ env: 'dev', vault })
-
-    const artifactItems = readJson(feedsFile(vault, 'dev')).items
-    // 앵커 ①: 아티팩트가 비어 있지 않다(빈 파일로 `toContain` 이 실패하는 것과 구분된다).
-    expect(artifactItems.length).toBeGreaterThan(0)
-    expect(artifactItems.map((item) => item.id)).toContain(feedId)
-
-    // 앵커 ②: **억제는 실제로 걸린다** — 같은 vault 의 응답에는 그 id 가 없다(서빙 시점 필터).
-    const response = await feedsModule.feeds(vault, 'dev', {})
-    expect(response.items.map((item) => item.id)).not.toContain(feedId)
-  })
-})
-
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // v3 P2 · Task 7 — **FA11 축 교체**(§4.3). 삭제가 아니라 **대체**다.
 //
@@ -335,7 +319,9 @@ describe('feeds 아티팩트는 **억제 전 전량**이다 (FA11 · 🔴RED 파
 //   유효). 새 축은 **다른 계약**(_"억제가 빌드에 적용된다"_)이며 옛 목적의 승계가 아니다.
 //   이 문단이 없으면 다음 독자가 "방어가 약해졌다" 고 읽는다.
 //
-// 옛 축 FA11 의 **삭제는 C4(GREEN)** 소관이다 — 이 커밋(C1)은 새 축을 **추가만** 한다(규범 L).
+// 옛 축 FA11(_"억제 id 가 파일에는 있고 응답에는 없다"_)은 **C4 에서 삭제됐다** — 아티팩트가 억제
+//   후가 되면 그 단언은 참일 수 없고, 앵커만 지우고 부재 단언을 남기면 영구 자동 참이 된다(M7).
+//   승계처는 아래 IW1 이며 새 앵커는 **`--ignore` 없는 대조 arm** 이다.
 // ────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('빌드가 억제를 적용한다 (IW1 · FA11 축 교체 · 🔴RED `--ignore` 미배선)', () => {
@@ -348,6 +334,11 @@ describe('빌드가 억제를 적용한다 (IW1 · FA11 축 교체 · 🔴RED `-
       // ★ 체인을 재구현하지 않는다 — `runPackageScript` 가 `package.json` 문자열을 **읽어** vault 만
       //   tmp 로 재조준한다. 재구현하면 "우리가 만든 체인으로는 되더라" 가 되어 IW5 가 무의미해진다.
       const { feedId, vault } = seedVault()
+      // ★ 억제되지 **않는** 피드를 하나 더 둔다. `seedVault()` 의 피드는 1건뿐이라 그것을 억제하면
+      //   산출 파일이 통째로 비고, 그러면 아래 앵커(_"파일이 비어 있지 않다"_)가 성립할 수 없다 —
+      //   빈 파일에서는 `not.toContain` 이 **영구 자동 참**이 되므로 그 앵커가 이 케이스의 계약이다.
+      writeDoc(vault, REL_B, { body: '## 정의\n\n생존 피드용 갱신.\n', id: ID_B, title: '온디바이스 AI' }) // prettier-ignore
+      const survivorId = feedCommit(vault, { date: FEED_TS, subject: '살아남는 소식' }).slice(0, 12)
       writeFileSync(
         path.join(vault, IGNORE_FILE),
         JSON.stringify([{ id: feedId, when: IGNORE_WHEN }]),
@@ -369,7 +360,10 @@ describe('빌드가 억제를 적용한다 (IW1 · FA11 축 교체 · 🔴RED `-
 
       const items = readJson(feedsFile(vault, 'dev')).items
       // 앵커: 산출 파일이 비어 있지 않다(빈 파일로 `not.toContain` 이 통과하는 것을 배제).
-      expect(items.length, '빌드 산출 파일이 비었다').toBeGreaterThan(0)
+      expect(
+        items.map((item) => item.id),
+        '빌드 산출 파일이 비었다',
+      ).toContain(survivorId)
       expect(
         items.map((item) => item.id),
         '억제 id 가 빌드 산출물에 남았다',

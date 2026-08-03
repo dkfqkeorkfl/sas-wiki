@@ -372,10 +372,14 @@ describe('결속 — feeds 반환값 (FP)', () => {
     // 🔴 왜 지금 red 인가: 예시와 스키마 required 집합이 같은 wire 계약으로 함께 움직여야 한다.
     // ★ `nextCursor` 는 optional 이라 **유령이 아니다** — `keyDiff` 가 required/properties 를 갈라
     //   보는 이유가 바로 이 키다(정당한 서술을 거짓양성으로 만들지 않는다).
+    // ★ v3 P2(§4.5-① · D22·D48) — required 가 4 → **6종**이 된다(`env`·`nextCursor` 가산). 그래서
+    //   `nextCursor` 는 더 이상 optional 이 아니고, 봉투 예시가 그것을 보여주는 것은 **계약**이다.
     const schema = readSchema('feeds.schema.json')
     expect([...schema.required].sort()).toEqual([
+      'env',
       'generatedAt',
       'items',
+      'nextCursor',
       'schemaVersion',
       'sourceCommit',
     ])
@@ -384,7 +388,7 @@ describe('결속 — feeds 반환값 (FP)', () => {
     const scope = docScope('feeds-payload')
     const documented = sorted(Object.keys(exampleObject(scope, 'feeds-payload', '"schemaVersion"')))
 
-    expect(documented, '봉투 예시가 optional `nextCursor` 를 보여주는 것은 정상이다').toContain('nextCursor') // prettier-ignore
+    expect(documented, '봉투 예시가 `nextCursor` 를 보여줘야 한다(required 6종)').toContain('nextCursor') // prettier-ignore
     const diff = keyDiff(documented, schema)
     expect(diff, diffMessage(`feeds 봉투 예시(${scope.via})`, diff)).toEqual(NO_DIFF)
   })

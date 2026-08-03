@@ -1,6 +1,4 @@
-import path from 'node:path'
-
-import { byRecencyThenId, parseCommitForFeed } from './feed.mjs'
+import { parseCommitForFeed } from './feed.mjs'
 import {
   anyMarkdown,
   buildPathIndex,
@@ -10,18 +8,71 @@ import {
 } from './git.mjs'
 import { judgeFeedSurvival } from './feed-survival.mjs'
 import { loadHeadDocState } from './head-state.mjs'
-import { applyIgnoreFeeds, loadIgnoreFeeds } from './ignore.mjs'
 import { parseFrontmatterYaml } from './parse.mjs'
-
-const DEFAULT_FEED_LIMIT = 50
 
 // ★ P5 Task 9(D-I) — 독립 실행형 피드 워크(수집+페이지 합성)는 `scripts/__tests__/helpers/`로
 //   옮겼다(테스트 전용 참조 구현이라는 그 성격 자체는 P1 부터 그대로다 — 자리만 프로덕션 스캔
-//   범위 밖으로 이동했다). 이 파일이 프로덕션에 내보내는 것은 `collectFeedItems`(생성기가 쓴다)와
-//   `pageFeeds`(`feeds.mjs`가 쓴다) 둘뿐이다.
+//   범위 밖으로 이동했다).
+//
+// ★ v3 P2(D6·D12·D16·D39) — **페이지 합성(`pageFeeds`)도 같은 자리로 옮겼다.** 조회 경로가
+//   커서 기반 라이브 워크(`lib/feed-cursor.mjs`)로 교체되면서 프로덕션 호출자가 0이 됐고, 그 함수가
+//   들고 있던 세 가지 — 페이지 크기 침묵 폴백(D16) · `from`/`to` ISO 경계(D6) · `{ts,feedId}`
+//   객체 커서(D8) — 는 **개념 자체가 소멸**한다. 정렬 권위도 JS 재정렬에서 git 워크 순서로 옮겨갔다
+//   (D39). 남은 참조 구현으로서의 값은 테스트에만 있으므로 `__tests__/helpers/walk-feeds.mjs` 가
+//   소유한다.
+//
+// 이 파일이 프로덕션에 내보내는 것은 `collectFeedItems`(생성기·validate 가 쓴다)와
+//   `makeFeedItemResolver`(커서 워크가 주입받는 해석기) 둘뿐이다.
 
 export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, runGit } = {}) {
   const resolvedRunGit = runGit ?? makeGitRunner(vaultDir)
+  const { context, stats } = buildResolveContext(vaultDir, resolvedRunGit, env, injectedHeadState)
+  const collected = new Map()
+
+  // F1: **전량 워크(count 기반 조기 종료 금지)**.
+  //   ★ v3 P2(D39) — 이 사유가 「정렬 권위」에서 **「조회가 아니라 검증·생성이 전량을 요구한다」**로
+  //   바뀐다. 조회는 더 이상 이 함수를 타지 않는다(커서 워크가 필요한 만큼만 훑는다). 이 함수의
+  //   유일한 프로덕션 호출자는 `parse-vault.mjs:33` 이고, 그 소비자는 생성기(`--out` 아티팩트)와
+  //   `validate.mjs`(무결성 게이트)다 — 둘 다 **히스토리 전량**을 봐야 판정이 성립한다:
+  //     · validate 는 "어느 feed 커밋이 해석되지 않는가"(`checkFeedResolution`)를 전수로 묻는다.
+  //     · 생성기는 200건 윈도우를 자르기 **전에** 전량을 알아야 억제·생존 판정이 창 밖에서도 맞다.
+  //   즉 전량 워크는 비용 최적화의 미착수가 아니라 **판정의 전제**다. 조기 종료를 넣지 마라.
+  const commits = revListFeedCandidates(resolvedRunGit)
+  for (const item of resolveFeedItems(vaultDir, resolvedRunGit, commits, context)) {
+    collected.set(item.id, item)
+  }
+
+  return { items: [...collected.values()], stats }
+}
+
+/**
+ * 커서 워크(`lib/feed-cursor.mjs` `walkCursorPage`)가 주입받는 **해석기**를 만든다 —
+ * 설계 §3-3 절차 ③(`feed:` 필터) + ④ 앞단(생존 판정 `judgeFeedSurvival`).
+ *
+ * 왜 주입인가: 배치·커서(무엇을 몇 개 훑는가)는 **비용 정책**이고, 커밋 → feed item 해석은 HEAD
+ * 문서 상태·경로 역인덱스를 드는 **데이터 계층**이다. 층이 달라 실패 모드도 다르다.
+ *
+ * ★ 컨텍스트(HEAD 문서 상태·역인덱스)는 **첫 호출에서 한 번만** 만든다 — 2차 배치가 그것을 다시
+ *   만들면 워크 1회의 비용이 두 배가 된다(D23 이 막으려는 바로 그 비용).
+ *
+ * @param {string} vaultDir
+ * @param {{ env?: 'dev'|'prod', headState?: object, runGit?: (args: string[]) => string }} [options]
+ * @returns {(shas: string[]) => object[]} 커밋 해시 배열을 **워크 순서 그대로** 받아 살아남은 item
+ */
+export function makeFeedItemResolver(vaultDir, { env, headState, runGit } = {}) {
+  const resolvedRunGit = runGit ?? makeGitRunner(vaultDir)
+  let prepared = null
+  const ensure = () => (prepared ??= buildResolveContext(vaultDir, resolvedRunGit, env, headState))
+
+  return (shas) => {
+    if (shas.length === 0) return []
+    const commits = readCommitRecords(resolvedRunGit, shas)
+    return resolveFeedItems(vaultDir, resolvedRunGit, commits, ensure().context)
+  }
+}
+
+/** `resolveFeedItems` 가 요구하는 HEAD 상태·역인덱스·통계 — 수집 경로와 커서 경로가 공유한다. */
+function buildResolveContext(vaultDir, resolvedRunGit, env, injectedHeadState) {
   // 판정은 **`dev` 만 전량, 그 외는 전부 prod**(fail-closed) — parse-vault.mjs 의 visibleDocs 와
   // 같은 극성이어야 한다. `pathIndex` 는 draft 포함 전 문서로 만들어야 삭제와 draft 배제 사유를 가른다.
   const excludeDrafts = env !== 'dev'
@@ -42,7 +93,6 @@ export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, 
   let everDeletedPaths = null
   const resolveEverDeletedPaths = () =>
     (everDeletedPaths ??= collectEverDeletedDocPaths(resolvedRunGit, { isDocPath: anyMarkdown }))
-  const collected = new Map()
   const stats = {
     invalidExcludedRefs: [],
     prunedDocRefs: 0,
@@ -52,78 +102,20 @@ export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, 
     warnings: [],
   }
 
-  // F1: **전량 워크(count 기반 조기 종료 금지)**. git rev-list 워크순서는 선형 히스토리에서 사실상
-  //   커밋순(≠author-date)이라(GW3), author-date 가 뒤섞이면(rebase/backdate) 뒤 청크에 더 최신
-  //   author-date 피드가 숨어 있을 수 있다. count 만큼 모였다고 끊으면 그 피드를 놓친다. 정렬-안전
-  //   바운디드 종료는 "임의 old 커밋이 임의 high author-date 를 가질 수 있다"라 author-date monotonic
-  //   가정 없이는 불가능하므로, 피드 커밋을 **전량 수집**한 뒤 JS 재정렬(byRecencyThenId)을 권위로
-  //   페이지를 확정한다(억제·from/to·after·상한은 pageItems 가 최종 1회 적용 — 전량이라 언더필 없음).
-  const commits = revListFeedCandidates(resolvedRunGit)
-  for (const item of resolveFeedItems(vaultDir, resolvedRunGit, commits, {
-    allHeadIds,
-    headIds,
-    invalidIds,
-    resolveInvalidPathIndex,
-    resolveEverDeletedPaths,
-    resolvePathIndex,
-    runGit: resolvedRunGit,
-    stats,
-    strayDocPaths: headState.strayDocPaths,
-  })) {
-    collected.set(item.id, item)
-  }
-
-  return { items: [...collected.values()], stats }
-}
-
-export function pageFeeds(items, ignoreEntries, { after, from, limit, to } = {}) {
-  const resolvedLimit = typeof limit === 'number' && limit > 0 ? limit : DEFAULT_FEED_LIMIT
-  const paged = pageItems(items, ignoreEntries, { after, from, limit: resolvedLimit, to })
   return {
-    items: paged.slice(0, resolvedLimit),
-    nextCursor:
-      paged.length > resolvedLimit ? { feedId: paged[resolvedLimit - 1].id, ts: paged[resolvedLimit - 1].ts } : null, // prettier-ignore
+    context: {
+      allHeadIds,
+      headIds,
+      invalidIds,
+      resolveInvalidPathIndex,
+      resolveEverDeletedPaths,
+      resolvePathIndex,
+      runGit: resolvedRunGit,
+      stats,
+      strayDocPaths: headState.strayDocPaths,
+    },
+    stats,
   }
-}
-
-function pageItems(items, ignoreEntries, { after, from, limit, to }) {
-  const cursor = normalizeCursor(after)
-  // F3: from/to 를 epoch 로 1회 정규화해 **숫자 비교**한다(문자열 사전순 금지 — 비-UTC offset 안전).
-  const fromMs = parseBoundary(from, 'from')
-  const toMs = parseBoundary(to, 'to')
-  return applyIgnoreFeeds(items, ignoreEntries)
-    .toSorted(byRecencyThenId)
-    .filter((item) => fromMs === null || Date.parse(item.ts) >= fromMs)
-    .filter((item) => toMs === null || Date.parse(item.ts) <= toMs)
-    .filter((item) => cursor === null || byRecencyThenId(item, cursor) > 0)
-    .slice(0, limit + 1)
-}
-
-/**
- * from/to 경계를 epoch(ms)로 1회 정규화. 미지정 → null. **문자열 비교 금지**(byRecencyThenId 와 동일
- * 사유). 파싱 불가(유효 ISO 아님) → throw: 잘못된 경계로 조용히 오필터(전량 통과/전량 배제)하느니
- * 시끄럽게 끊는다(fail-loud).
- */
-function parseBoundary(value, name) {
-  if (value === undefined || value === null) return null
-  const ms = Date.parse(value)
-  if (Number.isNaN(ms)) {
-    throw new Error(`pageFeeds ${name} 경계가 유효한 ISO 날짜가 아니다: ${JSON.stringify(value)}`)
-  }
-  return ms
-}
-
-function normalizeCursor(after) {
-  if (after === undefined || after === null || after === '') return null
-  if (typeof after === 'string') {
-    const parsed = JSON.parse(after)
-    return normalizeCursor(parsed)
-  }
-  const id = after.feedId ?? after.id
-  if (typeof after.ts !== 'string' || typeof id !== 'string') {
-    throw new Error('after cursor must contain ts and feedId')
-  }
-  return { id, ts: after.ts }
 }
 
 function revListFeedCandidates(runGit) {
@@ -136,6 +128,29 @@ function revListFeedCandidates(runGit) {
     throw error
   }
 
+  return parseCommitRecords(raw)
+}
+
+/**
+ * 이미 정해진 커밋 해시 목록의 메타(해시·author-date·subject·body)를 **워크 순서 그대로** 읽는다.
+ *
+ * `--no-walk=unsorted` 가 계약이다 — 기본 `--no-walk`(=sorted)는 커밋 날짜로 **다시 정렬**하므로
+ * 커서 워크가 정한 순서(= 페이지 순서이자 `nextCursor` 의 근거)가 조용히 뒤바뀐다.
+ * `--max-count` 은 **붙이지 않는다**: 이 호출은 배치 워크가 아니라 메타 조회이고, 붙이면 배치 관측
+ * (WA1~WA3·WA9 가 `rev-list` + `--max-count=` 로 배치를 식별한다)이 오염된다.
+ */
+function readCommitRecords(runGit, shas) {
+  const raw = runGit([
+    'rev-list',
+    '--no-walk=unsorted',
+    '--format=%H%x09%aI%x09%s%x09%b%x1e',
+    '--end-of-options',
+    ...shas,
+  ])
+  return parseCommitRecords(raw)
+}
+
+function parseCommitRecords(raw) {
   return (
     raw
       .split('\x1e')

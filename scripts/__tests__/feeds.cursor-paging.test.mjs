@@ -24,7 +24,7 @@
 //   페이지 크기·상한 루프 횟수·억제 건수는 전부 본문 리터럴이다.
 // 규범 B: 부재·집합 단언 앞에 앵커 — 페이지 수 ≥ 2 · 각 arm 이 비어 있지 않다 · 대조 vault.
 // 규범 F: 실 vault 를 건드리지 않는다. `ignore-feeds.json` 은 tmp vault 안에서만 만든다.
-import { readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { afterAll, describe, expect, it } from 'vitest'
@@ -39,6 +39,8 @@ const HEX12 = /^[0-9a-f]{12}$/u
 const MAX_PAGES = 20
 /** 실 git 을 훑는 케이스의 케이스별 상한. **전역 `testTimeout` 은 올리지 않는다**(P1 OQ-P1-2 (c)). */
 const WALK_TIMEOUT = 300_000
+/** 억제 엔트리의 감사 메타 — 리터럴(규범 A). */
+const IGNORE_WHEN = '2026-07-28T00:00:00Z'
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -253,6 +255,36 @@ describe('억제는 명시 인자로만 걸린다 (IW6 · 🔴RED `--ignore` 미
       expect(idsOf(bare), '`--ignore` 없이도 억제가 걸렸다 — 암묵 로드가 살아 있다').toContain(suppressed) // prettier-ignore
     },
   )
+
+  it(
+    'IW7: `--ignore` 는 **그 경로의 파일**을 읽는다 — 파일명이 달라도 적용된다',
+    { timeout: WALK_TIMEOUT },
+    () => {
+      // prettier-ignore
+      // ★★ 이 케이스가 없으면 **조용한 오동작**이 통과한다: 로더가 경로의 basename 을 버리고
+      //   디렉토리만 써서 `ignore-feeds.json` 을 다시 붙이면, `--ignore <dir>/my-ignore.json` 이
+      //   **사용자가 지정하지 않은 파일**을 읽고도 exit 0 이다(실측으로 그 상태가 있었다).
+      //   IW6 의 두 arm 은 둘 다 파일명이 `ignore-feeds.json` 이라 그 결함을 **구조적으로 못 본다** —
+      //   `--ignore` 가 「경로」인지 「디렉토리 힌트」인지를 가르는 것은 이 케이스뿐이다.
+      const seeded = seedFeedVault({ feedCount: 4 })
+      tmps.push(seeded.vault)
+      const suppressed = seeded.feedIds[0]
+
+      // 억제 목록을 **다른 이름·다른 디렉토리**에 둔다. vault 루트의 `ignore-feeds.json` 은 비어 있다.
+      const customDir = path.join(seeded.vault, 'ops')
+      mkdirSync(customDir, { recursive: true })
+      const customPath = path.join(customDir, 'my-ignore.json')
+      writeFileSync(customPath, JSON.stringify([{ id: suppressed, when: IGNORE_WHEN }]), 'utf8')
+
+      const applied = readFeedPage(seeded.vault, { count: 10, ignore: customPath })
+      // ★ 앵커: 같은 실행에서 `--ignore` 를 빼면 그 id 가 **나타난다**(부재 단언의 위험 실재 축).
+      const bare = readFeedPage(seeded.vault, { count: 10 })
+      expect(idsOf(bare), '앵커: 억제 없이는 그 id 가 있다').toContain(suppressed)
+      expect(applied.items.length, '앵커 arm 이 비었다').toBeGreaterThan(0)
+
+      expect(idsOf(applied), '지정한 경로의 억제 목록이 적용되지 않았다').not.toContain(suppressed)
+    },
+  )
 })
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -288,26 +320,39 @@ describe('생존 판정 경로 유지 (JS1·JS2 · N2)', () => {
   )
 
   it(
-    'JS2: 삭제 문서 참조 feed 는 제외 · draft 참조는 prod 제외 / dev 포함',
+    'JS2: 삭제 문서 참조 feed 는 연결만 끊기고 · draft 참조는 prod 제외 / dev 포함',
     { timeout: WALK_TIMEOUT },
     () => {
       // prettier-ignore
       // ★★ 로드 관측(JS1)만으로는 부족하다 — **import 만 하고 안 부르는** 구현을 이 케이스가 잡는다.
+      //
+      // ★ 원장 정정(메인 세션 보고 대상): tdd §3.6 은 이 케이스를 _"삭제된 문서를 가리키는 feed 가
+      //   페이지에서 **제외**된다"_ 로 적었으나 **그것은 `judgeFeedSurvival` 의 계약이 아니다** —
+      //   `lib/feed-survival.mjs:22-27` 은 `deleted` 만 남은 ref 집합을 **생존**으로 판정하고 docs 만
+      //   비운다(_"피드는 살고 연결만 끊긴다"_ · `git-walk.test.mjs` GW6 · `serving.exclusion` SR4 ·
+      //   `feed-survival.test.mjs` 가 전부 그 극성을 pin 한다). 그 파일은 **무변경 pin**(tdd §4.6)이라
+      //   P2 가 극성을 바꿀 수 없으므로, 축을 **실제 계약**으로 재조준한다 — 관측 가능성은 오히려
+      //   강해진다: 「살아남되 docs 가 비었다」는 `judgeFeedSurvival` 을 **부르지 않으면** 재현할 수
+      //   없는 상태이고(안 부르면 `survival.docs` 자체가 없다), draft 축이 제외 방향을 계속 문다.
       const seeded = seedSurvivalVault()
       tmps.push(seeded.vault)
 
       const dev = readFeedPage(seeded.vault, { count: 10, env: 'dev' })
       const prod = readFeedPage(seeded.vault, { count: 10, env: 'prod' })
 
-      // ★ 앵커: 정상 참조 feed 는 **양쪽 다 포함**된다(전부 거르는 구현 배제).
+      // ★ 앵커: 정상 참조 feed 는 **양쪽 다 포함**되고 문서 연결도 산다(전부 거르는 구현 배제).
       expect(idsOf(dev), 'dev 에 정상 feed 가 없다').toContain(seeded.normalFeed)
       expect(idsOf(prod), 'prod 에 정상 feed 가 없다').toContain(seeded.normalFeed)
+      expect(dev.items.find((item) => item.id === seeded.normalFeed).docs.length).toBeGreaterThan(0)
 
-      // 삭제된 문서만 가리키는 feed 는 양쪽에서 제외된다.
-      expect(idsOf(dev), 'dev 에 삭제 문서 feed 가 남았다').not.toContain(seeded.deletedFeed)
-      expect(idsOf(prod), 'prod 에 삭제 문서 feed 가 남았다').not.toContain(seeded.deletedFeed)
+      // 삭제된 문서만 가리키는 feed 는 **살아남되 연결이 끊긴다**(docs 가 빈 배열).
+      for (const page of [dev, prod]) {
+        const orphan = page.items.find((item) => item.id === seeded.deletedFeed)
+        expect(orphan, '삭제 문서 feed 가 통째로 사라졌다').toBeDefined()
+        expect(orphan.docs, '삭제된 문서 참조가 응답에 남았다').toEqual([])
+      }
 
-      // draft 참조는 dev 에서만 보인다(fail-closed 방향).
+      // draft 참조는 dev 에서만 보인다(fail-closed 방향) — 이 축이 **제외**를 문다.
       expect(idsOf(dev), 'dev 에 draft feed 가 없다').toContain(seeded.draftFeed)
       expect(idsOf(prod), 'prod 로 draft feed 가 샜다').not.toContain(seeded.draftFeed)
     },

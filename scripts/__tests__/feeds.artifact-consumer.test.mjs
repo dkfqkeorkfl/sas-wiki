@@ -1,12 +1,22 @@
 // @vitest-environment node
 //
-// P5 · Task 3 — `feeds` 를 **아티팩트 소비자**로 (D-E·D-G·D-B ②) — tdd §3.3 (FC2~FC10)
+// P5 · Task 3 — `feeds` 의 조회 계약 (D-E·D-G·D-B ②) — tdd §3.3 (FC2~FC10)
 //
-// 무엇이 바뀌는가: `feeds()` 가 vault 를 재파싱하지 않는다. Arrange 의 명시 빌드가 만든
-//   `cache/feeds.<env>.json` 을 읽어 **억제 필터 + 페이지**만 얹는다. 사유 판정은 생성기 안에만
-//   남으므로(D-A) `feeds` 는 **분류를 전혀 하지 않는다**. 정적 폐쇄에서 렌더 툴체인이 사라지는 축은
-//   **FC1**(기존 `summary.import-graph.test.mjs`)이, 런타임 로드·git 프로파일은 **TR1·TR3** 이 문다 —
-//   구조 단언과 기능 단언을 한 케이스에 섞지 않는다(tdd §7.5).
+// ★★ **v3 P2 재조준(tdd §4.5-⑥ · D48·D20·D6).** 이 파일의 옛 전제는 _"`feeds()` 가 아티팩트를
+//   **읽는다**"_ 였다. P2 는 조회 경로를 **라이브 커서 워크**로 교체하므로(해석 A · PU4·PU6b) 그
+//   전제가 사라진다. 그러나 이 파일이 물던 계약 대부분은 **더 강한 형태로 살아남는다**:
+//     · FC3 — 옛 뜻: "feeds 는 item 을 만들지 않는다(파일에서 고른다)". 새 뜻: **캐시 경로와 라이브
+//       경로가 같은 해석기를 쓴다** — 두 산출의 item 이 여전히 deep-equal 이어야 한다(D48 등가
+//       불변식의 **item 층**). 재구현이 생기면 여기서 갈린다.
+//     · FC4·FC7·FC10 — 억제 축. D20 이후 억제는 **명시 인자**로만 걸리므로(암묵 로드 소멸 · IW6)
+//       각 arm 이 `{ ignore }` 를 넘긴다. 무는 계약(응답에 없다 · generatedAt 은 억제 후 · malformed
+//       는 fail-loud)은 **한 글자도 약해지지 않는다**.
+//     · FC5 — 재구현 금지 트립와이어. 소유자가 `git-walk.mjs`(`pageFeeds`)에서
+//       `lib/feed-cursor.mjs`(`walkCursorPage`)로 옮겨간다.
+//     · FC6 — `from`/`to` 축은 **개념 소멸**(D6)이라 삭제하고 `count`·`after` 만 남긴다.
+//
+// 정적 폐쇄에서 렌더 툴체인이 사라지는 축은 **FC1**(기존 `summary.import-graph.test.mjs`)이,
+//   런타임 로드·git 프로파일은 **PU4·TR3** 이 문다 — 구조 단언과 기능 단언을 한 케이스에 섞지 않는다.
 //
 // RED 사유:
 //   · FC2 — **RED(오늘 동기)**. `feeds.mjs:27` 이 `export function feeds(...)` 다.
@@ -38,7 +48,7 @@ const feedsModule = await import(new URL('../feeds.mjs', import.meta.url).href)
 const feedsFile = (vault, env) => path.join(vault, 'cache', `feeds.${env}.json`)
 
 const FEEDS_SOURCE = new URL('../feeds.mjs', import.meta.url)
-const GIT_WALK_SOURCE = new URL('../lib/git-walk.mjs', import.meta.url)
+const FEED_CURSOR_SOURCE = new URL('../lib/feed-cursor.mjs', import.meta.url)
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const REL_A = 'company/삼성전자'
@@ -116,7 +126,7 @@ describe('feeds 는 async 다 (FC2 · 🔴RED 오늘 동기)', () => {
   })
 })
 
-describe('선택 속성 — feeds 는 item 을 만들지 않는다 (FC3 · 🔴RED 자체 파싱)', () => {
+describe('두 경로가 같은 item 을 낸다 (FC3 · D48 등가의 item 층)', () => {
   it('FC3: 반환된 모든 item 이 **아티팩트 파일의 item 과 deep-equal** 이다', async () => {
     // ★ 규범 A 함정 ② 회피형이다: `feeds() == pageFeeds(...)` 로 쓰면 같은 함수를 두 번 부르는 것이라
     //   아무것도 증명하지 못한다. 여기서는 **파일에서 읽은** item 과 대조한다 — feeds 가 하는 일은
@@ -140,41 +150,48 @@ describe('억제는 서빙 시점에 걸린다 (FC4 · 🟢오늘도 성립 — 
   it('FC4: 억제 엔트리가 걸린 id 가 응답에 **없다**', async () => {
     const { newFeedId, vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
+    const ignoreOpts = { ignore: path.join(vault, IGNORE_FILE) }
 
     // 앵커: 억제 **전에는 있었다**(빈 응답으로 부재 단언이 공허해지는 것을 배제).
     expect(idsOf(await feeds(vault, 'dev', {}))).toContain(newFeedId)
 
     suppress(vault, newFeedId)
 
-    expect(idsOf(await feeds(vault, 'dev', {}))).not.toContain(newFeedId)
+    // ★ v3 P2 · D20 — 억제 배선은 **호출부 책임**이다(암묵 로드 소멸). 필터의 단일 구현은 그대로다.
+    expect(idsOf(await feeds(vault, 'dev', ignoreOpts))).not.toContain(newFeedId)
   })
 })
 
 describe('재구현 금지 트립와이어 (FC5 · 🔴RED 소스 형태 · CX-E)', () => {
-  it('FC5: `feeds.mjs` 가 억제·정렬·슬라이스를 **재구현하지 않고** `pageFeeds` 만 문다', () => {
-    // `ignore.mjs` 헤더가 금지하는 "두 번째 필터 경로" 의 물질화다. 소유자는 `git-walk.mjs` 이고
-    //   `feeds.mjs` 는 호출자다 — 토큰이 이쪽으로 넘어오면 우회가 시작된 것이다.
+  it('FC5: `feeds.mjs` 가 억제·페이지 계산을 **재구현하지 않고** `walkCursorPage` 만 문다', () => {
+    // `ignore.mjs` 헤더가 금지하는 "두 번째 필터 경로" 의 물질화다. 토큰이 `feeds.mjs` 로 넘어오면
+    //   우회가 시작된 것이다. ★ v3 P2 — **소유자가 옮겨갔다**: 페이지 계산은 `lib/feed-cursor.mjs`
+    //   (`walkCursorPage`)가, 억제 필터는 여전히 `lib/ignore.mjs`(`applyIgnoreFeeds`)가 소유한다.
+    //   `pageFeeds` 는 프로덕션에서 사라졌으므로(호출자 0) 그 토큰은 이제 **부재 축**이다.
     const source = readFileSync(FEEDS_SOURCE, 'utf8')
-    const owner = readFileSync(GIT_WALK_SOURCE, 'utf8')
+    const owner = readFileSync(FEED_CURSOR_SOURCE, 'utf8')
     const count = (text, token) => text.split(token).length - 1
 
     // 앵커: 그 토큰들은 **소유자 쪽에 실제로 있다**(어디에도 없어서 0 인 것을 배제).
-    for (const token of ['toSorted', 'byRecencyThenId', 'applyIgnoreFeeds']) {
+    for (const token of ['applyIgnoreFeeds', 'rev-list', '--skip=1']) {
       expect(count(owner, token)).toBeGreaterThan(0)
       expect(count(source, token)).toBe(0)
     }
     // 페이지 슬라이스는 `slice(0, …)` 형태다 — `process.argv.slice(2)`(CLI 배관)와 구분해서 센다.
     expect([...source.matchAll(/\.slice\(\s*0/gu)]).toHaveLength(0)
-    // 전환의 소스 측 증거 — `buildWirePayload`·`parse-vault` 정적 결합이 사라진다(짝: FC1·TR3).
+    // 전환의 소스 측 증거 — 정적 결합이 사라진다(짝: FC1·TR3). `pageFeeds` 는 개념째 사라졌다.
     expect(count(source, 'buildWirePayload')).toBe(0)
     expect(count(source, 'parse-vault.mjs')).toBe(0)
-    expect(count(source, 'pageFeeds')).toBeGreaterThan(0)
+    expect(count(source, 'pageFeeds')).toBe(0)
+    expect(count(source, 'walkCursorPage')).toBeGreaterThan(0)
   })
 })
 
-describe('페이지·커서 위임 4축 (FC6 · 🟩pair)', () => {
-  it('FC6: `count`·`after`·`from`·`to` 가 전부 반영된다', async () => {
+describe('페이지·커서 위임 2축 (FC6 · 🟩pair)', () => {
+  it('FC6: `count`·`after` 가 전부 반영된다', async () => {
     // 과잉 축소(전부 빈 페이지를 내는 구현) 배제. 앵커는 무인자 호출이 전량을 낸다는 것이다.
+    // ★ v3 P2 · D6 — `from`/`to` 축 2건은 **개념 소멸**이라 삭제했다(§4.5-⑥). 날짜 구간은 wire 에서
+    //   사라지고 화면 기간 프리셋은 **클라이언트 로컬 필터**로 남는다 — 이 층의 계약이 아니다.
     const { newFeedId, oldFeedId, vault } = await seedTwoFeedsWithArtifacts()
     const feeds = feedsFn()
 
@@ -186,12 +203,6 @@ describe('페이지·커서 위임 4축 (FC6 · 🟩pair)', () => {
 
     const after = await feeds(vault, 'dev', { after: limited.nextCursor, count: 1 })
     expect(titlesOf(after)).toEqual([TITLE_OLD])
-
-    const fromOnly = await feeds(vault, 'dev', { from: '2026-06-01T00:00:00Z' })
-    expect(titlesOf(fromOnly)).toEqual([TITLE_NEW])
-
-    const toOnly = await feeds(vault, 'dev', { to: '2026-06-01T00:00:00Z' })
-    expect(titlesOf(toOnly)).toEqual([TITLE_OLD])
   })
 })
 
@@ -206,7 +217,7 @@ describe('서빙 시점 generatedAt 재집계 (FC7 · 🔴RED 억제 전 값이 
     expect((await feeds(vault, 'dev', {})).generatedAt).toBe(new Date(TS_NEW).toISOString())
 
     suppress(vault, newFeedId)
-    const page = await feeds(vault, 'dev', {})
+    const page = await feeds(vault, 'dev', { ignore: path.join(vault, IGNORE_FILE) })
 
     expect(page.generatedAt).toBe(new Date(TS_OLD).toISOString())
     expect(page.generatedAt).not.toBe(new Date(TS_NEW).toISOString())
@@ -231,7 +242,10 @@ describe('malformed 억제 목록은 fail-loud 다 (FC10 · 🟢pin · OQ-P5-6 �
     const feeds = feedsFn()
     writeFileSync(path.join(vault, IGNORE_FILE), JSON.stringify([{ id: 'not-12hex' }]), 'utf8')
 
-    await expect(Promise.resolve().then(() => feeds(vault, 'dev', {}))).rejects.toThrow(
+    // ★ v3 P2 · D20 — 억제 목록은 **명시 인자**로 들어온다. 「신뢰 못 할 목록은 조용히 무시하지
+    //   않는다」는 계약은 그대로이고, 그 fail-loud 가 도는 자리만 인자 경로로 옮겨졌다(SU8 이 짝).
+    const opts = { ignore: path.join(vault, IGNORE_FILE) }
+    await expect(Promise.resolve().then(() => feeds(vault, 'dev', opts))).rejects.toThrow(
       /ignore-feeds\.json/u,
     )
   })

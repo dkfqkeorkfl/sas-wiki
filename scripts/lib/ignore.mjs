@@ -36,17 +36,38 @@ export const IGNORE_FEEDS_FILE = 'ignore-feeds.json'
  * 모듈 헤더가 금지하는 "두 번째 필터 경로" 가 바로 그것이라 로드까지 여기로 모은다.
  */
 export function loadIgnoreFeeds(vaultDir, schemaDir = SCHEMA_DIR) {
-  const ignorePath = path.join(vaultDir, IGNORE_FEEDS_FILE)
+  return loadIgnoreFeedsAt(path.join(vaultDir, IGNORE_FEEDS_FILE), schemaDir)
+}
+
+/**
+ * **억제 목록 파일 자체의 경로**로 로드한다 — v3 P2 `--ignore <경로>`(D20)의 착지점이다.
+ *
+ * 왜 이 함수가 필요한가: `loadIgnoreFeeds` 는 vault 루트에서 파일명을 **파생**하므로, 호출자가 준
+ * 경로의 basename 을 쓸 방법이 없다. 그 상태에서 `--ignore <경로>` 를 지원하려면 디렉토리만 떼어
+ * 넘겨야 하는데, 그러면 `--ignore /x/my-ignore.json` 이 조용히 `/x/ignore-feeds.json` 을 읽는다 —
+ * **동작은 하지만 사용자가 지정한 파일이 아닌 것을 읽는** 오동작이고, 그 실패는 관측되지 않는다.
+ *
+ * ★ 그럼에도 **읽기·스키마 검증·에러 문구는 여기 한 곳에만 있다**(이 모듈 헤더가 금지하는 "두 번째
+ * 필터 경로" 금지의 로드 층 대응). `loadIgnoreFeeds` 는 이 함수를 부르는 얇은 래퍼이고,
+ * `IGNORE_FEEDS_FILE` 리터럴의 소유자도 여전히 이 파일 하나다.
+ *
+ * **부재 = `[]`(fail-open)** — 목록 부재는 "억제 없음" 이지 "전량 억제" 가 아니다. **존재하되 스키마
+ * 위반 = throw(fail-loud)** — 신뢰 못 할 억제 목록은 조용히 무시하지 않는다(malformed JSON 도 throw).
+ *
+ * @param {string} ignorePath 억제 목록 파일 경로(절대경로 권장 — 호출부가 해석해 넘긴다)
+ * @param {string} [schemaDir]
+ */
+export function loadIgnoreFeedsAt(ignorePath, schemaDir = SCHEMA_DIR) {
   if (!fs.existsSync(ignorePath)) return []
   const entries = JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
   const errors = validateItem(
     entries,
     loadSchema(path.join(schemaDir, 'ignore-feeds.schema.json')),
-    'ignore-feeds.json',
+    IGNORE_FEEDS_FILE,
   )
   if (errors.length > 0) {
     throw new Error(
-      `ignore-feeds.json 스키마 위반 ${errors.length}건 — 신뢰할 수 없는 억제 목록으로 빌드를 중단한다:\n` +
+      `${IGNORE_FEEDS_FILE} 스키마 위반 ${errors.length}건 — 신뢰할 수 없는 억제 목록으로 빌드를 중단한다:\n` +
         errors.map((message) => `  - ${message}`).join('\n'),
     )
   }

@@ -132,7 +132,9 @@ beforeAll(() => {
 //       오파생(`wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
 const C1_CASES = [
   { assert: (p) => expect(p.docs.length).toBeGreaterThan(0), args: ['--env', 'dev'], name: 'summary', script: SUMMARY }, // prettier-ignore
-  { assert: (p) => expect(Array.isArray(p.items)).toBe(true), args: ['--env', 'dev'], name: 'feeds', script: FEEDS }, // prettier-ignore
+  // ★ v3 P2 · D15(§4.5-③ arm 갱신) — `--count` 는 CLI 필수다. 안 실으면 이 arm 의 red 사유가
+  //   「기본 vault 파생이 틀렸다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P).
+  { assert: (p) => expect(Array.isArray(p.items)).toBe(true), args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS }, // prettier-ignore
   { assert: (p) => expect(p).toBeNull(), args: ['--env', 'dev', '--path', 'no/such'], name: 'wiki', script: WIKI }, // prettier-ignore
 ]
 
@@ -193,7 +195,8 @@ describe('C3 — env 기본값(prod) 무변경 · draft 필터 (🟢 회귀)', (
 //    무엇을 깨면 red(GREEN 후): main() 에 디버그 log 혼입 → 2줄 → lines 단언 실패 / 파싱 throw.
 const C4A_CASES = [
   { args: ['--env', 'dev'], name: 'summary', script: SUMMARY },
-  { args: ['--env', 'dev'], name: 'feeds', script: FEEDS },
+  // ★ v3 P2 · D15(§4.5-③ arm 갱신) — 같은 사유. 이 케이스가 무는 것은 stdout 순수성이지 인자 개수가 아니다.
+  { args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS },
   { args: ['--env', 'dev'], name: 'wiki', script: WIKI },
 ]
 
@@ -327,7 +330,10 @@ describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)'
     const pkg = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8'))
 
     expect(pkg.scripts.summary).toBe('node scripts/summary.mjs')
-    expect(pkg.scripts.feeds).toBe('node scripts/feeds.mjs')
+    // ★ v3 P2 · D15 — `--count` 가 필수 인자가 됐다(§4.5-⑤ flip). 사람용 스크립트도 그것을 실어야
+    //   `pnpm run feeds` 가 exit 2 로 죽지 않는다. CQ4 가 「`--count` 를 싣는다」를 성질로 물고,
+    //   여기서는 **정확 문자열**로 못박는다(소비자가 파일명을 spawn 하므로 형태가 계약이다).
+    expect(pkg.scripts.feeds).toBe('node scripts/feeds.mjs --count 40')
     expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs')
     expect(pkg.scripts.validate).not.toContain('--vault')
   })

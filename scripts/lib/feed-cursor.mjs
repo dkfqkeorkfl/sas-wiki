@@ -55,14 +55,19 @@ import { applyIgnoreFeeds } from './ignore.mjs'
  */
 const CURSOR_RE = /^[0-9a-f]{12}$/u
 
-/** 커서 = item `id` = 커밋 해시 앞 12자(`git-walk.mjs:206` 과 같은 축약 길이). */
-const CURSOR_LENGTH = 12
+/** 커서 = item `id` = 커밋 해시 앞 12자(`git-walk.mjs` 의 item `id` 와 같은 축약 길이). */
+export const CURSOR_LENGTH = 12
 
 /**
- * D12 오버샘플 배수 — 1차 배치는 `count × 3`. `feed:` 필터·생존 판정·억제로 걸러질 몫을 감안한
- * 값이다(설계 §3-3 ②의 "×2~3" 구간 상단).
+ * D12 오버샘플 배수 — 1차 배치는 `count × 2`. `feed:` 필터·생존 판정·억제로 걸러질 몫을 감안한
+ * 값이며 설계 §3-3 ②의 "×2~3" 구간 **하한**이다.
+ *
+ * ★ 하한을 고른 이유: 이 배수는 **버리는 몫**이다. 상단(×3)을 쓰면 1차에서 이미 채워지는 흔한
+ * 경우에도 `rev-list` 가 매번 50% 더 훑고, 그 초과분은 D23 이 아끼려는 바로 그 비용이다. 못 채우면
+ * 2차(×4)가 있으므로 부족은 정확성 손실이 아니라 배치 1회의 추가일 뿐이다 — 즉 하한은 **흔한 경우를
+ * 싸게, 드문 경우를 한 번 더**로 가른다.
  */
-const FIRST_BATCH_FACTOR = 3
+const FIRST_BATCH_FACTOR = 2
 
 /** D23 — 1차가 채우지 못했을 때의 2차 배치 배수. */
 const SECOND_BATCH_FACTOR = 4
@@ -72,6 +77,43 @@ const SECOND_BATCH_FACTOR = 4
  * 고정 비용 때문에 오히려 느리다(설계 §11-3).
  */
 const MAX_BATCHES = 2
+
+/**
+ * D23 — **개별 git 프로세스**의 spawn 타임아웃(ms). U6 실측으로 정한 값이다.
+ *
+ * ── 실측 근거 (컨테이너 git 2.51.1 · 2026-08-04) ─────────────────────────────────────────────
+ *   최악 단일 git 호출: **`/tmp`(컨테이너 로컬) 13.5ms vs 실 vault(9p 공유 마운트) 216.1ms** —
+ *   같은 형태의 호출이 **15배** 차이다. 커밋 수는 오히려 9p 쪽이 적다(83 vs 121) — 즉 차이를 만드는
+ *   것은 **규모가 아니라 파일시스템 계층**이다. 5000ms 는 그 최악값 대비 **≈23배 마진**이며,
+ *   흡수 대상은 ① vault 규모 증가 ② 부하 의존 지연(P1 에서 spawn 계열이 30초를 넘긴 전력) ③
+ *   호스트(WSL/drvfs) 실행이다.
+ *
+ * ── 상한 ────────────────────────────────────────────────────────────────────────────────────
+ *   `SCRIPT_TIMEOUT_MS`(webfront `dev/wiki-backend/plugin.ts:22`) = **30초의 1/6**. 서버가 자식을
+ *   죽이기 전에 자식이 **스스로** 죽어야 사유가 「타임아웃」으로 남는다 — 부모가 죽이면 exit 사유가
+ *   사라진다. D51 이 기각한 대안 ③(서버 타임아웃 상향)에 기대지 않는다.
+ *
+ * ── ★ §8-② 의 _"max × 3~4 배"_ 를 문자 그대로 쓰지 않은 사유 ──────────────────────────────
+ *   그 기준은 **워크 전체 벽시계**를 상정했으나 D23 이 실제로 걸리는 층은 **개별 git 프로세스**다.
+ *   그리고 3~4배 마진은 **측정 환경 이동만으로 소진**된다: 로컬 13.5 × 4 = 54ms < 9p 실측 216ms.
+ *   환경 이동을 흡수하지 못하는 마진은 게이트가 아니라 flakiness 다.
+ *
+ * ── 관측 (WA11 이 쓰는 축) ──────────────────────────────────────────────────────────────────
+ *   `timeoutMs` 발동 시 `error.signal === 'SIGTERM'`(`status` 는 `null`)이라 「타임아웃」과
+ *   「exit≠0」을 **가를 수 있다**(실측). 벽시계를 게이트로 걸지 않는다 — 재는 것은 값이 아니라
+ *   **누가 프로세스를 끝냈는가**다.
+ *
+ * ── ★ 적용 범위 = **워크 자신의 git 호출뿐**이다 (가용성 확인 · 커서 검증 · 배치 `rev-list`) ──
+ *   주입되는 `resolveItems`(문서 해석 계층)의 git 호출에는 **걸지 않는다.** 두 층의 비용 분포가
+ *   자릿수로 다르기 때문이다 — 워크 자신의 호출은 `--version`·`rev-parse --verify`·
+ *   `rev-list --max-count=<n>` 셋뿐이고 배치가 2회로 상한돼 있어 5초는 실측(216ms) 대비 23배
+ *   마진이지만, 문서 해석은 HEAD 문서 상태·삭제 이력·경로 역인덱스를 훑는 계층이라 **같은 일을 하는
+ *   `summary.mjs` 가 이 리포에서 25~31초**를 쓴다(`cli-contract.test.mjs` 의 `REAL_REPO_SPAWN_TIMEOUT`
+ *   실측표). 그 계층에 개별 호출 5초 상한을 걸면 게이트가 아니라 **부하 의존 flakiness** 가 된다
+ *   (전 스위트 동시 실행에서 `collectDeletedDocEvents` 가 실제로 ETIMEDOUT 했다 — 실측).
+ *   ⇒ 전체 조회의 상한은 이 상수가 아니라 **배치 2회(D23)** 와 서버의 `SCRIPT_TIMEOUT_MS` 가 진다.
+ */
+export const LIVE_WALK_TIMEOUT_MS = 5000
 
 /**
  * 빈 저장소만 흡수한다 — `git-walk.mjs:135` 의 EMPTY_REPO_TOLERANCE 와 **같은 극성**이다.
@@ -135,7 +177,7 @@ export function resolveCursorCommit(cursor, { runGit } = {}) {
  * @param {string} vaultDir git vault repository root
  * @param {{
  *   after?: string,
- *   count: number,
+ *   count?: number,
  *   ignoreEntries?: object[],
  *   resolveItems: (shas: string[]) => object[],
  *   runGit?: (args: string[]) => string,
@@ -144,6 +186,10 @@ export function resolveCursorCommit(cursor, { runGit } = {}) {
  *   `resolveItems` 는 커밋 해시 배열을 **워크 순서 그대로** 받아 살아남은 feed item 을 돌려준다
  *   (③④ 중 ③). 주입인 이유는 그 해석기가 HEAD 문서 상태·경로 역인덱스를 들고 있어 이 파일의
  *   책임(배치·커서)과 층이 다르기 때문이다. `timeoutMs` 는 러너를 직접 주입하지 않을 때만 쓰인다.
+ *
+ *   ★ **`count` 미지정 = 상한 없음**(= 커서 위치부터 히스토리 끝까지 1회 워크). 「조용한 기본값」이
+ *   아니다 — 기본 개수를 몰래 채워 넣으면 그것이 D16 이 없앤 침묵 폴백이다. CLI 층은 `--count` 를
+ *   **필수**로 강제하므로(D15) 상한 없는 호출은 모듈 호출자(생성기·테스트)에서만 성립한다.
  * @returns {{ items: object[], nextCursor: string|null }}
  *   `nextCursor` 는 **12-hex 문자열**이고 히스토리 끝에서만 `null` 이다(D45 · C12).
  */
@@ -151,7 +197,8 @@ export function walkCursorPage(
   vaultDir,
   { after, count, ignoreEntries = [], resolveItems, runGit, timeoutMs } = {},
 ) {
-  const resolvedRunGit = runGit ?? makeGitRunner(vaultDir, { timeoutMs })
+  const resolvedRunGit =
+    runGit ?? makeGitRunner(vaultDir, { timeoutMs: timeoutMs ?? LIVE_WALK_TIMEOUT_MS })
   const start = resolveCursorCommit(after, { runGit: resolvedRunGit })
   if (start === null) {
     // 커서를 준 쪽이면 **무효 커서**다 — 조용히 빈 페이지를 내면 「피드 끝」으로 오독된다(D9).
@@ -170,12 +217,17 @@ export function walkCursorPage(
   let skipStart = after !== undefined
   let lastWalked = null
   let historyEnded = false
+  // 상한 없는 호출(모듈 층)은 배치 개념이 성립하지 않는다 — 한 번에 끝까지 훑는다.
+  const bounded = count !== undefined
+  const batchLimit = bounded ? MAX_BATCHES : 1
 
-  for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
-    const maxCount = batchMaxCount(count, batch === 0 ? FIRST_BATCH_FACTOR : SECOND_BATCH_FACTOR)
+  for (let batch = 0; batch < batchLimit; batch += 1) {
+    const maxCount = bounded
+      ? batchMaxCount(count, batch === 0 ? FIRST_BATCH_FACTOR : SECOND_BATCH_FACTOR)
+      : null
     const shas = revListBatch(resolvedRunGit, { maxCount, skipStart, start: walkFrom })
     // D13 — 종료 판정은 exit code 가 아니라 **stdout 줄 수**다(빈 결과도 exit 0 이다).
-    if (shas.length < maxCount) historyEnded = true
+    if (maxCount === null || shas.length < maxCount) historyEnded = true
     // 0줄이면 이어갈 시작점이 없다 — 같은 질의를 한 번 더 내는 것일 뿐이다.
     if (shas.length === 0) break
 
@@ -185,13 +237,13 @@ export function walkCursorPage(
       seen.add(item.id)
       collected.push(item)
     }
-    if (collected.length >= count) break
+    if (bounded && collected.length >= count) break
 
     walkFrom = lastWalked
     skipStart = true
   }
 
-  const items = collected.slice(0, count)
+  const items = bounded ? collected.slice(0, count) : collected
   return { items, nextCursor: nextCursorFor({ collected, count, historyEnded, items, lastWalked }) }
 }
 
@@ -214,7 +266,7 @@ function batchMaxCount(count, factor) {
  */
 function nextCursorFor({ collected, count, historyEnded, items, lastWalked }) {
   // 아직 남은 것이 손에 있다 — 다음 페이지는 이 페이지 **마지막 항목**부터 이어받는다.
-  if (collected.length > count) return items.at(-1).id
+  if (count !== undefined && collected.length > count) return items.at(-1).id
   if (historyEnded) return null
   if (items.length > 0) return items.at(-1).id
   // 0건인데 끝은 아니다 → 실을 「항목」이 없으므로 **마지막으로 워크한 커밋**을 싣는다.
@@ -227,7 +279,9 @@ function nextCursorFor({ collected, count, historyEnded, items, lastWalked }) {
  * argv 순서가 계약이다 — 옵션은 전부 `--end-of-options` **앞**, revision 은 **뒤**.
  */
 function revListBatch(runGit, { maxCount, skipStart, start }) {
-  const args = ['rev-list', `--max-count=${maxCount}`]
+  // `maxCount === null` = 상한 없는 1회 워크. `--max-count=0` 은 exit 0 + 0줄이라 「끝」과 구분
+  //   불가이므로(M8) **0 을 붙이는 경로는 없다** — 붙이거나 아예 안 붙이거나 둘 뿐이다.
+  const args = ['rev-list', ...(maxCount === null ? [] : [`--max-count=${maxCount}`])]
   if (skipStart) args.push('--skip=1')
   args.push('--end-of-options', start)
 

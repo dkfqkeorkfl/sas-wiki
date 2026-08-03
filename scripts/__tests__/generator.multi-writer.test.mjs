@@ -35,7 +35,9 @@ const SUMMARY_GENERATOR = {
   script: 'summary.mjs',
 }
 const FEEDS_GENERATOR = {
-  args: ['--env', 'dev', '--out', 'cache/feeds.dev.json'],
+  // ★ v3 P2 · D15(§4.5-③) — `--count` 는 CLI 층 필수다. `--out` 모드도 예외가 아니라서, 안 실으면
+  //   이 파일의 Arrange 가 exit 2 로 죽고 경쟁 자체가 관측되지 않는다.
+  args: ['--env', 'dev', '--count', '200', '--out', 'cache/feeds.dev.json'],
   script: 'feeds.mjs',
 }
 const GENERATORS = [SUMMARY_GENERATOR, FEEDS_GENERATOR]
@@ -221,7 +223,7 @@ describe('세 엔드포인트 동시 트리거 (MW3 · 🔴RED feeds 아티팩�
         children: [
           SUMMARY_GENERATOR,
           FEEDS_GENERATOR,
-          { args: ['--env', 'dev'], script: 'feeds.mjs' },
+          { args: ['--env', 'dev', '--count', '5'], script: 'feeds.mjs' },
           { args: ['--env', 'dev', '--path', REL_A], script: 'wiki.mjs' },
         ],
         env: 'dev',

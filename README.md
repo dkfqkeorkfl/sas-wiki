@@ -49,7 +49,7 @@ scripts/
   wiki.mjs              엔드포인트 — 문서 1건 본문
   validate.mjs          무결성 검사 CLI (엔드포인트 아님 — JSON 을 안 낸다)
   lib/                  순수 함수 부품 (파싱·git 워크·렌더·불변식)
-  schema/               JSON Schema 7종 — 아래 산출물 참고
+  schema/               JSON Schema 6종 — 아래 산출물 참고
 cache/                  발행 아티팩트(gitignore)
 logs/                   생성 리포트(gitignore)
 ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone). 아래 피드 발행법 참고
@@ -61,12 +61,12 @@ ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone
 
 <!-- contract:artifacts -->
 
-| 산출물     | 경로                             | 무엇                                     |
-| ---------- | -------------------------------- | ---------------------------------------- |
-| summary    | `cache/summary.<env>.json`       | 화면 뼈대. **유일한 wire 아티팩트**      |
-| feeds      | `cache/feeds.<env>.json`         | **억제 전 전량**. raw 로 서빙되지 않는다 |
-| 리포트     | `logs/summary.report.<env>.json` | 제외 문서·prune 진단. 관측 채널          |
-| 리포트(문) | `logs/summary.report.<env>.txt`  | 위와 같은 내용의 사람용                  |
+| 산출물     | 경로                             | 무엇                                    |
+| ---------- | -------------------------------- | --------------------------------------- |
+| summary    | `cache/summary.<env>.json`       | 화면 뼈대. **유일한 wire 아티팩트**     |
+| feeds      | `cache/feeds.<env>.json`         | 최근 200건 윈도우. 응답과 **같은 형태** |
+| 리포트     | `logs/summary.report.<env>.json` | 제외 문서·prune 진단. 관측 채널         |
+| 리포트(문) | `logs/summary.report.<env>.txt`  | 위와 같은 내용의 사람용                 |
 
 - 봉투는 `schemaVersion: 1` 을 싣는다. summary·feeds 아티팩트와 wire 페이로드가 같은 값을 쓴다.
 - **쓰기 순서는 계약이다: validate → summary → feeds.** 도중에 죽으면 뒤 단계 산출물이 갱신되지 않는다.
@@ -76,17 +76,16 @@ ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone
 - 독자는 발행물을 **전면 불신**한다. 부재·파싱 실패·버전 불일치·env 불일치를 실패로 보고, 옛 계약과 새
   계약을 동시에 지원하지 않는다.
 
-스키마 7종(`scripts/schema/`):
+스키마 6종(`scripts/schema/`):
 
-| 파일                         | 무엇                |
-| ---------------------------- | ------------------- |
-| `wiki-doc.schema.json`       | 문서 frontmatter    |
-| `summary.schema.json`        | summary wire        |
-| `feeds.schema.json`          | feeds wire          |
-| `body.schema.json`           | 본문(내부)          |
-| `feeds-artifact.schema.json` | feeds 발행 아티팩트 |
-| `report.schema.json`         | 생성 리포트         |
-| `ignore-feeds.schema.json`   | 억제 목록           |
+| 파일                       | 무엇                                              |
+| -------------------------- | ------------------------------------------------- |
+| `wiki-doc.schema.json`     | 문서 frontmatter                                  |
+| `summary.schema.json`      | summary wire                                      |
+| `feeds.schema.json`        | feeds 페이지 — 응답과 발행 아티팩트가 같은 형태다 |
+| `body.schema.json`         | 본문(내부)                                        |
+| `report.schema.json`       | 생성 리포트                                       |
+| `ignore-feeds.schema.json` | 억제 목록                                         |
 
 <!-- /contract:artifacts -->
 
@@ -206,35 +205,40 @@ node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
 
 ### feeds
 
-뉴스 피드. 최신순 정렬·억제 반영·커서 페이징까지 여기서 끝난다.
+뉴스 피드. 커서 위치에서 `--count` 건을 git 히스토리에서 직접 계산한다 — 억제 반영·커서 페이징까지 여기서 끝난다.
 
 ```bash
 node scripts/feeds.mjs [--vault <dir>] [--env dev|prod]
-                       [--count <n>] [--after <cursor-json>]
-                       [--from <ISO>] [--to <ISO>] [--out <file>]
+                       --count <n> [--after <cursor>]
+                       [--ignore <file>] [--out <file>]
 ```
 
-| 플래그    | 기본값 | 의미                                                            |
-| --------- | ------ | --------------------------------------------------------------- |
-| `--count` | `50`   | 페이지 크기. 0 이하·미지정이면 50                               |
-| `--after` | 없음   | 커서. 반환값의 `nextCursor` 를 **JSON 문자열 그대로** 넘긴다    |
-| `--from`  | 없음   | 이 시각 이후(포함). ISO 날짜                                    |
-| `--to`    | 없음   | 이 시각 이전(포함). ISO 날짜                                    |
-| `--out`   | 없음   | feeds 아티팩트 생성 모드. stdout 은 비고 상대 경로는 vault 기준 |
+| 플래그     | 기본값          | 의미                                                                          |
+| ---------- | --------------- | ----------------------------------------------------------------------------- |
+| `--count`  | **필수**        | 페이지 크기(1 이상 정수). 누락·무효면 [exit 2](#종료-코드) — 조용한 폴백 없음 |
+| `--after`  | 없음            | 커서. 반환값의 `nextCursor` 를 **그대로** 넘긴다(12자리 소문자 16진수)        |
+| `--ignore` | 없음(억제 없음) | 억제 목록 파일 경로. 상대 경로는 `--vault` 기준                               |
+| `--out`    | 없음            | feeds 아티팩트 생성 모드. stdout 은 비고 상대 경로는 vault 기준               |
 
-빌드 체인은 `--count 200 --out cache/feeds.<env>.json` 을 넘긴다. 200은 그 인자 자체가 소유하는 윈도우 크기이며 별도 상수는 없다.
+빌드 체인은 `--count 200 --ignore ignore-feeds.json --out cache/feeds.<env>.json` 을 넘긴다. 200은 그 인자 자체가 소유하는 윈도우 크기이며 별도 상수는 없다.
+
+`--count` 에 기본값이 없는 것은 의도다. 오배선(`abc`·`0`·`-5`·`1.9`)이 조용히 어떤 개수로 흡수되면 그 실패는 관측되지 않는다 — 값이 1 이상의 정수 표기가 아니면 끊는다.
+
+억제도 명시 인자로만 걸린다. 파일이 vault 에 있다는 이유로 자동 적용되지 않으므로, 억제를 원하는 호출자(빌드 체인·서버)가 `--ignore` 를 붙인다.
 
 ```bash
 # 1페이지 → items: bd8bf74279b0, 4eb6ee1c9d6b
-#           nextCursor: {"feedId":"4eb6ee1c9d6b","ts":"2006-01-02T22:17:05Z"}
+#           nextCursor: "4eb6ee1c9d6b"
 node scripts/feeds.mjs --env dev --count 2
 # 2페이지 — 1페이지 응답의 nextCursor 를 그대로 넘긴다 → items: 0192a9222428, eca3be1e87bd
-node scripts/feeds.mjs --env dev --count 2 --after '{"feedId":"4eb6ee1c9d6b","ts":"2006-01-02T22:17:05Z"}'
+node scripts/feeds.mjs --env dev --count 2 --after 4eb6ee1c9d6b
 ```
 
-`--from`/`--to` 는 문자열 비교가 아니라 epoch 로 정규화해 비교한다(`+09:00` 같은 오프셋이 섞여도 안전하다). 파싱 불가한 값을 주면 조용히 전량 통과시키지 않고 에러로 끊는다.
+커서는 **불투명 문자열**이다. 클라이언트는 파싱·생성·수정·비교하지 않고 받은 값을 그대로 되돌린다 — 값이 마침 item `id` 와 같아도 그 계약은 그대로다.
 
-정렬은 **author-date 내림차순, 동률이면 id 오름차순**으로 결정적이다.
+`nextCursor` 가 `null` 인 것은 **히스토리 끝**을 뜻하며, 그것이 「끝」을 알리는 유일한 신호다. 억제가 밀집한 구간에서 `items` 가 0건이어도 커서는 끊기지 않는다(계속 넘기면 결국 전체를 지나간다).
+
+순서는 **git 워크 순서**다 — 정렬 플래그를 붙이지 않으므로 `git rev-list` 기본 순서가 곧 페이지 순서이고 `nextCursor` 의 근거다.
 
 ### wiki
 
@@ -465,6 +469,7 @@ active 문서는 10키다.
 ```jsonc
 {
   "schemaVersion": 1,
+  "env": "dev",
   "generatedAt": "2026-07-26T03:35:20.000Z",
   "sourceCommit": "5a624e1b…",
   "items": [/* … */],
@@ -494,13 +499,19 @@ active 문서는 10키다.
 
 > **피드는 문서를 가리킬 뿐, 문서 안의 위치는 가리키지 않는다.** 카드의 점프는 문서 단위다 — 문서 안쪽으로 들어가는 링크는 [위키링크](#위키링크) 가 담당한다.
 
-**`nextCursor` — 커서 페이징.**
+**`nextCursor` — 커서 페이징.** 12자리 소문자 16진수 문자열이다.
 
 ```jsonc
-{ "ts": "2026-01-02T22:13:05Z", "feedId": "eca3be1e87bd" }
+"eca3be1e87bd"
 ```
 
-다음 페이지가 있을 때만 값이 있고, 마지막 페이지면 `null` 이다. 값은 **이번 페이지 마지막 항목**의 좌표이며, 그대로 다음 호출의 `--after` 에 넣으면 된다. 오프셋이 아니라 (시각, id) 좌표라서 그 사이에 피드가 늘어도 밀리거나 중복되지 않는다.
+**`null` 은 히스토리 끝을 뜻하며, 그것이 「끝」을 알리는 유일한 신호다.** 억제가 밀집한 구간에서 `items` 가 0건이어도 값은 남는다 — 0건에 `null` 을 주면 「끝」을 거짓으로 신고하는 것이고, 그 순간 "계속 넘기면 결국 전체를 지나간다"는 보장이 깨진다.
+
+값은 **이번 페이지 마지막 항목**의 재개 지점이며(0건이면 마지막으로 워크한 커밋), 그대로 다음 호출의 `--after` 에 넣으면 된다. 오프셋이 아니라 커밋 좌표라서 그 사이에 피드가 늘어도 밀리거나 중복되지 않는다.
+
+값이 마침 item `id` 와 같지만 **커서는 불투명 문자열**이다 — 파싱·생성·수정·비교하지 않고 받은 값을 그대로 되돌린다. 그래야 나중에 데이터 소스가 git 이 아니게 되어도 계약이 살아남는다.
+
+**`env` — `dev` | `prod`.** 응답에도 아티팩트에도 실린다. `schemaVersion` 이 동결돼 표지 대조의 구분력이 사라졌으므로, 엉뚱한 환경의 산출물이 서빙되는 것을 막는 판별축은 이것 하나다.
 
 <!-- /contract:feeds-payload -->
 

@@ -161,7 +161,7 @@ beforeAll(() => {
   )
   built.feedsRun = spawnSync(
     process.execPath,
-    [FEEDS_CLI, '--vault', seeded.vault, '--env', 'dev', '--out', built.feeds],
+    [FEEDS_CLI, '--vault', seeded.vault, '--env', 'dev', '--count=200', '--out', built.feeds],
     {
       encoding: 'utf8',
       env: {
@@ -223,14 +223,16 @@ describe('겹1 스키마 — 부활 거부 (SC1~SC4)', () => {
     expect(errors.join('\n')).toContain('정의되지 않은 필드')
   })
 
-  it('SC3: 상관 토큰을 되살린 페이로드도 **4종 전수**에서 거부된다', () => {
+  it('SC3: 상관 토큰을 되살린 페이로드도 **3종 전수**에서 거부된다', () => {
     // ★ PL2 에는 짝이 없었다 — 되살림 방향을 무는 자리가 없으면 "지웠다" 는 한쪽 방향만 증명된다.
+    // 🔴 v3 P2 · OQ-P2-5 (a) — arm 이 4 → **3종**이 된다. `feeds-artifact.schema.json` 이 폐지되고
+    //   `feeds.schema.json` 으로 단일화됐기 때문이며(SC1·PT2 가 그 부재 자체를 문다), 남은 feeds arm 의
+    //   정상 페이로드는 **6키**다(D22 `env` + D48 `nextCursor` · required 6종).
     expectValidatorSeam()
     const items = []
     const arms = [
       { name: 'summary.schema.json', payload: { docs: [], env: 'dev', generatedAt: GENERATED_AT, schemaVersion: SCHEMA_VERSION, sourceCommit: SOURCE_COMMIT, tags: {}, tree: [] } }, // prettier-ignore
-      { name: 'feeds.schema.json', payload: { generatedAt: GENERATED_AT, items, schemaVersion: SCHEMA_VERSION, sourceCommit: SOURCE_COMMIT } }, // prettier-ignore
-      { name: 'feeds-artifact.schema.json', payload: { env: 'dev', generatedAt: GENERATED_AT, items, schemaVersion: SCHEMA_VERSION, sourceCommit: SOURCE_COMMIT } }, // prettier-ignore
+      { name: 'feeds.schema.json', payload: { env: 'dev', generatedAt: GENERATED_AT, items, nextCursor: null, schemaVersion: SCHEMA_VERSION, sourceCommit: SOURCE_COMMIT } }, // prettier-ignore
       { name: 'report.schema.json', payload: { env: 'dev', excluded: [], generatedAt: GENERATED_AT, invalidExcludedRefs: [], prunedFeeds: 0, schemaVersion: SCHEMA_VERSION, sourceCommit: SOURCE_COMMIT, summary: { excluded: 0, included: 0, total: 0 }, unresolvedPaths: [] } }, // prettier-ignore
     ]
 

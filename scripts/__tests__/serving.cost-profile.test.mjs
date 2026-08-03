@@ -96,7 +96,7 @@ beforeAll(async () => {
   const summaryOut = path.join(control.vault, 'cache', 'summary.dev.json')
   const feedsOut = path.join(control.vault, 'cache', 'feeds.dev.json')
   warm = runCliWithLoadLog('summary.mjs', ['--env', 'dev', '--out', summaryOut], { vault: control.vault }) // prettier-ignore
-  warmFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--out', feedsOut], { vault: control.vault }) // prettier-ignore
+  warmFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=200', '--out', feedsOut], { vault: control.vault }) // prettier-ignore
 
   // ★ §4.5-③ arm 갱신 — D15 로 `--count` 가 **필수**가 되므로 PU4 가 관측하는 이 arm 이 그것을 실어야
   //   한다. 안 실으면 C4 착륙 즉시 이 arm 이 exit 2(count 누락)가 되어 PU4 의 red 사유가 「조회가 git 을
@@ -111,7 +111,7 @@ beforeAll(async () => {
   //   Task 6 이후에는 **fail-loud 가 실제로 일어나는가**(PU6)의 관측 대상이 된다.
   const cold = seedControlVault()
   tmps.push(cold.vault)
-  coldFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev'], { vault: cold.vault })
+  coldFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: cold.vault })
   coldWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL], { vault: cold.vault }) // prettier-ignore
 }, 420_000)
 
@@ -208,9 +208,13 @@ describe('생성기 결속 0 — 정적 그래프 (PU1 · 🔴RED 미구현)', (
       // ★ 앵커: 폐포가 비어 있지 않고 **살아남는 모듈 2종을 실제로 담는다**.
       //   `helpers/static-import-graph.mjs:50-51` 이 _"읽을 수 없는 파일은 폐쇄에서 조용히 빠진다"_
       //   를 자인하므로, 크기와 실재를 함께 못박지 않으면 부재 단언이 파서 사망과 구분되지 않는다.
+      //   ★ v3 P2 — 앵커 모듈이 `artifact.mjs` → `cli-env.mjs` 로 바뀐다. `feeds.mjs` 의 조회 경로가
+      //   라이브 커서 워크로 교체되면서 **아티팩트를 읽지 않게 됐고**(PU6b) 그 import 가 사라졌기
+      //   때문이다. 이 두 줄은 「폐포 파서가 살아 있다」를 증명하는 앵커이지 그 두 모듈에 대한
+      //   요구가 아니므로, 두 CLI 가 **여전히 공유하는** 모듈로 재조준한다.
       expect(closure.files.length, entry).toBeGreaterThan(1)
-      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'artifact.mjs'))
-      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'payloads.mjs'))
+      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'cli-env.mjs'))
+      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'head-state.mjs'))
 
       expect(closure.files, `${entry} 가 생성기를 정적으로 문다`).not.toContain(generator)
     }
@@ -256,25 +260,36 @@ describe('짝 가드 — 생성 경로는 반대 방향이다 (PU3 · 🟩pair)'
   })
 })
 
-describe('캐시 부재는 fail-loud 다 (PU6 · 🔴RED 미구현)', () => {
-  it('PU6: 아티팩트가 없는 vault 에서 `feeds.mjs`·`wiki.mjs` 가 죽고 stdout 을 흘리지 않는다', () => {
+describe('캐시 부재 — 판정 주체가 갈린다 (PU6 · PU6b · v3 P2 이월)', () => {
+  // ★★ **삭제도 `.skip` 도 아니다 — arm 을 가르고 한쪽 기대를 뒤집는다**(tdd §4.2 · P2 배정).
+  //   「캐시 부재 시 무엇을 할지」의 **판정 주체가 스크립트 → 서버로 옮겨간다**(D21).
+  //   feeds 부재 폴백·summary 부재 fail 의 분기는 **파이프라인 P3** 가 소유한다.
+  //   그래서 여기서는 두 CLI 의 기대가 갈린다:
+  //     · `wiki.mjs`  — 여전히 fail-loud 다(파이프라인 **P4** 까지 참 · 아래 PU6 그대로 유지)
+  //     · `feeds.mjs` — v3 P2 에서 조회가 **라이브 커서 워크**가 되므로 캐시 부재가 실패 사유가
+  //       아니게 된다. 기대를 뒤집어 **PU6b** 로 옮긴다.
+  it('PU6: 아티팩트가 없는 vault 에서 `wiki.mjs` 가 죽고 stdout 을 흘리지 않는다', () => {
     // ★ 이 상태는 **오늘 성립하지 않는다** — 재생성이 먼저라 부재가 관측될 수 없었다. Task 6 이
     //   그 폴백을 끊으면서 「캐시 부재」가 처음으로 실재한다. plan Task 6 은 _"fail-loud throw 는
     //   유지하되 메시지를 바꾼다"_ 로만 적었고 **그것을 무는 케이스가 없었다**.
     // 앵커: 같은 CLI 가 **아티팩트가 있으면 exit 0 이고 파싱 가능한 JSON 을 낸다**(PU4·TR2 의 arm).
-    expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
     expect(hitWiki.exitCode, hitWiki.stderr).toBe(0)
+
+    expect(coldWiki.exitCode, `준비 단계 feeds --out exit=${warmFeeds.exitCode}`).not.toBe(0)
+    expect(coldWiki.stdout).toBe('')
+    // 메시지가 **무엇을 하라는지** 말한다 — "실패했다" 만으로는 사람이 다음 행동을 모른다.
+    expect(coldWiki.stderr).toMatch(/빌드|build/i)
+  })
+
+  it('PU6b: 아티팩트가 없어도 `feeds.mjs` 는 라이브 워크로 exit 0 이고 파싱 가능한 JSON 을 낸다', () => {
+    // 앵커: 아티팩트가 **있는** 실행도 exit 0 + 파싱 가능 JSON 이다(둘이 같은 계산 경로를 탄다).
+    expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
     expect(() => JSON.parse(hitFeeds.stdout)).not.toThrow()
 
-    for (const [name, cold] of [
-      ['feeds.mjs', coldFeeds],
-      ['wiki.mjs', coldWiki],
-    ]) {
-      expect(cold.exitCode, `${name}: 준비 단계 feeds --out exit=${warmFeeds.exitCode}`).not.toBe(0)
-      expect(cold.stdout, name).toBe('')
-      // 메시지가 **무엇을 하라는지** 말한다 — "실패했다" 만으로는 사람이 다음 행동을 모른다.
-      expect(cold.stderr, name).toMatch(/빌드|build/i)
-    }
+    expect(coldFeeds.exitCode, coldFeeds.stderr).toBe(0)
+    expect(() => JSON.parse(coldFeeds.stdout)).not.toThrow()
+    // ★ 앵커: 빈 페이지로 통과하는 것을 배제한다 — 대조 vault 에는 피드가 실재한다.
+    expect(JSON.parse(coldFeeds.stdout).items.length).toBeGreaterThan(0)
   })
 })
 

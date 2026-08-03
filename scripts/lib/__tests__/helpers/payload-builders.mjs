@@ -95,11 +95,16 @@ export function aFeedItem() {
 }
 
 /** wiki_feeds.json 봉투 — 정확히 4키다. */
+/** feeds 페이지 봉투 — v3 P2 부터 **6키**다(`env` · `nextCursor` 가산 · D22·D48). */
 export function aFeeds() {
   return builder(
     {
+      // v3 P2 · D22 — wire 응답과 아티팩트가 같은 형태이고, `env` 가 캐시 최소 검증의 유일한 판별축이다.
+      env: 'dev',
       generatedAt: GENERATED_AT,
       items: [],
+      // v3 P2 · D48 — `null` 은 「히스토리 끝」이며 required 6종에 포함된다.
+      nextCursor: null,
       // v3 P1 · D29(§4.3 ②) — 계약 번호 리셋. 리터럴 유지는 규범 A 다.
       schemaVersion: 1,
       sourceCommit: SOURCE_COMMIT,

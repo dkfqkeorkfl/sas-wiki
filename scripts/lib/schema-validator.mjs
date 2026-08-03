@@ -128,6 +128,23 @@ function validateAgainstSchema(data, rawSchema, errors, fieldPath = '$', root = 
     }
   }
 
+  // `anyOf` — 분기 중 **하나라도** 통과하면 통과다. 각 분기를 **버려지는 오류 버퍼**로 시험하고,
+  //   전부 실패했을 때만 한 줄로 보고한다(분기별 오류를 그대로 흘리면 "정상값인데 오류 N건" 이 된다).
+  //   ★ 이 갈래가 없으면 `anyOf` 를 쓴 필드가 **무검증으로 통과**한다 — 선언은 있는데 거동이 없는
+  //   상태이고, 그것은 스키마 계층의 결속을 조용히 비운다(feeds 의 `nextCursor` 가 그 자리다).
+  if (Array.isArray(schema.anyOf)) {
+    const branchErrors = schema.anyOf.map((branch) => {
+      const probe = []
+      validateAgainstSchema(data, branch, probe, fieldPath, root)
+      return probe
+    })
+    if (!branchErrors.some((probe) => probe.length === 0)) {
+      errors.push(
+        `${fieldPath}: anyOf 분기 어느 것도 만족하지 않는다 — ${branchErrors.flat().join(' / ')}`,
+      )
+    }
+  }
+
   if (schema.allOf) {
     for (const rule of schema.allOf) {
       if (!rule.if) {
