@@ -60,8 +60,9 @@ function makeResolver(index, selfPath) {
  * - ref 가 인덱스에 없다 → `null`
  * - disable 스텁이다 → 아티팩트 스텁을 **그대로** 돌려준다(링크 생존 계약)
  * - active 다 → `readFile(ref)` 로 그 문서 1건만 파싱하고 렌더한다
+ * - active 인데 `readFile` 이 `null` 이다(머리말 파손) → `null`. 없는 문서와 **같은 실패 형태**다
  *
- * @param {{ index: object, readFile: (ref: string) => { body: string, frontmatter: object },
+ * @param {{ index: object, readFile: (ref: string) => { body: string, frontmatter: object } | null,
  *           ref: string, render?: (body: string, resolve: Function) => string }} input
  * @returns {object | null}
  */
@@ -71,6 +72,11 @@ export function projectSingleDoc({ index, readFile, ref, render = renderMarkdown
   if (!index.paths.has(ref)) return null
 
   const parsed = readFile(ref)
+  // 인덱스에는 있으나 디스크에서 파싱이 안 되는 문서 — 빌드 이후 머리말이 사라진 경우다
+  //   (`parse.mjs:169` 가 머리말 없는 파일에 `null` 을 낸다). 이것은 **게이트 추가가 아니라 크래시
+  //   제거**다: 여기서 접지 않으면 `parsed.body` 가 TypeError 로 던져 CLI exit 1 → 라우트 **500** 이
+  //   된다. 없는 문서와 **같은 실패 형태**(`null` → 404)로 접는 것이 등가 복원이다.
+  if (parsed === null) return null
   const body = parsed.body
   const resolver = makeResolver(index, ref)
 
