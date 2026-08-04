@@ -40,7 +40,7 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { artifactPath, feedsArtifactPath, reportPath } from '../lib/artifact.mjs'
+import { feedsArtifactPath, reportPath } from '../lib/artifact.mjs'
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 import { cleanup, initVault } from './helpers/tmp-git-vault.mjs'
 
@@ -139,12 +139,19 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
     expect(documentedArtifactPaths({ lines: block })).toHaveLength(4)
   })
 
-  it('PT1: 문서화된 산출물 경로 == 경로 헬퍼 4종 == 리터럴 (양방향)', () => {
+  it('PT1: 문서화된 산출물 경로 == 경로 헬퍼 3종 + summary 리터럴 == 리터럴 (양방향)', () => {
     // 🔴 왜 지금 red 인가: README 는 env 분리 **이전** 경로를 말한다 — `cache/summary.json`(5회) ·
     //   `logs/summary.report.*`. 실제 계약은 `cache/summary.<env>.json` · **`cache/feeds.<env>.json`**
     //   (신규) · `logs/summary.report.<env>.{json,txt}` 다. GREEN: 원장 ⑭ 의 7지점을 마커 구간으로.
+    //
+    // ★ v3 P4 · D27(tdd §4.3) — **축 교체**. summary 원소는 `artifact.mjs` 의 `artifactPath()` 에서
+    //   왔었으나 그 함수가 **사라졌다**(경로를 파생하던 유일한 프로덕션 호출자 `wiki.mjs` 가
+    //   `--summary` 명시 인자로 바뀌었다). 「코드가 그 경로를 소유한다」는 축은 여기서 사라지고
+    //   **리터럴 조립**(규범 A)으로 대체된다 — 그 자리는 **실행 층**(`PL10` · `summary.artifact.test.mjs`)
+    //   이 진다. ★ README 표(`:62-70`)는 **무변경**이다: 그 경로는 여전히 발행되며
+    //   `package.json` 의 `build`·`build-dev` 가 `--out` 으로 넘긴다.
     const fromCode = [
-      artifactPath('/v', ENV_PLACEHOLDER),
+      path.join('/v', 'cache', `summary.${ENV_PLACEHOLDER}.json`),
       feedsArtifactPath('/v', ENV_PLACEHOLDER),
       reportPath('/v', ENV_PLACEHOLDER, 'json'),
       reportPath('/v', ENV_PLACEHOLDER, 'txt'),
@@ -152,7 +159,7 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
       .map((full) => path.relative('/v', full))
       .sort()
 
-    // 앵커: 코드 쪽 4개가 **서로 다르다**(한 함수가 같은 값을 4번 내는 것을 배제).
+    // 앵커: 4개가 **서로 다르다**(한 함수가 같은 값을 4번 내는 것을 배제).
     expect(unique(fromCode)).toHaveLength(4)
     expect(fromCode).toEqual(EXPECTED_ARTIFACT_PATHS)
 

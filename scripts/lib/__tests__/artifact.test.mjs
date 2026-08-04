@@ -1,8 +1,10 @@
 // @vitest-environment node
 //
-// P4 · Task 3 — 발행 아티팩트 계약: 경로·버전 (D-D) — tdd §3.3 (AR1·AR2·AR5·AR7)
+// P4 · Task 3 — 발행 아티팩트 계약: 경로·버전 (D-D) — tdd §3.3 (AR2·AR5·AR7)
 //
-// RED 사유:
+// ★ v3 P4 · D27 — **AR1 은 삭제됐다**(그 함수가 사라졌다). 사유는 아래 삭제 자리의 주석에 있다.
+//
+// RED 사유(작성 당시):
 //   · AR1·AR5 — **RED(모듈 부재)**. `scripts/lib/artifact.mjs` 가 없다(`artifactPath`·`SCHEMA_VERSION`).
 //   · AR2 — **RED(오늘 리터럴이 소비자 쪽에 있다)**. `summary.mjs:46` 이 `path.join(vaultDir, 'cache',
 //     'summary.json')` 으로 경로를 **직접 조립**한다 → 경로 리터럴의 거처가 생성기다.
@@ -45,32 +47,27 @@ const CACHE_DIR = 'cache'
 /** env 무관 단일 슬롯 시절의 파일명 — 이 리터럴이 `summary.mjs` 에 남아 있으면 D-D (c) 위반이다. */
 const LEGACY_FILENAME = 'summary.json'
 
-/** 경로 계산에만 쓰는 가상 vault 루트(리터럴). 파일시스템을 건드리지 않는다 — 순수 함수다. */
-const VAULT = path.resolve('/tmp', 'wiki-ar-vault')
-
-describe('artifactPath — env 별 경로 파생 (AR1 · 🔴RED 모듈 부재)', () => {
-  it('AR1: dev·prod 가 서로 다른 파일이고 둘 다 vault 의 `cache/` 하위다', () => {
-    // ★ **정확 경로 문자열은 단언하지 않는다** — 파일명은 GREEN 의 재량이다(tdd §3.3). 여기서 무는
-    //   것은 D-G ② 가 요구하는 **성질**이다: 다르다 · 소속이 같다 · 파일명이 env 를 담는다.
-    const dev = artifact().artifactPath(VAULT, 'dev')
-    const prod = artifact().artifactPath(VAULT, 'prod')
-
-    expect(dev).not.toBe(prod)
-    expect(path.dirname(dev)).toBe(path.join(VAULT, CACHE_DIR))
-    expect(path.dirname(prod)).toBe(path.join(VAULT, CACHE_DIR))
-    expect(path.basename(dev)).toContain('dev')
-    expect(path.basename(prod)).toContain('prod')
-  })
-})
+// ★ v3 P4 · D27(tdd §4.3 · 규범 L — 삭제는 GREEN 원자) — **AR1 은 여기서 삭제됐다.**
+//   AR1 은 `artifactPath(vaultDir, env)` 의 env 분리 성질을 물었는데, 그 함수가 사라졌다: summary
+//   아티팩트 좌표는 이제 파생이 아니라 **호출자가 넘기는 `--summary` 인자**다(`wiki.mjs`). 케이스를
+//   남겨 둘 대상 자체가 없으므로 약화가 아니라 소멸이다. 살아남은 두 헬퍼(`feedsArtifactPath` ·
+//   `reportPath`)의 같은 성질은 **PL9**(`__tests__/build.p5-plumbing.test.mjs`)가 정확 형태로 물고,
+//   `cache/summary.<env>.json` 이라는 슬롯 형태는 PL9 의 비충돌 단언과 README `contract:artifacts`
+//   표(`PT1`)가 함께 진다.
 
 describe('artifact 모듈 표면 — 경로·버전만 남는다 (AR5 · 🟩flip)', () => {
-  it('AR5: `artifactPath` 와 `SCHEMA_VERSION` 을 내보내고 제거된 표지 상수는 없다', () => {
+  it('AR5: 살아남은 경로 헬퍼 2종과 `SCHEMA_VERSION` 을 내보내고 제거된 심볼은 없다', () => {
     const module = artifact()
     const removed = ['ARTIFACT_', 'PRO', 'DUCER'].join('')
+    // ★ v3 P4 · D27 — `artifactPath` 는 **표면에서 사라졌다**. 긍정형 열거를 살아남은 것으로
+    //   재조준하고, 사라진 것은 아래 부재 축이 문다(둘이 함께 있어야 「전부 지워도 통과」가 막힌다).
+    const gone = ['artifact', 'Path'].join('')
 
-    expect(typeof module.artifactPath).toBe('function')
+    expect(typeof module.feedsArtifactPath).toBe('function')
+    expect(typeof module.reportPath).toBe('function')
     expect(module.SCHEMA_VERSION).toBe(1)
     expect(module).not.toHaveProperty(removed)
+    expect(module).not.toHaveProperty(gone)
   })
 })
 
@@ -85,7 +82,9 @@ describe('경로 소유권 트립와이어 (AR2 · 🔴RED 리터럴이 생성�
     expect(countLiteral(summarySource, LEGACY_FILENAME)).toBe(0)
 
     // 앵커(규범 B): 소유자 쪽에는 디렉토리 리터럴이 **있다** — "아무 데도 없어서" 통과하는 것을 배제.
-    //   파일명은 env 로 조립되므로(AR1) 리터럴 대조 대신 `artifactPath` 의 반환이 증거다.
+    //   ★ v3 P4 · D27: 예전 주석은 `artifactPath` 의 반환을 증거로 들었으나 그 함수는 사라졌다.
+    //   지금 그 리터럴을 소유하는 것은 살아남은 `feedsArtifactPath`·`reportPath` 이고, 파일명이 env
+    //   로 조립된다는 성질은 **PL9** 가 정확 형태로 문다.
     expect(countLiteral(readFileSync(ARTIFACT_SOURCE, 'utf8'), CACHE_DIR)).toBeGreaterThan(0)
   })
 })

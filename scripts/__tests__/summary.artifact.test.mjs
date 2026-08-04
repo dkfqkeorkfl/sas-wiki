@@ -16,9 +16,10 @@
 // 관측 층(tdd §7.5): 여기서는 **생성기 반환 객체**와 **발행된 파일**만 본다. exit code·stdout 은
 //   `summary.cli-exit.test.mjs`(XC·PC)와 `cli.env-enum.test.mjs`(EV)가 별도로 문다.
 //
-// ★ `artifactPath` 는 **좌표를 얻는 seam** 으로만 쓴다(기대값이 아니다). 정확한 파일명은 GREEN 재량이고
-//   (AR1 이 성질만 문다), 여기서 파일명을 리터럴로 박으면 D-D (c)(경로는 단일 선언에서 파생)를 테스트가
-//   먼저 어기는 꼴이 된다. 대신 **파일 내용**(env 표지·키 집합·버전·스키마)이 전부 리터럴 단언이다.
+// ★ `artifactPathOf` 는 **좌표를 얻는 seam** 으로만 쓴다(기대값이 아니다). 이 파일이 무는 것은
+//   **파일 내용**(env 표지·키 집합·버전·스키마)이고 전부 리터럴 단언이다.
+//   ★ v3 P4 · D27: 그 seam 이 `artifact.mjs` 의 `artifactPath()` 호출에서 **리터럴 조립**으로 바뀌었다
+//   (함수 소멸). 정확 형태의 계약은 **PL9**(`build.p5-plumbing.test.mjs`)가 한 번만 고정한다.
 //
 // ★ 규범 F: 실 vault 를 건드리지 않는다. 억제 엔트리는 tmp git vault 에서만 만든다.
 import { existsSync, readFileSync } from 'node:fs'
@@ -34,9 +35,6 @@ import { seedCleanVault } from './helpers/polluted-vault.mjs'
 // P5 · OQ-P5-1=A — runSummaryGenerator 가 CLI 파일(summary.mjs)에서 lib/generator.mjs 로 이동했다.
 //   경로만 바뀐다(§4 원장 ⑬) — 단언·시그니처는 무변경이다.
 const loadedSummary = await import(new URL('../lib/generator.mjs', import.meta.url).href)
-const loadedArtifact = await import(new URL('../lib/artifact.mjs', import.meta.url).href).catch(
-  (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
-)
 
 async function generate(options) {
   if (typeof loadedSummary.runSummaryGenerator !== 'function') {
@@ -49,17 +47,17 @@ async function generate(options) {
   return await loadedSummary.runSummaryGenerator({ ...options, artifactPath, env })
 }
 
-/** 발행 파일의 **좌표**만 얻는다 — 기대값이 아니다(위 헤더 주석 참조). */
+/**
+ * 발행 파일의 **좌표**만 얻는다 — 기대값이 아니다(위 헤더 주석 참조).
+ *
+ * ★ v3 P4 · D27(tdd §4.3) — 예전에는 `artifact.mjs` 의 `artifactPath()` 를 seam 으로 불렀으나 그
+ * 함수가 사라졌다(summary 좌표는 이제 `--summary`/`--out` 을 넘기는 **호출자**가 소유한다).
+ * **리터럴 조립으로 되돌리는 것이 오히려 리포 관례와 일치한다** — `summary.cli-exit.test.mjs:95` ·
+ * `summary.generator.test.mjs:108` 이 축자로 _"리터럴 조립이다(규범 A) — `artifact.mjs` 의
+ * `artifactPath` 를 import 하면 …"_ 라 적고 있다. 약화가 아니라 **관례 복귀**다.
+ */
 function artifactPathOf(vaultDir, env) {
-  if (loadedArtifact.__loadError !== undefined) {
-    throw new Error(
-      `[RED] scripts/lib/artifact.mjs 가 아직 없다 (P4 Task 3 미구현): ${loadedArtifact.__loadError}`,
-    )
-  }
-  if (typeof loadedArtifact.artifactPath !== 'function') {
-    throw new Error('[RED] artifact.mjs 에 artifactPath export 가 아직 없다')
-  }
-  return loadedArtifact.artifactPath(vaultDir, env)
+  return path.join(vaultDir, 'cache', `summary.${env}.json`)
 }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))

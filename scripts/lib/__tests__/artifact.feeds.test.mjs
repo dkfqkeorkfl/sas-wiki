@@ -56,7 +56,11 @@ describe('feeds 아티팩트 경로 — summary 와 다른 슬롯 (FA1 · 🔴RE
     expect(path.basename(prod)).toContain('prod')
 
     // ★ 이 절이 핵심이다 — 같은 파일에 쓰면 두 산출물이 서로를 덮어쓴다(그러면 3중 신선도가 무의미).
-    expect(dev).not.toBe(artifactModule.artifactPath('/v', 'dev'))
-    expect(prod).not.toBe(artifactModule.artifactPath('/v', 'prod'))
+    // ★ v3 P4 · D27(tdd §4.3) — 대조항의 **축을 교체**한다. 예전에는 `artifactModule.artifactPath()`
+    //   반환과 비교했으나 그 함수가 사라졌다(summary 경로는 이제 `--summary` 인자가 소유한다).
+    //   대조 대상은 **summary 슬롯 그 자체**이지 그것을 만들던 함수가 아니므로, 규범 A 대로
+    //   **리터럴 조립**으로 바꾼다 — 주제(두 슬롯이 다른 파일이다)는 그대로다.
+    expect(dev).not.toBe(path.join('/v', 'cache', 'summary.dev.json'))
+    expect(prod).not.toBe(path.join('/v', 'cache', 'summary.prod.json'))
   })
 })

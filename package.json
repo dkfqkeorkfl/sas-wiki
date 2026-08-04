@@ -11,7 +11,7 @@
     "validate": "node scripts/validate.mjs --env dev",
     "summary": "node scripts/summary.mjs",
     "feeds": "node scripts/feeds.mjs --count 40",
-    "wiki": "node scripts/wiki.mjs",
+    "wiki": "node scripts/wiki.mjs --summary cache/summary.prod.json",
     "build": "node scripts/validate.mjs --env prod --report logs && node scripts/summary.mjs --env prod --out cache/summary.prod.json && node scripts/feeds.mjs --env prod --count 200 --ignore ignore-feeds.json --out cache/feeds.prod.json",
     "build-dev": "node scripts/validate.mjs --env dev --report logs && node scripts/summary.mjs --env dev --out cache/summary.dev.json && node scripts/feeds.mjs --env dev --count 200 --ignore ignore-feeds.json --out cache/feeds.dev.json",
     "test": "vitest run",

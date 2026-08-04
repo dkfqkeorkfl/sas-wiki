@@ -15,21 +15,12 @@ import { SCHEMA_VERSION } from './payloads.mjs'
 
 export { SCHEMA_VERSION }
 
-/**
- * 발행 아티팩트의 경로 — **env 별로 갈린다**.
- *
- * env 무관 단일 슬롯이던 시절에는 dev·prod 를 교대로 실행할 때마다 서로를 무효화했다(둘 다 매번
- * 충돌). 파일을 가르면 그 상호 덮어쓰기가 사라지고, 파일 안의 `env` 표지(D22)와 함께 경로·내용
- * **두 층**이 환경 교차를 잡는다.
- *
- * @param {string} vaultDir vault 리포 루트
- * @param {'dev'|'prod'} env
- * @returns {string} 절대 경로
- */
-export function artifactPath(vaultDir, env) {
-  return path.join(path.resolve(vaultDir), 'cache', `summary.${env}.json`)
-}
-
+// ★ v3 P4 · D27 — `artifactPath(vaultDir, env)` 는 **여기서 사라졌다**. summary 아티팩트 경로를
+//   파생하던 유일한 프로덕션 호출자는 `wiki.mjs:39`·`:44` 였고, 그 자리는 이제 **호출자가 명시하는
+//   `--summary` 인자**가 소유한다(나머지 3 CLI 의 `--out`·`--report` 와 같은 형태). 발행 측은 인자로
+//   받은 경로에 쓰므로(`package.json` 의 `--out cache/summary.<env>.json`) 파생 함수가 남을 자리가 없다.
+//   ★ `cache/summary.<env>.json` 이라는 **형태 자체**는 계약으로 남아 있다 — 그 고정은 PL9
+//   (`build.p5-plumbing.test.mjs`)와 README `contract:artifacts` 표가 진다.
 /**
  * 내부 feeds 아티팩트의 경로 — **summary 와 다른 파일**이다(D-C). 같은 파일에 쓰면 두 발행물이
  * 서로를 덮어쓴다. `cache/` 하위라는 자리는 같다 — 원자 쓰기 규율

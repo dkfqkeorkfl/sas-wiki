@@ -106,19 +106,26 @@ describe('feeds.mjs CLI smoke', () => {
 })
 
 describe('wiki.mjs CLI smoke', () => {
+  // ★ v3 P4 · D27(§4.1 arm 갱신) — `--summary` 가 **필수**가 됐다. `feeds` 가 D15 때 `--count` 로
+  //   받은 것과 같은 형태의 arm 이다: 안 실으면 세 케이스가 전부 exit 2(stdout 침묵) → `JSON.parse('')`
+  //   로 죽어 사유가 「배선이 틀렸다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P).
+  //   **이 케이스들이 무는 것은 CLI 배선이지 인자 개수가 아니다.**
+  //   ★ 상대 경로를 준다 — `--vault` 기본값(REPO_ROOT) 파생을 무는 세 번째 케이스가 그 해석에 걸린다.
+  const REL_SUMMARY_DEV = 'cache/summary.dev.json'
+
   it('wiki --path → 그 문서 1건(path 미러)', async () => {
     const json = JSON.parse(
-      await run(wikiMain, ['--vault', vault, '--env', 'dev', '--path', 'company/삼성']),
+      await run(wikiMain, ['--vault', vault, '--env', 'dev', '--path', 'company/삼성', '--summary', REL_SUMMARY_DEV]), // prettier-ignore
     )
 
     expect(json.path).toBe('company/삼성')
   })
 
   it('wiki 없는 path → null', async () => {
-    expect(JSON.parse(await run(wikiMain, ['--vault', vault, '--env', 'dev', '--path', 'none/x']))).toBeNull() // prettier-ignore
+    expect(JSON.parse(await run(wikiMain, ['--vault', vault, '--env', 'dev', '--path', 'none/x', '--summary', REL_SUMMARY_DEV]))).toBeNull() // prettier-ignore
   })
 
   it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
-    expect(JSON.parse(await run(wikiMain, ['--env', 'dev', '--path', 'no/such']))).toBeNull()
+    expect(JSON.parse(await run(wikiMain, ['--env', 'dev', '--path', 'no/such', '--summary', REL_SUMMARY_DEV]))).toBeNull() // prettier-ignore
   })
 })

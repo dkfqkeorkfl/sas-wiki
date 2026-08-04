@@ -246,12 +246,19 @@ node scripts/feeds.mjs --env dev --count 2 --after 4eb6ee1c9d6b
 
 ```bash
 node scripts/wiki.mjs [--vault <dir>] [--env dev|prod] --path <경로>
+                      --summary <file>
 ```
+
+| 플래그      | 기본값   | 의미                                                                              |
+| ----------- | -------- | --------------------------------------------------------------------------------- |
+| `--summary` | **필수** | summary 아티팩트 경로. 누락이면 [exit 2](#종료-코드) · 상대 경로는 `--vault` 기준 |
 
 `--path` 는 `breadcrumb.join('/')` 형태다 — 확장자도, `wiki/` 접두사도 붙이지 않는다.
 
+`--summary` 에 기본값이 없는 것은 의도다. 나머지 3 CLI 가 전부 경로를 명시 인자로 받는데(`summary --out` · `feeds --out` · `validate --report`) wiki 만 경로를 스스로 유추하면, 그 파생을 호출자마다 복제해야 하고 두 벌이 갈리는 순간 조용히 어긋난다.
+
 ```bash
-node scripts/wiki.mjs --env dev --path 'company/삼성전자'
+node scripts/wiki.mjs --env dev --path 'company/삼성전자' --summary cache/summary.dev.json
 ```
 
 ### validate

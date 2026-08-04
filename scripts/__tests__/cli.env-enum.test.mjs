@@ -47,6 +47,17 @@ const TYPO_ENV = 'Dev'
 /** 종료코드 — `argparse`/`clap` 관례(사용법 오류 = 2). 리터럴이다. */
 const EXIT_ENUM_ERROR = 2
 
+/**
+ * summary 아티팩트 절대 경로 — **리터럴 조립**(규범 A). `artifact.mjs` 에서 import 하지 않는다.
+ *
+ * ★★ v3 P4 · §4.1 arm 갱신(D27) — `wiki.mjs --summary` 가 **필수**가 되므로 wiki arm 이 그것을
+ * 실어야 한다. 안 실으면 이 파일의 wiki 케이스들이 **엉뚱한 사유로** 판정된다("env 오타를 잡았다" 가
+ * 아니라 "summary 가 없어서 죽었다" · EV4·EV6 은 아예 exit 2 로 뒤집힌다).
+ * **이 케이스들이 무는 것은 env 열거이지 인자 개수가 아니다** — D15(`--count` 필수화) 때 남긴
+ * `:98-103`·`:125-127`·`:156-158` 의 사유와 같은 형태다.
+ */
+const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
+
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
@@ -112,7 +123,11 @@ describe('열거 오타는 즉시 비정상 종료한다 (EV1·EV2·EV7 · 🔴R
   it('EV2: `wiki.mjs --env Dev` → exit 2 (두 CLI 를 **각각** 문다)', () => {
     // 하나만 고치는 구현을 배제한다 — CX17 이 정확히 그 변이(`feeds` 만 되돌림)를 넣어 EV1 만 red 가
     //   되는지 확인한다.
-    const result = runCli(WIKI, ['--vault', VAULT, '--env', TYPO_ENV])
+    // ★★ v3 P4 · §4.1 arm 갱신(D27) — `--summary` 를 싣는다. **이 케이스가 무는 것은 env 열거이지
+    //   인자 개수가 아니다**: 안 실으면 「summary 미지정」도 같은 exit 2 라 사유가 조용히 뒤바뀐다.
+    //   ★ 검증 순서 계약(env 먼저)상 여기 실린 경로가 읽히는 일은 없다 — 유효 경로를 주는 것은
+    //     「경로가 나빠서 죽었다」는 대안 사유까지 배제하기 위해서다.
+    const result = runCli(WIKI, ['--vault', VAULT, '--env', TYPO_ENV, '--summary', summaryFile(VAULT, 'dev')]) // prettier-ignore
 
     expect(result.status).toBe(EXIT_ENUM_ERROR)
     expect(result.stderr).toContain('dev')
@@ -138,7 +153,10 @@ describe('세 CLI 의 문구가 하나다 (EV5 · 🔴RED)', () => {
     //   반대로 문구를 상수로 뽑아 import 하면 그 순간 자기참조가 된다.
     const summary = runCli(SUMMARY, ['--vault', VAULT, '--env', TYPO_ENV])
     const feeds = runCli(FEEDS, ['--vault', VAULT, '--env', TYPO_ENV])
-    const wiki = runCli(WIKI, ['--vault', VAULT, '--env', TYPO_ENV])
+    // ★★ v3 P4 · §4.1 arm 갱신(D27) — wiki arm 에만 `--summary` 를 싣는다. 이 케이스가 무는 것은
+    //   **세 CLI 의 문구 동일성**이지 인자 개수가 아니다. 안 실으면 wiki 만 다른 사유(summary 미지정)
+    //   문구를 내 세 문구가 다르다는 결론이 나는데, 그것은 이 케이스가 겨냥한 결함이 아니다.
+    const wiki = runCli(WIKI, ['--vault', VAULT, '--env', TYPO_ENV, '--summary', summaryFile(VAULT, 'dev')]) // prettier-ignore
 
     // 앵커: 기준이 되는 `summary` 의 문구가 **비어 있지 않고** 오타값을 되비춘다 — 셋 다 빈 stderr 라
     //   서로 "같은" 것이 되는 공허 통과를 배제한다.
@@ -163,7 +181,11 @@ describe('정상값을 막지 않는다 (EV3·EV4 · 🟢pair)', () => {
   })
 
   it.each(['dev', 'prod'])('EV4: `wiki.mjs --env %s` → exit 0 · 파싱 가능한 JSON', (env) => {
-    const result = runCli(WIKI, ['--vault', VAULT, '--env', env, '--path', ACTIVE_REF])
+    // ★★ v3 P4 · §4.1 arm 갱신(D27): EV4 의 **주제**(_"정상값을 막지 않는다"_ · pair)는 살아 있다.
+    //   죽는 것은 _"`wiki.mjs --env dev --path X` 만으로 exit 0"_ 이라는 **arm 의 전제**다 —
+    //   **`--summary` 가 필수가 됐다. 이 케이스가 무는 것은 env 열거이지 인자 개수가 아니다.**
+    //   ★ env 별로 **짝이 맞는** 아티팩트를 준다 — 엇갈리면 `env-mismatch` 로 stale 이 되어 exit 1 이다.
+    const result = runCli(WIKI, ['--vault', VAULT, '--env', env, '--path', ACTIVE_REF, '--summary', summaryFile(VAULT, env)]) // prettier-ignore
 
     expect(result.status).toBe(0)
     expect(JSON.parse(result.stdout).path).toBe(ACTIVE_REF)
@@ -190,9 +212,13 @@ describe('미지정은 여전히 fail-closed(prod) 다 (EV6 · 🟢pin)', () => 
       expect([bare.status, prod.status, dev.status]).toEqual([0, 0, 0])
       // ★★ v3 P2 · §4.2 arm 갱신 — **이 한 줄만** 바뀐다. EV6 의 주제(_"미지정은 여전히
       //   fail-closed(prod)"_)는 그대로다: `--env` 는 계속 안 준다. D15 로 필수가 된 `--count` 만 싣는다.
-      //   ★ 위 `SUMMARY` 3벌과 아래 `WIKI` arm 은 **무변경**이다 — 그 둘에 `--count` 는 없는 인자다.
+      //   ★ 위 `SUMMARY` 3벌은 **무변경**이다 — 거기에 `--count`·`--summary` 는 없는 인자다.
       expect(runCli(FEEDS, ['--vault', VAULT, '--count=5']).status).toBe(0)
-      expect(runCli(WIKI, ['--vault', VAULT, '--path', ACTIVE_REF]).status).toBe(0)
+      // ★★ v3 P4 · §4.1 arm 갱신(D27) — wiki arm 도 같은 사유로 한 줄만 바뀐다. EV6 의 주제
+      //   (_"`--env` 미지정은 여전히 fail-closed(prod)"_)는 그대로다: `--env` 는 계속 안 준다.
+      //   필수가 된 `--summary` 만 싣는다 — 그리고 **prod 아티팩트**를 준다(미지정 = prod 이므로
+      //   dev 를 주면 `env-mismatch` 로 exit 1 이 되어 사유가 뒤바뀐다).
+      expect(runCli(WIKI, ['--vault', VAULT, '--path', ACTIVE_REF, '--summary', summaryFile(VAULT, 'prod')]).status).toBe(0) // prettier-ignore
 
       const idsOf = (result) => JSON.parse(result.stdout).docs.map((doc) => doc.id).toSorted() // prettier-ignore
 

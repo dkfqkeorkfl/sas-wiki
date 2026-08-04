@@ -135,7 +135,11 @@ const C1_CASES = [
   // ★ v3 P2 · D15(§4.5-③ arm 갱신) — `--count` 는 CLI 필수다. 안 실으면 이 arm 의 red 사유가
   //   「기본 vault 파생이 틀렸다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P).
   { assert: (p) => expect(Array.isArray(p.items)).toBe(true), args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS }, // prettier-ignore
-  { assert: (p) => expect(p).toBeNull(), args: ['--env', 'dev', '--path', 'no/such'], name: 'wiki', script: WIKI }, // prettier-ignore
+  // ★ v3 P4 · D27(§4.1 arm 갱신) — `--summary` 는 CLI 필수다. 안 실으면 이 arm 의 사유가
+  //   「기본 vault 파생이 틀렸다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P · 위 feeds 와 같다).
+  //   ★ **상대 경로**를 준다 — 그래야 `--vault` 기본값(REPO_ROOT) 파생이 이 arm 의 판정에 계속 걸린다
+  //     (기본값이 틀리면 아티팩트를 못 읽어 exit 1 이다). 이 케이스가 무는 것은 기본 vault 파생이다.
+  { assert: (p) => expect(p).toBeNull(), args: ['--env', 'dev', '--path', 'no/such', '--summary', 'cache/summary.dev.json'], name: 'wiki', script: WIKI }, // prettier-ignore
 ]
 
 describe('C1 — 기본 vault(REPO_ROOT) · --vault 생략 (RED 단계 회귀 가드)', () => {
@@ -197,7 +201,8 @@ const C4A_CASES = [
   { args: ['--env', 'dev'], name: 'summary', script: SUMMARY },
   // ★ v3 P2 · D15(§4.5-③ arm 갱신) — 같은 사유. 이 케이스가 무는 것은 stdout 순수성이지 인자 개수가 아니다.
   { args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS },
-  { args: ['--env', 'dev'], name: 'wiki', script: WIKI },
+  // ★ v3 P4 · D27(§4.1 arm 갱신) — 같은 사유. 이 케이스가 무는 것은 stdout 순수성이지 인자 개수가 아니다.
+  { args: ['--env', 'dev', '--summary', 'cache/summary.dev.json'], name: 'wiki', script: WIKI },
 ]
 
 describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)', () => {

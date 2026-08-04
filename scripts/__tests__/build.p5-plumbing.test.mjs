@@ -73,9 +73,13 @@ describe('경로 정확 형태 고정 (PL9)', () => {
       path.join(vault, 'logs', 'summary.report.prod.txt'),
     )
     // 기존 슬롯은 그대로다 — 새 산출물이 옛 것을 덮어쓰지 않는다.
-    expect(artifactModule.artifactPath(vault, 'dev')).toBe(
-      path.join(vault, 'cache', 'summary.dev.json'),
-    )
+    // ★ v3 P4 · D27(tdd §4.3) — **축 교체**. 예전에는 `artifactModule.artifactPath(vault,'dev')` 의
+    //   반환을 리터럴과 대조했으나 그 함수가 사라졌다(summary 좌표는 이제 `--summary` 를 넘기는
+    //   **호출자**가 소유한다). 이 줄이 원래 무는 것은 「새 산출물이 summary 슬롯을 덮어쓰지
+    //   않는다」였고, 그 주장은 함수 없이 **리터럴 조립**(규범 A)만으로 그대로 선다.
+    const summarySlot = path.join(vault, 'cache', 'summary.dev.json')
+    expect(artifactModule.feedsArtifactPath(vault, 'dev')).not.toBe(summarySlot)
+    expect(artifactModule.reportPath(vault, 'dev', 'json')).not.toBe(summarySlot)
   })
 })
 

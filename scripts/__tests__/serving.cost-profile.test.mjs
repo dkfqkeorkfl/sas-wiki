@@ -103,16 +103,23 @@ beforeAll(async () => {
   //   안 부른다」에서 「인자가 모자란다」로 조용히 바뀐다 — 규범 P 가 막으려는 사유 뒤바뀜이다.
   //   오늘은 `--count` 가 옵셔널이라 이 한 줄이 **현재 판정을 바꾸지 않는다**(피드 2건 < 5).
   hitFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: control.vault })
-  hitWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL], {
-    vault: control.vault,
-  })
+  // ★★ v3 P4 · §4.1 arm 갱신(D27) — `wiki.mjs --summary` 가 **필수**가 되므로 PU5 가 관측하는 이
+  //   arm 이 그것을 실어야 한다. 안 실으면 C4 착륙 즉시 exit 2(summary 누락)가 되어 PU5 의 사유가
+  //   「히트 경로가 git 을 안 부른다」에서 「인자가 모자란다」로 조용히 바뀐다 —
+  //   **이 케이스가 무는 것은 git 호출 프로파일이지 인자 개수가 아니다.**
+  //   ★ 위 `summaryOut` 이 바로 그 파일이다(warm 실행이 방금 발행했다) — 히트 arm 이므로 **실재**한다.
+  hitWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL, '--summary', summaryOut], { vault: control.vault }) // prettier-ignore
 
   // 콜드 arm — 아티팩트가 **없는** vault. 오늘은 "재생성 경로가 무엇을 하는가" 의 대조군이고,
   //   Task 6 이후에는 **fail-loud 가 실제로 일어나는가**(PU6)의 관측 대상이 된다.
   const cold = seedControlVault()
   tmps.push(cold.vault)
   coldFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: cold.vault })
-  coldWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL], { vault: cold.vault }) // prettier-ignore
+  // ★★ v3 P4 · §4.1 arm 갱신(D27) — 여기서는 **반드시 「부재 경로」를 명시**한다. 유효 경로를 주면
+  //   PU6 가 무는 사유가 「아티팩트 부재(exit 1 · 「빌드」 어휘)」에서 「인자 미지정(exit 2)」으로
+  //   **뒤바뀐다** — `not.toBe(0)` 이라 숫자로는 구분되지 않아 조용히 통과한다. 이 vault 에는
+  //   `cache/` 산출물이 하나도 없으므로 아래 경로는 **실제로 없는 파일**이다(리터럴 조립 · 규범 A).
+  coldWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL, '--summary', path.join(cold.vault, 'cache', 'summary.dev.json')], { vault: cold.vault }) // prettier-ignore
 }, 420_000)
 
 const countUrls = (observation, fragment) =>

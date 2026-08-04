@@ -442,7 +442,10 @@ describe('중복 id vault 가 서빙을 죽이지 않는다 (PC4 · 🔴RED(flip
       await prebuildArtifacts(vault, 'dev')
 
       const summaryResult = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
-      const wikiResult = runCli(WIKI, ['--vault', vault, '--env', 'dev', '--path', 'company/정상'])
+      // ★ v3 P4 · D27(§4.1 arm 갱신) — `--summary` 가 필수다. 안 실으면 exit 2 가 되어 이 케이스의
+      //   사유가 「중복 id 가 서빙을 죽인다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P).
+      //   경로는 **리터럴 조립**이다(규범 A · 이 파일 `:95` 주석의 관례).
+      const wikiResult = runCli(WIKI, ['--vault', vault, '--env', 'dev', '--path', 'company/정상', '--summary', path.join(vault, 'cache', 'summary.dev.json')]) // prettier-ignore
 
       expect(summaryResult.status, summaryResult.stderr).toBe(0)
       expect(wikiResult.status, wikiResult.stderr).toBe(0)
