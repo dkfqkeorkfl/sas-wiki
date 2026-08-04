@@ -21,12 +21,13 @@
 //
 // 규범 A: 경로·id·마커·키 집합은 **리터럴**이다. 규범 B: 부재 단언마다 짝(이웃·정상 아티팩트)을 둔다.
 // 규범 C10: `rejects` 앞에 seam 가드. 규범 F: 실 vault 를 건드리지 않는다.
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { parseMarkdownFile } from '../lib/parse.mjs'
 import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
@@ -62,6 +63,13 @@ const REL_HBM_B = 'b/HBM'
 
 const MARKER_MAIN = '삼성본문마커'
 const MARKER_NEIGHBOR = '하이닉스본문마커'
+/** v3 P4 · LIVE-1 — 빌드 **후에** 본문에 심는 마커. 전후를 가르는 것은 벽시계가 아니라 쓰기 순서다(규범 E). */
+const LIVE_MARKER = '빌드후추가마커'
+
+/** vault 안 문서 루트 — **리터럴**이다(규범 A). `head-state.mjs` 의 `WIKI_PREFIX` 를 import 하면 자기참조다. */
+const WIKI_ROOT = 'wiki'
+/** `<vault>/wiki/<ref>.md` — `wiki.mjs:50` 과 같은 조립식이되 **리터럴**로 세운다(규범 A). */
+const docFile = (vault, ref) => path.join(vault, WIKI_ROOT, `${ref}.md`)
 
 /** active 응답 계약 — **정확 7키**(리터럴). disable 스텁 4키와 뭉개지지 않는다. */
 const ACTIVE_KEYS = ['breadcrumb', 'headings', 'html', 'meta', 'path', 'sources', 'status']
@@ -91,6 +99,20 @@ function singleDoc() {
   }
   return singleDocModule
 }
+
+/**
+ * ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
+ *
+ * 이 파일의 케이스들이 무는 것은 **엔드포인트 반환 계약**(7키/4키/null·격리·링크 해석)이지 인자
+ * 개수가 아니다. 그래서 주제는 그대로 두고 **호출 인자만** 갱신한다 — D15 로 `--count` 가 필수가
+ * 됐을 때 `cli.env-enum.test.mjs:98-103` 이 남긴 처분과 같은 형태다.
+ *
+ * ★ 오늘도 green 이다: JS 는 여분 위치 인자를 무시하므로 판정이 변하지 않는다. 그래서 이 arm 은
+ *   RED 커밋(C1)에 미리 실을 수 있다(tdd §5.2 — CLI arm 은 반대로 실을 수 없다).
+ *
+ * 규범 D: 헬퍼에 `expect` 를 두지 않는다 — 값만 돌려준다.
+ */
+const askWiki = (vault, env, ref) => wikiFn()(vault, env, ref, summaryFile(vault, env))
 
 /**
  * 세계관 — active 5 + disable 1.
@@ -130,10 +152,9 @@ const anchorOf = (html, label) =>
 describe('wiki 는 async 이고 순수부는 lib/single-doc.mjs 다 (WK1 · 🔴RED 모듈·async 부재)', () => {
   it('WK1: `wiki()` 가 Promise 를 돌려주고 `single-doc.mjs` 의 두 export 가 함수다', async () => {
     const vault = seedWorld()
-    const wiki = wikiFn()
     await prebuildArtifacts(vault, 'dev')
 
-    const returned = wiki(vault, 'dev', REL_MAIN)
+    const returned = askWiki(vault, 'dev', REL_MAIN)
     expect(returned).toBeInstanceOf(Promise)
     await expect(returned).resolves.toBeDefined()
 
@@ -146,10 +167,9 @@ describe('wiki 는 async 이고 순수부는 lib/single-doc.mjs 다 (WK1 · 🔴
 describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () => {
   it('WK2: active 문서 → **정확 7키** · 자기 마커 있고 이웃 마커 없다', async () => {
     const vault = seedWorld()
-    const wiki = wikiFn()
     await prebuildArtifacts(vault, 'dev')
 
-    const doc = await wiki(vault, 'dev', REL_MAIN)
+    const doc = await askWiki(vault, 'dev', REL_MAIN)
 
     expect(Object.keys(doc).toSorted()).toEqual(ACTIVE_KEYS)
     expect(doc.path).toBe(REL_MAIN)
@@ -157,21 +177,20 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
     expect(doc.html).not.toContain(MARKER_NEIGHBOR)
 
     // 앵커: 이웃을 조회하면 **그 마커가 나온다**(마커가 애초에 없어서 통과하는 것을 배제).
-    expect((await wiki(vault, 'dev', REL_NEIGHBOR)).html).toContain(MARKER_NEIGHBOR)
+    expect((await askWiki(vault, 'dev', REL_NEIGHBOR)).html).toContain(MARKER_NEIGHBOR)
   })
 
   it('WK3: disable 문서 → 아티팩트 **스텁 4키 그대로**', async () => {
     // 링크 생존 계약이다 — 다른 문서가 `[[폐업기업]]` 으로 걸어도 데드가 되지 않는다.
     const vault = seedWorld()
-    const wiki = wikiFn()
     await prebuildArtifacts(vault, 'dev')
 
-    const stub = await wiki(vault, 'dev', REL_DISABLE)
+    const stub = await askWiki(vault, 'dev', REL_DISABLE)
 
     expect(Object.keys(stub).toSorted()).toEqual(DISABLE_STUB_KEYS)
     expect(stub.status).toBe('disable')
     // 앵커: active 는 7키다(둘이 같은 모양으로 뭉개지지 않는다).
-    expect(Object.keys(await wiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
+    expect(Object.keys(await askWiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 
   it('WK4: 없는 path → `null`(빈 객체가 아니다)', async () => {
@@ -180,7 +199,7 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
 
-    expect(await wikiFn()(vault, 'dev', '없는/경로')).toBeNull()
+    expect(await askWiki(vault, 'dev', '없는/경로')).toBeNull()
   })
 })
 
@@ -189,7 +208,7 @@ describe('위키링크 해석 동치 (WK5·WK6 · 🟢계약 보존 pin · CX-O)
     // 앵커가 케이스 안에 있다 — 한쪽만 두면 "전부 dead"·"전부 alive" 구현이 통과한다.
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
-    const html = (await wikiFn()(vault, 'dev', REL_MAIN)).html
+    const html = (await askWiki(vault, 'dev', REL_MAIN)).html
 
     expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
     expect(anchorOf(html, '없는문서')).toContain(DEAD_CLASS)
@@ -199,7 +218,7 @@ describe('위키링크 해석 동치 (WK5·WK6 · 🟢계약 보존 pin · CX-O)
     // plan Task 4 GOTCHA · B9 — 실 vault 에 동명 basename 이 0건이라 **픽스처가 없으면 공허**하다.
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
-    const html = (await wikiFn()(vault, 'dev', REL_MAIN)).html
+    const html = (await askWiki(vault, 'dev', REL_MAIN)).html
 
     expect(anchorOf(html, 'HBM')).toContain(DEAD_CLASS)
     expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
@@ -240,15 +259,14 @@ describe('단건 투영은 전 문서 파생을 타지 않는다 (WK8 · 🔴RED
 describe('아티팩트 읽기 백스톱 (WK9 · 🔴RED 경로 부재)', () => {
   it('WK9: 사전 빌드된 아티팩트는 읽고, 부재 아티팩트는 **reject** 한다', async () => {
     const vault = seedWorld()
-    const wiki = wikiFn()
     await prebuildArtifacts(vault, 'dev')
 
     // 앵커: 정상 히트는 resolve 하고 본문이 있다.
-    expect((await wiki(vault, 'dev', REL_MAIN)).html).toContain(MARKER_MAIN)
+    expect((await askWiki(vault, 'dev', REL_MAIN)).html).toContain(MARKER_MAIN)
 
     // 아티팩트 부재는 fail-loud 다. 조회 경로가 생성기를 되살려 통과하면 안 된다.
     rmSync(summaryFile(vault, 'dev'), { force: true })
-    const returned = wiki(vault, 'dev', REL_MAIN)
+    const returned = askWiki(vault, 'dev', REL_MAIN)
     expect(returned).toBeInstanceOf(Promise) // 규범 C10
     await expect(returned).rejects.toThrow()
   })
@@ -259,18 +277,113 @@ describe('빈 아티팩트 가드 (WK10 · 🔴RED 경로 부재)', () => {
     // ★ plan 비공허성 요구 ①. **프로덕션 가드로 만들지 않는다** — 실 vault `prod` 는 `docs=0` 이
     //   정상이므로 "빈 아티팩트 = 이상" 은 거짓 명제다. 앵커 의무는 **테스트가** 진다.
     const vault = seedWorld()
-    const wiki = wikiFn()
     await prebuildArtifacts(vault, 'dev')
 
     const file = summaryFile(vault, 'dev')
     const healthy = readFileSync(file, 'utf8')
 
     // 앵커: 같은 vault·같은 path 가 정상 아티팩트에서는 **문서를 돌려준다**.
-    expect(await wiki(vault, 'dev', REL_MAIN)).not.toBeNull()
+    expect(await askWiki(vault, 'dev', REL_MAIN)).not.toBeNull()
 
     // 봉투는 그대로 두고 `docs` 만 비운다 → 독자에게는 **신선한** 아티팩트다.
     writeFileSync(file, JSON.stringify({ ...JSON.parse(healthy), docs: [], tags: {}, tree: [] }))
 
-    expect(await wiki(vault, 'dev', REL_MAIN)).toBeNull()
+    expect(await askWiki(vault, 'dev', REL_MAIN)).toBeNull()
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v3 P4 · wiki-live — 파싱 `null` 크래시 제거(PN) + 3층 순서·라이브 본문 회귀 앵커(STUB·LIVE)
+//
+// ★ 이것은 **게이트 추가가 아니라 크래시 제거**다(D46 미발동). 새 검사를 넣는 것이 아니라
+//   `parse.mjs:169` 가 이미 내는 `null` 을 `projectSingleDoc` 이 **받아 주는** 것이다.
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('머리말 없는 파일은 크래시가 아니라 부재다 (PN-1 · 🔴RED 오늘 TypeError)', () => {
+  it('PN-1: `projectSingleDoc` 은 `readFile` 이 `null` 이면 `null` 을 돌려준다', async () => {
+    // 순수층이다 — 프로세스도 파일 삭제도 없다. 오늘 `single-doc.mjs:74` 가 `parsed.body` 에서
+    //   `TypeError: Cannot read properties of null` 로 던진다. GREEN 은 `:73` 뒤 **1줄**이다.
+    const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
+    const mod = singleDoc()
+    const index = mod.makeDocIndex(readJson(summaryFile(vault, 'dev')).docs)
+
+    // 앵커(케이스 내): **같은 index·같은 ref** 에 실제 파서를 주면 정확 7키가 나온다 →
+    //   "그 ref 가 애초에 인덱스에 없어서 null" 이라는 공허 통과를 배제한다.
+    const parsedReal = mod.projectSingleDoc({
+      index,
+      readFile: (docRef) => parseMarkdownFile(docFile(vault, docRef)),
+      ref: REL_MAIN,
+    })
+    expect(Object.keys(parsedReal).toSorted()).toEqual(ACTIVE_KEYS)
+
+    expect(mod.projectSingleDoc({ index, readFile: () => null, ref: REL_MAIN })).toBeNull()
+  })
+})
+
+describe('빌드 후 머리말이 사라져도 500 이 아니다 (PN-2 · 🔴RED 오늘 rejects)', () => {
+  it('PN-2: 인덱스에 있으나 머리말이 없는 문서를 요청하면 `null` 로 **resolve** 한다', async () => {
+    const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
+
+    // ★ Arrange 자기모순 점검: **재빌드·커밋 금지**가 이 케이스의 전제다. 재빌드하면 그 문서가
+    //   인덱스에서 빠져 「게이트가 막았다」(= GATE 축)를 시험하게 되어 주제가 바뀐다.
+    const broken = docFile(vault, REL_NEIGHBOR)
+    writeFileSync(broken, '머리말이 통째로 없다. 그냥 본문이다.\n')
+
+    // 앵커 ⓐ: 그 파일은 **디스크에 실재한다** → "없어서 null" 을 배제.
+    expect(existsSync(broken)).toBe(true)
+    // 앵커 ⓑ(규범 U): **같은 vault·같은 빌드**의 정상 문서는 정확 7키 → "인덱스가 비었다" 를 배제.
+    expect(Object.keys(await askWiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
+
+    const returned = askWiki(vault, 'dev', REL_NEIGHBOR)
+    expect(returned).toBeInstanceOf(Promise) // 규범 C10
+    await expect(returned).resolves.toBeNull()
+  })
+})
+
+describe('disable 스텁은 파일을 읽지 않는다 (STUB-1 · 🟢앵커(오늘도 green · RED 아님))', () => {
+  it('STUB-1: 원본 `.md` 를 지워도 disable 은 **스텁 4키**이고 active 는 rejects 다', async () => {
+    // 무는 것은 키 개수가 아니라 **3층 순서**다: `single-doc.mjs:69-70`(스텁)이 `:71`(게이트)·`:73`(읽기)
+    //   보다 **앞**이다. 파일을 지우지 않으면 순서를 뒤집어도 통과하므로 그 케이스는 공허하다
+    //   (WK3 의 중복이 아닌 이유가 여기다).
+    // ★ Task 2(파싱 null 접기) 착륙 후에도 green 이어야 한다 — `null` 접기는 **ENOENT 를 접지 않는다**.
+    const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
+
+    rmSync(docFile(vault, REL_DISABLE))
+    rmSync(docFile(vault, REL_NEIGHBOR))
+
+    expect(Object.keys(await askWiki(vault, 'dev', REL_DISABLE)).toSorted()).toEqual(
+      DISABLE_STUB_KEYS,
+    )
+
+    // 앵커(케이스 내): **같은 처리를 active 문서**에 하면 rejects(ENOENT) — 읽기가 실제로 일어난다.
+    const returned = askWiki(vault, 'dev', REL_NEIGHBOR)
+    expect(returned).toBeInstanceOf(Promise) // 규범 C10
+    await expect(returned).rejects.toThrow()
+  })
+})
+
+describe('본문은 요청 시점 디스크다 (LIVE-1 · 🟢앵커(오늘도 green · RED 아님) · D25)', () => {
+  it('LIVE-1: 빌드 후 **본문만** 고치면 재빌드 없이 같은 요청에 반영된다', async () => {
+    // ★ 규범 E: 전후를 가르는 것은 벽시계가 아니라 **쓰기 순서**다 — 같은 케이스 안에서 before 를
+    //   먼저 수집하고, 그 다음에 쓴다. 재빌드·커밋은 하지 않는다(인덱스는 스냅샷 그대로다).
+    const vault = seedWorld()
+    await prebuildArtifacts(vault, 'dev')
+
+    const before = await askWiki(vault, 'dev', REL_MAIN)
+    // 앵커: 렌더가 실제로 돌고 있다(빈 html 로 "마커 없음" 이 참이 되는 것을 배제).
+    expect(before.html).toContain(MARKER_MAIN)
+    expect(before.html).not.toContain(LIVE_MARKER)
+
+    writeDoc(vault, REL_MAIN, {
+      body: `## 정의\n\n${MARKER_MAIN} 본문이다.\n\n${LIVE_MARKER}\n`,
+      id: ID_MAIN,
+      title: '삼성전자',
+      type: 'company',
+    })
+
+    expect((await askWiki(vault, 'dev', REL_MAIN)).html).toContain(LIVE_MARKER)
   })
 })

@@ -334,7 +334,11 @@ describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)'
     //   `pnpm run feeds` 가 exit 2 로 죽지 않는다. CQ4 가 「`--count` 를 싣는다」를 성질로 물고,
     //   여기서는 **정확 문자열**로 못박는다(소비자가 파일명을 spawn 하므로 형태가 계약이다).
     expect(pkg.scripts.feeds).toBe('node scripts/feeds.mjs --count 40')
-    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs')
+    // ★ v3 P4 · D27 — `--summary` 가 필수 인자가 됐다(D-P4-1 flip). 사람용 스크립트도 그것을 실어야
+    //   `pnpm run wiki` 가 exit 2 로 죽지 않는다. 위 `feeds` 줄과 **같은 사유·같은 형태**다 —
+    //   SUM-1 이 「미지정은 exit 2」를 성질로 물고, 여기서는 **정확 문자열**로 못박는다
+    //   (소비자가 파일명을 spawn 하므로 형태가 계약이다).
+    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --summary cache/summary.prod.json')
     expect(pkg.scripts.validate).not.toContain('--vault')
   })
 })

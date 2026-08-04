@@ -12,12 +12,26 @@
 //     없는 path → null(throw 아님) · disable → status='disable' 스텁 · 요청 path 만(이웃 본문 격리).
 //     렌더는 renderMarkdownToHtml **재사용**(build 렌더 경로와 동일 · 회귀 0).
 //   P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다. 단언 **내용**은 무변경 — `await` 만 붙는다.
+import path from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const { wiki } = await import(new URL('../wiki.mjs', import.meta.url).href)
+
+/** summary 아티팩트 경로 — **리터럴 조립**(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
+const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
+
+/**
+ * ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
+ *
+ * 이 파일이 무는 것은 **엔드포인트 반환 계약**(1건 렌더·격리·null·disable 스텁)이지 인자 개수가
+ * 아니다. 주제는 그대로 두고 호출 인자만 갱신한다(D15 `--count` 필수화 때의 처분과 같은 형태).
+ * 오늘도 green 이다 — JS 는 여분 위치 인자를 무시한다. 규범 D: 헬퍼에 `expect` 를 두지 않는다.
+ */
+const askWiki = (vault, env, ref) => wiki(vault, env, ref, summaryFile(vault, env))
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
@@ -42,7 +56,7 @@ describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () 
       seedWorld(vault)
       await prebuildArtifacts(vault, 'dev')
 
-      const doc = await wiki(vault, 'dev', PATH_A)
+      const doc = await askWiki(vault, 'dev', PATH_A)
 
       expect(doc).not.toBeNull()
       expect(doc.html).toContain('<h2')
@@ -51,7 +65,7 @@ describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () 
       expect(doc).toHaveProperty('meta')
       expect(doc).toHaveProperty('sources')
       expect(doc.html).not.toContain('공급망') // 이웃 문서 B 본문이 새지 않는다
-      expect((await wiki(vault, 'dev', PATH_B)).html).toContain('공급망') // B 는 정확히 B
+      expect((await askWiki(vault, 'dev', PATH_B)).html).toContain('공급망') // B 는 정확히 B
     } finally {
       cleanup(vault)
     }
@@ -65,7 +79,7 @@ describe('endpoints.wiki — 계약 pin (E-W2·E-W3 🟢GFS)', () => {
       seedWorld(vault)
       await prebuildArtifacts(vault, 'dev')
 
-      expect(await wiki(vault, 'dev', '없는/경로')).toBeNull()
+      expect(await askWiki(vault, 'dev', '없는/경로')).toBeNull()
     } finally {
       cleanup(vault)
     }
@@ -77,7 +91,7 @@ describe('endpoints.wiki — 계약 pin (E-W2·E-W3 🟢GFS)', () => {
       seedWorld(vault)
       await prebuildArtifacts(vault, 'dev')
 
-      const doc = await wiki(vault, 'dev', PATH_DISABLE)
+      const doc = await askWiki(vault, 'dev', PATH_DISABLE)
 
       expect(doc).not.toBeNull()
       expect(doc.status).toBe('disable')

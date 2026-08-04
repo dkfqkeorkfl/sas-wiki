@@ -165,7 +165,12 @@ describe('소비자 spawn 경로 결속 (PL12 · 🟢pin)', () => {
     expect(scripts.summary).toBe('node scripts/summary.mjs')
     // ★ v3 P2 · D15(§4.5-⑤ flip) — `--count` 필수화의 귀결. 결속의 주제(파일명·경로)는 그대로다.
     expect(scripts.feeds).toBe('node scripts/feeds.mjs --count 40')
-    expect(scripts.wiki).toBe('node scripts/wiki.mjs')
+    // ★ v3 P4 · D27(D-P4-1 flip) — `--summary` 가 필수 인자가 됐다. `feeds` 가 D15 때 받은 것과
+    //   **같은 형태의 갱신**이다: 사람용 스크립트도 그것을 실어야 `pnpm run wiki` 가 exit 2 로 죽지
+    //   않는다. 값이 `prod` 인 것은 `wiki.mjs` 의 `env` 기본값이 prod 라 **기본 짝이 맞기** 때문이고,
+    //   dev 는 `--env dev --summary cache/summary.dev.json` 을 덧붙이면 뒤가 이긴다(parseArgs 계약).
+    //   결속의 주제(파일명·경로)는 그대로다.
+    expect(scripts.wiki).toBe('node scripts/wiki.mjs --summary cache/summary.prod.json')
     expect(scripts.validate).toBe('node scripts/validate.mjs --env dev')
     for (const name of ['summary.mjs', 'feeds.mjs', 'wiki.mjs', 'validate.mjs']) {
       expect(existsSync(path.join(SCRIPTS_DIR, name))).toBe(true)

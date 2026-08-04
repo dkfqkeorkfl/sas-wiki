@@ -63,6 +63,9 @@ const DELETED_ID_REUSE = 'DELETED_ID_REUSE'
 /** 위키 루트 접두사 — 리터럴이다. 드리프트 감지는 기존 트립와이어(PR5)가 담당한다. */
 const WIKI_ROOT_PREFIX = 'wiki/'
 
+/** summary 아티팩트 경로 — **리터럴 조립**(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
+const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
+
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
@@ -70,9 +73,13 @@ const feeds = (vault, env, window = {}) => {
   if (typeof feedsModule.feeds !== 'function') throw new Error('[RED] feeds export 가 없다')
   return feedsModule.feeds(vault, env, window)
 }
+// ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
+//   이 파일이 무는 것은 **드리프트 서빙 극성**(제외 문서를 서빙하지 않는다)이지 인자 개수가 아니다.
+//   호출부 4곳(DR3·DR6)은 무변경이고 **이 래퍼 한 줄만** 갱신한다. 오늘도 green 이다 — JS 는 여분
+//   위치 인자를 무시한다. 규범 D: 헬퍼에 `expect` 를 두지 않는다.
 const wiki = (vault, env, ref) => {
   if (typeof wikiModule.wiki !== 'function') throw new Error('[RED] wiki export 가 없다')
-  return wikiModule.wiki(vault, env, ref)
+  return wikiModule.wiki(vault, env, ref, summaryFile(vault, env))
 }
 
 const track = (seeded) => {

@@ -13,6 +13,8 @@
 //
 // 왜 3 엔드포인트를 다 무는가: 세 함수는 같은 파싱 엔진을 공유하지만 **소비 형태가 다르다**(전체
 //   payload / 단건 조회 / 피드 창). 하나만 고치고 나머지가 여전히 죽는 상태를 배제한다.
+import path from 'node:path'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { feeds } from '../feeds.mjs'
@@ -31,6 +33,18 @@ import {
   TWIN_B_REL,
   TWIN_FEED_TITLE,
 } from './helpers/polluted-vault.mjs'
+
+/** summary 아티팩트 경로 — **리터럴 조립**(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
+const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
+
+/**
+ * ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
+ *
+ * 이 파일이 무는 것은 **서빙 경로가 오염 vault 에서 죽지 않는다**(그리고 제외 문서는 null 이다)
+ * 이지 인자 개수가 아니다. 주제는 그대로 두고 호출 인자만 갱신한다. 오늘도 green 이다 —
+ * JS 는 여분 위치 인자를 무시한다. 규범 D: 헬퍼에 `expect` 를 두지 않는다.
+ */
+const askWiki = (vault, env, ref) => wiki(vault, env, ref, summaryFile(vault, env))
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -61,11 +75,11 @@ describe('서빙 경로 — 오염 vault 에서 죽지 않는다 (SR1~SR3 · �
     // `null` 을 못박아 "빈 객체" 표현을 배제한다 — 소비자(webfront)가 `?? null` 로 뭉개면 부재 문서
     //   화면(P4)이 영원히 안 나온다.
     // P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다(D-F). 단언 내용은 무변경 — `await` 만 붙는다.
-    const control = await wiki(polluted.vault, 'dev', CONTROL_REL)
+    const control = await askWiki(polluted.vault, 'dev', CONTROL_REL)
     expect(control).not.toBeNull() // 앵커: 조회 자체는 동작한다
 
-    expect(await wiki(polluted.vault, 'dev', TWIN_A_REL)).toBeNull()
-    expect(await wiki(polluted.vault, 'dev', TWIN_B_REL)).toBeNull()
+    expect(await askWiki(polluted.vault, 'dev', TWIN_A_REL)).toBeNull()
+    expect(await askWiki(polluted.vault, 'dev', TWIN_B_REL)).toBeNull()
   })
 
   it('SR3: `feeds` 가 throw 하지 않고 피드 2건을 그대로 낸다', async () => {
@@ -102,7 +116,7 @@ describe('서빙 경로 — 과잉 차단 가드 (SR5 · 대조군 vault)', () =
     expect(summaryPayload.docs.map((doc) => doc.id)).toContain(ID_A)
     expect(summaryPayload.docs).toHaveLength(3)
 
-    const doc = await wiki(clean.vault, 'dev', CONTROL_REL)
+    const doc = await askWiki(clean.vault, 'dev', CONTROL_REL)
     expect(doc).not.toBeNull()
     expect(doc.path).toBe(CONTROL_REL)
 
