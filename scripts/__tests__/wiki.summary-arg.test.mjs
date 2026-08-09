@@ -3,7 +3,7 @@
 // v3 P4 · Task 3 — `wiki.mjs --summary <경로>` **필수 인자화** (D27) — tdd §3.2 (SUM-1~SUM-4)
 //
 // 무엇이 결함인가: 나머지 3 CLI 는 전부 산출/입력 경로를 **명시 인자**로 받는데(`summary --out` ·
-//   `feeds --out` · `validate --report`) `wiki.mjs` 만 `artifactPath(vaultDir, env)` 로 경로를
+//   `feeds --out` · `validate --out`) `wiki.mjs` 만 `artifactPath(vaultDir, env)` 로 경로를
 //   **스스로 유추**한다(`wiki.mjs:39`·`:44`). 호출자가 소유해야 할 좌표를 스크립트가 파생하면
 //   미래 소비자(Rust 서버)가 같은 파생을 복제해야 하고, 두 벌이 갈리는 순간 조용히 어긋난다.
 //

@@ -123,7 +123,7 @@ const publishFeeds = (vault, env = 'dev') =>
     feedsFile(vault, env),
   ])
 const publishReport = (vault, env = 'dev') =>
-  runCli(VALIDATE_CLI, ['--vault', vault, '--env', env, '--report', path.join(vault, 'logs')])
+  runCli(VALIDATE_CLI, ['--vault', vault, '--env', env, '--out', path.join(vault, 'logs')])
 
 /** active 문서 2건 + 그중 하나를 가리키는 `feed:` 1건. feedId(12hex)를 함께 돌려준다. */
 function seedVault() {

@@ -183,7 +183,7 @@ describe('빌드 체인 실행 (BD3~BD5 · 🔴RED 미구현)', () => {
   it('BD3: 검증 실패는 exit≠0 이고 **캐시를 갱신하지 않는다**', { timeout: 900_000 }, () => {
     // ★ D3 의 **유일한 결정적 관측점**이다. "validate 가 맨 앞이므로 순서로 보장된다" 는 주장이고,
     //   `&&` 가 실제로 그 보장을 만드는지는 **실패를 주입해야만** 안다.
-    // ★ GREEN 계약: 체인의 `--out`·`--report` 는 `--vault` 에서 **파생**되어야 한다.
+    // ★ GREEN 계약: 체인의 `--out` 는 `--vault` 에서 **파생**되어야 한다.
     //   고정 상대경로를 쓰면 tmp 재조준이 무의미해지고 실 리포 `cache/` 를 오염시킨다(규범 F).
     const clean = seedCleanVault()
     const polluted = seedPollutedVault()

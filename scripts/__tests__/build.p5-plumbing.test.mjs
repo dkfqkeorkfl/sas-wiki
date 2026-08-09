@@ -126,7 +126,7 @@ describe('리포트 진단 3키 — F-17 (PL11 · 🔴RED 미구현)', () => {
       feedCommit(vault, { date: '2026-05-01T00:00:00Z', subject: '메모장 소식' })
 
       // 🔴 v3 P1(§4.10 「재작성」 · PL11 · plan Task 7 · D5): 리포트는 **생성기 발행물에서 빠지고**
-      //   `validate.mjs --report <dir>` 로 이사한다. 그래서 생성 주체와 읽는 경로를 함께 옮긴다 —
+      //   `validate.mjs --out <dir>` 로 이사한다. 그래서 생성 주체와 읽는 경로를 함께 옮긴다 —
       //   **prune 진단 3키 계약 자체는 그대로 유지한다**(그것이 이 케이스의 본체다).
       //   ★ 이 vault 는 unresolved feed 참조가 실재하므로 `validate.mjs` 의 게이트 ④
       //     (`checkFeedResolution`)가 fail-loud 로 끊는다 — exit 는 0 이 아니다. **그래도 리포트는
@@ -136,7 +136,7 @@ describe('리포트 진단 3키 — F-17 (PL11 · 🔴RED 미구현)', () => {
       const reportDir = mkdtempSync(path.join(tmpdir(), 'p5-report-'))
       tmps.push(reportDir)
       const run = runGeneratorOnce({
-        args: ['--env', 'dev', '--report', reportDir],
+        args: ['--env', 'dev', '--out', reportDir],
         script: 'validate.mjs',
         vault,
       })

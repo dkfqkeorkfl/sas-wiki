@@ -191,7 +191,7 @@ afterAll(() => {
   if (ctx.tmp) rmSync(ctx.tmp, { force: true, recursive: true })
 })
 
-describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
+describe('parseArgs — 인자 분리(--report/--root 폐기)', () => {
   // P2(contract-simplify) 계약 반전 — tdd §4 원장 ⑨ / §3.8 DK5·DK6·DK7.
   // **왜 바뀌었나(R3 + PRD D11)**: 불리언 `--allow-deadlinks` 는 심각도를 표현하지 못한다. 조사한 모든
   //   도구가 심각도를 **설정 가능**하게 뒀고(수렴점), 기본을 `warn` 으로 내리는 것은 리서치가 아니라
@@ -213,8 +213,21 @@ describe('parseArgs — 인자 분리(--out/--root 폐기)', () => {
     expect(options.schema).toBe(path.resolve('custom/schema'))
   })
 
-  it('--out 은 거부한다(validate.mjs 는 summary 산출물 쓰기 경로가 아니다)', () => {
-    expect(() => parseArgs(['--vault', 'v', '--out', 'public'])).toThrow(/--out/)
+  // ★ 출력 인자 이름을 4 CLI 가 하나로 쓴다 — `--out`. 예전엔 validate 만 `--report` 였는데, 호출자
+  //   입장에서 "이 스크립트가 만드는 것을 어디에 쓸까"는 같은 질문이라 이름이 갈릴 이유가 없었다.
+  //   인자가 **디렉토리**인 것과 파일 2개(json·txt)를 쓰는 것은 그대로다 — 바뀐 것은 이름뿐이다.
+  it('--out 은 리포트 디렉토리로 받는다(--vault 기준 상대 경로 해석)', () => {
+    const options = parseArgs(['--vault', 'v', '--out', 'logs'])
+
+    expect(options.out).toBe(path.join(path.resolve('v'), 'logs'))
+  })
+
+  it('--out 미지정이면 리포트 경로가 없다(기본값을 두지 않는다)', () => {
+    expect(parseArgs(['--vault', 'v']).out).toBeUndefined()
+  })
+
+  it('--report 는 거부한다(호환 별칭 금지 — `--out` 으로 대체됐다)', () => {
+    expect(() => parseArgs(['--vault', 'v', '--report', 'logs'])).toThrow(/--out/)
   })
 
   it('--root 는 거부한다(호환 별칭 금지)', () => {
@@ -310,7 +323,7 @@ describe('validate CLI — 통계 stdout (조용한 유실 종료)', () => {
 // RP(이사분) — 리포트 소유권이 생성기에서 **게이트로 되돌아온다** (v3 P1 Task 7 · D5·D24 · §4.3 ⑦)
 //
 // 이 다섯 케이스는 `summary.generator.test.mjs` 의 RP1~RP5 가 **검사하던 것을 그대로** 검사한다 —
-//   바뀌는 것은 **호출 대상**뿐이다(생성기 → `validate.mjs --report`). 삭제가 아니라 이사이므로,
+//   바뀌는 것은 **호출 대상**뿐이다(생성기 → `validate.mjs --out`). 삭제가 아니라 이사이므로,
 //   원본 RP1~RP5 의 제거는 **GREEN 원자 커밋의 몫**이다(규범 L: RED 커밋에 삭제 0건).
 //   ☞ 그때까지 두 벌이 공존하고, 그 공존 자체가 "옮겼다" 의 증거다.
 //
@@ -322,7 +335,8 @@ describe('validate CLI — 통계 stdout (조용한 유실 종료)', () => {
 //   위의 CLI 절이 소유한다. 여기서 무는 것은 **관측 채널이 실제로 발행되는가** 뿐이고, 그 둘은 서로
 //   독립이어야 한다 — _"관측 실패를 산출물 실패로 승격하지 않는다"_(D-F)의 반대 방향이 곧 이것이다.
 //
-// 🔴 전 케이스 RED 사유(**미구현**): `validate.mjs` 에 `--report` 인수가 없다(Task 7).
+// ★ 인자 이름은 `--report` → **`--out`** 으로 바뀌었다(4 CLI 통일). 디렉토리를 받아 json·txt 2파일을
+//   쓴다는 계약 자체는 그대로이므로 아래 다섯 케이스가 무는 것도 그대로다.
 // 규범 A: 경로 조각·파일명은 **리터럴**이다(plan Task 7 이 확정한 형태 그대로).
 // 규범 F: 실 vault 를 건드리지 않는다 — 이 절의 vault 는 전부 tmp 다.
 // ────────────────────────────────────────────────────────────────────────────
@@ -342,13 +356,13 @@ afterAll(() => {
   for (const dir of reportDirs) rmSync(dir, { force: true, recursive: true })
 })
 
-describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)', () => {
-  it('RP1: `--report <dir>` 가 json·txt **2파일**을 만든다', () => {
+describe('리포트 소유권 이사 (RP1~RP5)', () => {
+  it('RP1: `--out <dir>` 가 json·txt **2파일**을 만든다', () => {
     const dir = freshReportDir()
     // 앵커: 실행 **전에는 없다**(원래 있던 파일을 보고 통과하는 것을 배제).
     expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(false)
 
-    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', dir])
+    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', dir])
 
     expect(existsSync(reportJsonIn(dir, 'dev')), `${result.stderr}${result.stdout}`).toBe(true)
     expect(existsSync(reportTxtIn(dir, 'dev'))).toBe(true)
@@ -357,7 +371,7 @@ describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)',
   it('RP2: 두 리포트가 **산출물과 같은 `sourceCommit`** 을 담는다 (세대 어긋남 방어 · 축 교체)', () => {
     const dir = freshReportDir()
 
-    runCli(['--vault', ctx.vault, '--env', 'dev', '--report', dir])
+    runCli(['--vault', ctx.vault, '--env', 'dev', '--out', dir])
 
     expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(true) // 앵커 ①: 파일이 실재한다
     const report = readReport(reportJsonIn(dir, 'dev'))
@@ -377,7 +391,7 @@ describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)',
     reportDirs.push(polluted.vault)
     const dir = freshReportDir()
 
-    runCli(['--vault', polluted.vault, '--env', 'dev', '--max-excluded', '2', '--report', dir])
+    runCli(['--vault', polluted.vault, '--env', 'dev', '--max-excluded', '2', '--out', dir])
 
     expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(true)
     const report = readReport(reportJsonIn(dir, 'dev'))
@@ -395,10 +409,10 @@ describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)',
     const blocker = path.join(ctx.tmp, 'report-blocker')
     writeFileSync(blocker, 'not a directory')
 
-    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', blocker])
+    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', blocker])
 
-    // 앵커: 같은 vault 가 정상 `--report` 에서는 통과한다(vault 자체가 깨져서 통과하는 것 배제).
-    const control = runCli(['--vault', ctx.vault, '--env', 'dev', '--report', freshReportDir()])
+    // 앵커: 같은 vault 가 정상 `--out` 에서는 통과한다(vault 자체가 깨져서 통과하는 것 배제).
+    const control = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', freshReportDir()])
     expect(control.status, control.stderr).toBe(0)
 
     // 판정은 그대로 0 이고, **무엇이 왜** 실패했는지는 stderr 가 말한다.
@@ -413,12 +427,60 @@ describe('리포트 소유권 이사 (RP1~RP5 · 🔴RED `--report` 미구현)',
     const schemaPath = path.join(REAL_SCHEMA_DIR, 'report.schema.json')
     const dir = freshReportDir()
 
-    runCli(['--vault', ctx.vault, '--env', 'dev', '--report', dir])
+    runCli(['--vault', ctx.vault, '--env', 'dev', '--out', dir])
 
     expect(existsSync(schemaPath)).toBe(true) // 앵커: 스키마가 실재한다(자기 스키마 드리프트 차단)
     expect(existsSync(reportJsonIn(dir, 'dev'))).toBe(true)
     expect(
       validateItem(readReport(reportJsonIn(dir, 'dev')), loadSchema(schemaPath), 'report.json'),
     ).toEqual([])
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 결론 요약 stdout (SM1~SM3) — 다른 3 CLI 와 같은 규약: **기본은 stdout, `--out` 이면 파일까지**.
+//
+// 예전엔 vault 상태 결론(총계·제외·sourceCommit)이 `--report` 파일에만 있었다. 그래서 리포트를
+//   요청하지 않고 돌리면 게이트 실패 시 "무엇이 왜 막혔는가" 는 에러 문구 한 줄뿐이었다.
+//
+// ★ 이 요약은 **게이트보다 먼저** 나온다(리포트 파일이 그런 것과 같은 이유 · D-F). 진단은 검증이
+//   통과할 때가 아니라 **막힐 때** 가장 필요하다. SM2 가 그 순서를 무는 케이스다.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('결론 요약 stdout (SM1~SM3 · 🔴RED 미구현)', () => {
+  it('SM1: `--out` 없이도 결론 요약을 stdout 에 내고, 파일은 쓰지 않는다', () => {
+    const result = runCli(['--vault', ctx.vault, '--env', 'dev'])
+
+    expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
+    expect(result.stdout).toMatch(/total=\d+ included=\d+ excluded=\d+/)
+    // 요약이 stdout 으로 나온다고 해서 리포트 파일이 딸려 나오지는 않는다(vault 무오염 계약 유지).
+    expect(existsSync(path.join(ctx.vault, 'logs'))).toBe(false)
+  })
+
+  it('SM2: 게이트가 막아도 결론 요약은 stdout 에 남는다', () => {
+    // 앵커 ①: 이 vault 는 **실제로** 게이트에 걸린다(통과한 실행을 보고 통과하는 것을 배제).
+    const result = runCli(['--vault', ctx.unresolvedVault, '--env', 'dev'])
+    expect(result.status).toBe(1)
+
+    // 앵커 ②: 게이트 뒤에서 나오는 통계 줄은 **없다** — 그러므로 아래 요약은 게이트 **앞**에서
+    //   나온 것이고, 이 케이스가 무는 것이 순서라는 사실이 공허해지지 않는다.
+    expect(result.stdout).not.toContain('[wiki] docs=')
+
+    expect(result.stdout).toMatch(/total=\d+ included=\d+ excluded=\d+/)
+    expect(result.stdout).toMatch(/sourceCommit=[0-9a-f]{40}/)
+  })
+
+  it('SM3: 요약의 총계가 리포트 파일의 총계와 같다(두 채널이 갈리지 않는다)', () => {
+    const dir = freshReportDir()
+
+    const result = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', dir])
+
+    const report = readReport(reportJsonIn(dir, 'dev'))
+    // 앵커: 파일 쪽 값이 **실재하는 수**다(0 == 0 으로 공허 통과하는 것을 배제).
+    expect(report.summary.total).toBeGreaterThan(0)
+    expect(result.stdout).toContain(
+      `total=${report.summary.total} included=${report.summary.included} excluded=${report.summary.excluded}`,
+    )
+    expect(result.stdout).toContain(`sourceCommit=${report.sourceCommit}`)
   })
 })
