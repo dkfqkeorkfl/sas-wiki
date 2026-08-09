@@ -449,9 +449,15 @@ describe('리포트 소유권 이사 (RP1~RP5)', () => {
 //
 // ★ 이 요약은 **게이트보다 먼저** 나온다(리포트 파일이 그런 것과 같은 이유 · D-F). 진단은 검증이
 //   통과할 때가 아니라 **막힐 때** 가장 필요하다. SM2 가 그 순서를 무는 케이스다.
+//
+// ★ SM4 는 **그 원칙의 남은 구멍**을 문다. 리포트 파일 쓰기는 게이트보다 먼저 시도되지만, 그 실패
+//   통지(`report error`)는 `buildContent` 가 **반환한 뒤** `main` 이 냈다. 그래서 쓰기가 실패한 채로
+//   게이트까지 막으면 반환이 일어나지 않아 **통지가 통째로 사라졌다**(실측: 통과하는 vault 에서는
+//   나오고 막히는 vault 에서는 안 나온다). "관측이 가장 필요한 순간에 관측이 사라진다" 는 이 절의
+//   전제와 정면으로 어긋난다.
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('결론 요약 stdout (SM1~SM3 · 🔴RED 미구현)', () => {
+describe('결론 요약 stdout (SM1~SM4)', () => {
   it('SM1: `--out` 없이도 결론 요약을 stdout 에 내고, 파일은 쓰지 않는다', () => {
     const result = runCli(['--vault', ctx.vault, '--env', 'dev'])
 
@@ -486,5 +492,25 @@ describe('결론 요약 stdout (SM1~SM3 · 🔴RED 미구현)', () => {
       `total=${report.summary.total} included=${report.summary.included} excluded=${report.summary.excluded}`,
     )
     expect(result.stdout).toContain(`sourceCommit=${report.sourceCommit}`)
+  })
+
+  it('SM4: 리포트 파일을 못 써도 게이트가 막는 상황에서 그 사실이 유실되지 않는다', () => {
+    // 디렉토리 자리에 **파일**을 둔다 → `writeReport` 의 mkdir 이 EEXIST 로 실패한다.
+    const blocker = path.join(ctx.tmp, 'report-blocker-with-gate')
+    writeFileSync(blocker, 'not a directory')
+
+    // 앵커 ①: 같은 blocker 로 **게이트를 통과하는** vault 를 돌리면 통지가 나온다(RP4 와 같은 축).
+    //   즉 blocker 는 쓰기를 확실히 실패시키고, 통지 문구도 실재한다 — 아래 단언이 "원래 안 나오는
+    //   문구를 찾는" 공허가 되지 않는다.
+    const control = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', blocker])
+    expect(control.status, `${control.stderr}${control.stdout}`).toBe(0)
+    expect(`${control.stderr}${control.stdout}`).toContain('report error')
+
+    const result = runCli(['--vault', ctx.unresolvedVault, '--env', 'dev', '--out', blocker])
+
+    // 앵커 ②: 게이트가 **실제로** 막았다(통과한 실행을 보고 통과하는 것을 배제).
+    expect(result.status).toBe(1)
+    // 본체: 그래도 쓰기 실패 통지가 남는다. 게이트 에러가 그것을 잡아먹지 않는다.
+    expect(`${result.stderr}${result.stdout}`).toContain('report error')
   })
 })
