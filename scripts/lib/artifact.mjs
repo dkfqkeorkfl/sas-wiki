@@ -17,7 +17,7 @@ export { SCHEMA_VERSION }
 
 // ★ v3 P4 · D27 — `artifactPath(vaultDir, env)` 는 **여기서 사라졌다**. summary 아티팩트 경로를
 //   파생하던 유일한 프로덕션 호출자는 `wiki.mjs:39`·`:44` 였고, 그 자리는 이제 **호출자가 명시하는
-//   `--summary` 인자**가 소유한다(나머지 3 CLI 의 `--out`·`--report` 와 같은 형태). 발행 측은 인자로
+//   `--summary` 인자**가 소유한다(나머지 3 CLI 가 전부 `--out` 인 것과 같은 형태). 발행 측은 인자로
 //   받은 경로에 쓰므로(`package.json` 의 `--out cache/summary.<env>.json`) 파생 함수가 남을 자리가 없다.
 //   ★ `cache/summary.<env>.json` 이라는 **형태 자체**는 계약으로 남아 있다 — 그 고정은 PL9
 //   (`build.p5-plumbing.test.mjs`)와 README `contract:artifacts` 표가 진다.

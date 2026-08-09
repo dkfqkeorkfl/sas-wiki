@@ -66,7 +66,7 @@ export async function main(argv = process.argv.slice(2)) {
     options: {
       env: { default: 'prod', type: 'string' },
       path: { type: 'string' },
-      // D27 — **기본값을 두지 않는다**(`summary --out`·`feeds --out`·`validate --report` 와 같은
+      // D27 — **기본값을 두지 않는다**(`summary --out`·`feeds --out`·`validate --out` 와 같은
       //   "명시 출력/입력만 쓴다" 계약). 기본값을 주면 파생이 되살아나 D27 이 무의미해진다.
       summary: { type: 'string' },
       vault: { type: 'string' },

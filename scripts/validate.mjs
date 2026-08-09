@@ -42,11 +42,16 @@ const PAYLOAD_FILES = {
  * 때가 아니라 막힐 때 가장 필요하다. 그래서 `onReport` 통지도, `--out` 파일 쓰기도 게이트 앞에 있다.
  * 반환은 in-memory 3 payload — 소비/summary 쓰기는 하지 않는다(검증용).
  *
- * `onReport` 는 관측 채널 주입점이다. stdout 은 CLI 껍데기(`main`)가 소유하므로 라이브러리 함수인
- * 여기서 직접 쓰지 않는다 — 기본값이 no-op 이라 테스트가 `buildContent` 를 직접 불러도 조용하다.
+ * `onReport(payload, write)` 는 관측 채널 주입점이다. stdout 은 CLI 껍데기(`main`)가 소유하므로
+ * 라이브러리 함수인 여기서 직접 쓰지 않는다 — 기본값이 no-op 이라 테스트가 `buildContent` 를 직접
+ * 불러도 조용하다.
+ *
+ * ★ **쓰기 실패(`write.error`)도 이 채널로 함께 넘긴다.** 예전엔 반환값을 받은 `main` 이 냈는데,
+ * 쓰기가 실패한 채로 게이트까지 막히면 반환이 일어나지 않아 그 통지가 통째로 사라졌다(SM4 가 무는
+ * 실측 결함). 관측이 가장 필요한 순간에 관측이 사라지는 형태였다.
  *
  * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod',
- *           onReport?: (report: object) => void, reportDir?: string,
+ *           onReport?: (payload: object, write: object) => void, reportDir?: string,
  *           schema?: string, vault: string }} options
  * @returns {{ body: object, feeds: object, stats: object, summary: object }}
  */
@@ -67,7 +72,7 @@ export function buildContent({
 
   // 리포트 내용은 `--out` 유무와 **무관하게** 만든다 — stdout 결론이 그것을 그대로 쓰기 때문이다.
   // 두 채널이 같은 값에서 파생되므로 "파일에는 있는데 화면에는 다른 수" 가 구조적으로 불가능하다.
-  const report = buildReport({
+  const reportPayload = buildReport({
     env,
     excluded: stats.excluded ?? [],
     invalidExcludedRefs: stats.invalidExcludedRefs ?? [],
@@ -76,12 +81,13 @@ export function buildContent({
     total: gate.visibleDocs.length + (stats.excluded ?? []).length,
     unresolvedPaths: stats.unresolvedPaths ?? [],
   })
-  onReport(report)
-
-  const reportResult =
+  const reportWrite =
     reportDir === undefined
       ? { error: null, jsonPath: null, txtPath: null }
-      : writeReport({ dir: reportDir, env, report })
+      : writeReport({ dir: reportDir, env, report: reportPayload })
+  // 쓰기까지 끝낸 **뒤** 한 번만 통지한다 — 그래야 아래 게이트가 throw 해도 요약과 쓰기 실패가
+  // 둘 다 이미 나가 있다.
+  onReport(reportPayload, reportWrite)
 
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
   gateExcluded(stats.excluded ?? [], maxExcluded, stats.invalidExcludedRefs ?? [])
@@ -130,7 +136,7 @@ export function buildContent({
     stats.warnings.push({ reason: 'stale ignore-feeds 억제(대응 feed 없음)', sha: stale.id })
   }
 
-  return { body, feeds, report: reportResult, stats, summary }
+  return { body, feeds, report: reportWrite, stats, summary }
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -139,11 +145,8 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(usage())
     return
   }
-  const { body, feeds, report, stats, summary } = buildContent({
-    ...options,
-    onReport: printReportSummary,
-  })
-  if (report.error) console.error(`[wiki] report error: ${report.error}`)
+  // 쓰기 실패 통지는 `printReportSummary` 가 게이트 앞에서 이미 냈다(SM4) — 여기서 되풀이하지 않는다.
+  const { body, feeds, stats, summary } = buildContent({ ...options, onReport: printReportSummary })
   reportStats({ body, feeds, stats, summary })
 }
 
@@ -346,8 +349,12 @@ function reportStats({ body, feeds, stats, summary }) {
  *
  * 리포트 payload 를 그대로 쓰므로 `--out` 파일과 값이 갈릴 수 없다(같은 객체에서 파생). `generatedAt`
  * 은 싣지 않는다 — 실행마다 달라져 출력 대조를 못 하게 만들고, 그 값이 필요한 쪽은 파일이다.
+ *
+ * ★ 파일 쓰기 실패도 **여기서** 알린다(SM4). 판정을 실패로 승격하지는 않는다 — 관측 실패는 산출물
+ * 실패가 아니다(D-F · RP4). 그러나 알리는 **시점**은 게이트 앞이어야 한다: 게이트가 막으면
+ * `buildContent` 가 반환하지 못해, 반환값을 기다리던 옛 방식에서는 통지가 통째로 사라졌다.
  */
-function printReportSummary(report) {
+function printReportSummary(report, write) {
   console.log(
     `[wiki] validate env=${report.env}` +
       ` total=${report.summary.total} included=${report.summary.included} excluded=${report.summary.excluded}` +
@@ -355,6 +362,7 @@ function printReportSummary(report) {
       ` invalidExcludedRefs=${report.invalidExcludedRefs.length}` +
       ` sourceCommit=${report.sourceCommit}`,
   )
+  if (write.error) console.error(`[wiki] report error: ${write.error}`)
 }
 
 function usage() {
