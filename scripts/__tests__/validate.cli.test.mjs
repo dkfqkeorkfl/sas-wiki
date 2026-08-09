@@ -216,14 +216,18 @@ describe('parseArgs — 인자 분리(--report/--root 폐기)', () => {
   // ★ 출력 인자 이름을 4 CLI 가 하나로 쓴다 — `--out`. 예전엔 validate 만 `--report` 였는데, 호출자
   //   입장에서 "이 스크립트가 만드는 것을 어디에 쓸까"는 같은 질문이라 이름이 갈릴 이유가 없었다.
   //   인자가 **디렉토리**인 것과 파일 2개(json·txt)를 쓰는 것은 그대로다 — 바뀐 것은 이름뿐이다.
+  // ★ 옵션 키가 `out` 이 아니라 `reportDir` 인 이유: `buildContent({ out, … })` 로 **죽은** `out` 을
+  //   넘기는 호출부가 이 리포에 40여 곳 남아 있다(구 build.mjs 계약 잔재 · 지금은 전부 무시된다).
+  //   키를 `out` 으로 잡으면 그것들이 전부 조용히 되살아나 tmp 마다 리포트를 쓰기 시작한다.
+  //   플래그 이름과 옵션 키를 가르는 것은 `summary.mjs`(`--out` → `artifactPath`)의 선례 그대로다.
   it('--out 은 리포트 디렉토리로 받는다(--vault 기준 상대 경로 해석)', () => {
     const options = parseArgs(['--vault', 'v', '--out', 'logs'])
 
-    expect(options.out).toBe(path.join(path.resolve('v'), 'logs'))
+    expect(options.reportDir).toBe(path.join(path.resolve('v'), 'logs'))
   })
 
   it('--out 미지정이면 리포트 경로가 없다(기본값을 두지 않는다)', () => {
-    expect(parseArgs(['--vault', 'v']).out).toBeUndefined()
+    expect(parseArgs(['--vault', 'v']).reportDir).toBeUndefined()
   })
 
   it('--report 는 거부한다(호환 별칭 금지 — `--out` 으로 대체됐다)', () => {

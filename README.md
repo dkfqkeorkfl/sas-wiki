@@ -2,7 +2,7 @@
 
 마크다운 vault(→ [저장소 구조](#저장소-구조) 에서 정의) 와 **git 히스토리**를 입력으로 받아, 위키 화면과 뉴스 피드에 필요한 JSON 을 CLI 로 뱉는 데이터 리포지토리다.
 
-서버가 아니다. `node scripts/<이름>.mjs` 로 실행하면 endpoint CLI 는 stdout 에 JSON 한 줄을 낸다. 빌드 경로는 `summary --out` 이 summary 아티팩트를, `feeds --out` 이 feeds 아티팩트를, `validate --report` 가 리포트를 쓴다 — [산출물](#산출물). 소비자(개발 서버·미래의 실서버)는 프로세스를 띄워 stdout JSON 을 받아간다.
+서버가 아니다. `node scripts/<이름>.mjs` 로 실행하면 endpoint CLI 는 stdout 에 JSON 한 줄을 낸다. 빌드 경로는 `summary --out` 이 summary 아티팩트를, `feeds --out` 이 feeds 아티팩트를, `validate --out` 이 리포트를 쓴다 — [산출물](#산출물). 소비자(개발 서버·미래의 실서버)는 프로세스를 띄워 stdout JSON 을 받아간다.
 
 **검증은 생성의 전제다.** `validate` 가 문서 단위 제외와 검증 게이트를 먼저 통과시킨 뒤에야 빌드 체인이 아티팩트를 발행하고, 세 엔드포인트는 그 아티팩트를 읽는다. 그래서 _서빙되는 데이터 = 검증 통과 데이터_ 가 구조로 보장된다 — [게이트는 어디서 도는가](#게이트는-어디서-도는가).
 
@@ -255,7 +255,7 @@ node scripts/wiki.mjs [--vault <dir>] [--env dev|prod] --path <경로>
 
 `--path` 는 `breadcrumb.join('/')` 형태다 — 확장자도, `wiki/` 접두사도 붙이지 않는다.
 
-`--summary` 에 기본값이 없는 것은 의도다. 나머지 3 CLI 가 전부 경로를 명시 인자로 받는데(`summary --out` · `feeds --out` · `validate --report`) wiki 만 경로를 스스로 유추하면, 그 파생을 호출자마다 복제해야 하고 두 벌이 갈리는 순간 조용히 어긋난다.
+`--summary` 에 기본값이 없는 것은 의도다. 나머지 3 CLI 가 전부 경로를 명시 인자로 받는데(`summary --out` · `feeds --out` · `validate --out`) wiki 만 경로를 스스로 유추하면, 그 파생을 호출자마다 복제해야 하고 두 벌이 갈리는 순간 조용히 어긋난다.
 
 ```bash
 node scripts/wiki.mjs --env dev --path 'company/삼성전자' --summary cache/summary.dev.json
@@ -268,28 +268,33 @@ vault 무결성 검사와 리포트 출력의 소유자. 페이로드를 메모�
 ```bash
 node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
                           [--deadlinks ignore|warn|error] [--max-excluded <n>]
-                          [--report <dir>]
+                          [--out <dir>]
 ```
 
-| 플래그           | 의미                                                                  |
-| ---------------- | --------------------------------------------------------------------- |
-| `--env`          | 미지정 시 prod + **stderr 경고**. 알 수 없는 값은 에러로 끊는다       |
-| `--schema`       | 스키마 디렉토리 override (기본 `scripts/schema`)                      |
-| `--deadlinks`    | 데드링크 심각도. `ignore`, `warn`(기본), `error` 중 하나              |
-| `--max-excluded` | 문서 단위 제외 허용치. 기본 0. 초과 시 validate 는 exit 1             |
-| `--report`       | 리포트 디렉토리. 미지정 시 쓰지 않는다; 상대 경로는 `--vault` 기준    |
-| `--help` `-h`    | 사용법 출력                                                           |
-| `--out` `--root` | **제거됨**. 넘기면 에러로 끊는다 (JSON 을 안 만드니 출력 인자도 없다) |
+| 플래그              | 의미                                                                          |
+| ------------------- | ----------------------------------------------------------------------------- |
+| `--env`             | 미지정 시 prod + **stderr 경고**. 알 수 없는 값은 에러로 끊는다               |
+| `--schema`          | 스키마 디렉토리 override (기본 `scripts/schema`)                              |
+| `--deadlinks`       | 데드링크 심각도. `ignore`, `warn`(기본), `error` 중 하나                      |
+| `--max-excluded`    | 문서 단위 제외 허용치. 기본 0. 초과 시 validate 는 exit 1                     |
+| `--out`             | 리포트 **디렉토리**. 미지정 시 파일을 쓰지 않는다; 상대 경로는 `--vault` 기준 |
+| `--help` `-h`       | 사용법 출력                                                                   |
+| `--report` `--root` | **제거됨**. 넘기면 에러로 끊는다 (각각 `--out`·`--vault` 로 대체됐다)         |
 
 > `pnpm run validate` 는 **`--env dev` 가 박혀 있다.** prod 를 검증하려면 `node scripts/validate.mjs` 를 직접 부른다. 둘은 결과가 크게 다르다 — 이 리포의 예제 vault 는 전량 draft 라 prod 에서는 `docs=0` 이 나온다.
 
 돌리는 게이트: 커밋 컨벤션 → 문서 단위 제외(`NO_FRONTMATTER`, `MISSING_TYPE`, `SCHEMA_VIOLATION`, `DUPLICATE_PATH`, `DUPLICATE_ID`, `ID_TAMPERED`, `DELETED_ID_REUSE`) → 데드링크 → 피드 해석 실패 → 산출물 스키마(strict) → [불변식 7종](#불변식-7종).
 
-출력은 JSON 이 아니라 요약 한 줄이다. `--report` 를 명시하면 리포트는 게이트보다 먼저 기록되므로, 피드 해석 실패처럼 검증이 막히는 상황에서도 진단 JSON/TXT 가 남는다. 리포트 쓰기 실패는 검증 판정을 실패로 승격하지 않고 stderr 로만 알린다. 기본 실행은 리포트를 쓰지 않아 vault 를 더럽히지 않는다.
+출력은 JSON payload 가 아니라 **결론 요약**이다. 나머지 3 CLI 와 같은 규약으로 기본은 stdout 이고, `--out <dir>` 을 주면 같은 결론이 기계가독 JSON + 사람용 TXT 로도 남는다.
+
+결론 요약과 리포트 파일은 **게이트보다 먼저** 나간다. 그래서 피드 해석 실패처럼 검증이 막히는 상황에서도 "그때 vault 가 어떤 상태였는지"가 남는다 — 에러 문구는 무엇이 걸렸는지만 말하고 그건 말해 주지 않는다. 리포트 **파일** 쓰기 실패는 검증 판정을 실패로 승격하지 않고 stderr 로만 알린다. 기본 실행은 파일을 쓰지 않아 vault 를 더럽히지 않는다.
 
 ```text
+[wiki] validate env=dev total=6 included=6 excluded=0 prunedFeeds=1 unresolved=0 invalidExcludedRefs=0 sourceCommit=<40hex>
 [wiki] docs=6 body=5 feeds=5 prune=1 prunedFeeds=1 unresolved=0 warnings=0
 ```
+
+두 줄의 성격이 다르다. 첫 줄은 **vault 상태 결론**이라 게이트 앞에서 나오고 실패해도 남는다. 둘째 줄은 조립된 payload 의 통계 + 경고 상세라 **통과했을 때만** 나온다.
 
 경고가 있으면 그 아래로 항목별 줄이 더 붙는다. 라벨은 4종이다.
 

@@ -2,6 +2,10 @@
 // vault 무결성 CLI (구 build.mjs). payload 를 in-memory 로 조립해 게이트(컨벤션·id 유일·불변·
 // 데드링크·산출물 스키마·불변식)를 전량 실행하고, 통과 시 exit 0 / 위반 시 throw→exit 1(fail-loud).
 // validate 는 명시된 리포트 경로도 소유한다. summary payload 쓰기는 생성기/빌드 경로가 담당한다.
+//
+// 출력 규약은 나머지 3 CLI 와 같다 — **기본은 stdout, `--out` 이면 파일까지**. validate 가 stdout 에
+// 내는 것은 JSON payload 가 아니라 vault 상태 결론(총계·제외·sourceCommit)이고, `--out <디렉토리>`
+// 를 주면 같은 결론이 기계가독 json + 사람용 txt 로도 남는다.
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -34,10 +38,15 @@ const PAYLOAD_FILES = {
  * vault 무결성 검증 — parseVault(파싱) 위에 **모든 검증 게이트**를 얹는다(summary JSON 쓰기는 없다).
  *
  * 레이어 분리(검증 / read-path=파싱): parseVault 는 순수 파싱만 하고, throw-게이트는 여기서만 돈다.
- * 리포트는 게이트 실패를 설명하는 관측 채널이므로, 요청된 경우 게이트보다 먼저 쓴다.
+ * 리포트는 게이트 실패를 설명하는 관측 채널이므로 **게이트보다 먼저** 낸다 — 진단은 검증이 통과할
+ * 때가 아니라 막힐 때 가장 필요하다. 그래서 `onReport` 통지도, `--out` 파일 쓰기도 게이트 앞에 있다.
  * 반환은 in-memory 3 payload — 소비/summary 쓰기는 하지 않는다(검증용).
  *
- * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod', report?: string,
+ * `onReport` 는 관측 채널 주입점이다. stdout 은 CLI 껍데기(`main`)가 소유하므로 라이브러리 함수인
+ * 여기서 직접 쓰지 않는다 — 기본값이 no-op 이라 테스트가 `buildContent` 를 직접 불러도 조용하다.
+ *
+ * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod',
+ *           onReport?: (report: object) => void, reportDir?: string,
  *           schema?: string, vault: string }} options
  * @returns {{ body: object, feeds: object, stats: object, summary: object }}
  */
@@ -45,7 +54,8 @@ export function buildContent({
   deadlinks = 'warn',
   env = 'prod',
   maxExcluded = 0,
-  report,
+  onReport = () => {},
+  reportDir,
   schema,
   vault,
 }) {
@@ -55,22 +65,23 @@ export function buildContent({
   // P5 Task 9(D-I) — parseVault 는 이제 항상 깊은 티어다(얕은 티어 선택 스위치를 제거했다).
   const { gate, stats, wire } = parseVault(vaultDir, env, schemaDir)
 
+  // 리포트 내용은 `--out` 유무와 **무관하게** 만든다 — stdout 결론이 그것을 그대로 쓰기 때문이다.
+  // 두 채널이 같은 값에서 파생되므로 "파일에는 있는데 화면에는 다른 수" 가 구조적으로 불가능하다.
+  const report = buildReport({
+    env,
+    excluded: stats.excluded ?? [],
+    invalidExcludedRefs: stats.invalidExcludedRefs ?? [],
+    prunedFeeds: stats.prunedFeeds ?? 0,
+    sourceCommit: wire.sourceCommit,
+    total: gate.visibleDocs.length + (stats.excluded ?? []).length,
+    unresolvedPaths: stats.unresolvedPaths ?? [],
+  })
+  onReport(report)
+
   const reportResult =
-    report === undefined
+    reportDir === undefined
       ? { error: null, jsonPath: null, txtPath: null }
-      : writeReport({
-          dir: report,
-          env,
-          report: buildReport({
-            env,
-            excluded: stats.excluded ?? [],
-            invalidExcludedRefs: stats.invalidExcludedRefs ?? [],
-            prunedFeeds: stats.prunedFeeds ?? 0,
-            sourceCommit: wire.sourceCommit,
-            total: gate.visibleDocs.length + (stats.excluded ?? []).length,
-            unresolvedPaths: stats.unresolvedPaths ?? [],
-          }),
-        })
+      : writeReport({ dir: reportDir, env, report })
 
   checkCommitConventions(gate.commits, gate.runGit, WIKI_PREFIX)
   gateExcluded(stats.excluded ?? [], maxExcluded, stats.invalidExcludedRefs ?? [])
@@ -128,16 +139,25 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(usage())
     return
   }
-  const { body, feeds, report, stats, summary } = buildContent(options)
+  const { body, feeds, report, stats, summary } = buildContent({
+    ...options,
+    onReport: printReportSummary,
+  })
   if (report.error) console.error(`[wiki] report error: ${report.error}`)
   reportStats({ body, feeds, stats, summary })
 }
 
 /**
- * `--vault`(선택, 기본 REPO_ROOT) · `--env dev|prod` · `--schema` · `--deadlinks ignore|warn|error`.
+ * `--vault`(선택, 기본 REPO_ROOT) · `--env dev|prod` · `--schema` · `--deadlinks ignore|warn|error`
+ * · `--out <디렉토리>`(선택 · 리포트 2형식).
  *
- * **`--out`/`--root` 은 거부한다** — validate.mjs 는 summary 산출물 쓰기를 하지 않으므로 출력 인자가 없다(호환
- * 별칭·마이그레이션 금지). 옛 스크립트가 넘기면 시끄럽게 끊어 오배선을 드러낸다.
+ * **`--report`/`--root` 은 거부한다** — 둘 다 현행 인자로 대체된 옛 이름이다(호환 별칭·마이그레이션
+ * 금지). 옛 스크립트가 넘기면 시끄럽게 끊어 오배선을 드러낸다.
+ *
+ * ★ 옵션 키가 `out` 이 아니라 `reportDir` 인 것은 의도다. `buildContent({ out, … })` 로 **죽은** `out`
+ * 을 넘기는 호출부가 리포에 다수 남아 있어(구 build.mjs 계약 잔재 · 지금은 전부 무시된다) 키를 `out`
+ * 으로 잡으면 그것들이 조용히 되살아난다. 플래그와 옵션 키를 가르는 것은 `summary.mjs`(`--out` →
+ * `artifactPath`)의 선례 그대로다.
  */
 export function parseArgs(argv) {
   const options = { deadlinks: 'warn', env: null, maxExcluded: 0, schema: SCHEMA_DIR, vault: null }
@@ -146,10 +166,8 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--help' || arg === '-h') return { ...options, help: true }
-    if (arg === '--out') {
-      throw new Error(
-        '--out 는 제거되었습니다: validate.mjs 는 summary 산출물 쓰기 경로가 아닙니다.',
-      )
+    if (arg === '--report') {
+      throw new Error('--report 는 폐기되었습니다. --out <디렉토리> 를 쓰세요.')
     }
     if (arg === '--root') {
       throw new Error('--root 는 폐기되었습니다. --vault <vault 리포> 를 쓰세요.')
@@ -185,9 +203,9 @@ export function parseArgs(argv) {
       i += 1
       continue
     }
-    if (arg === '--report') {
+    if (arg === '--out') {
       const value = argv[i + 1]
-      if (!value) throw new Error('--report 에는 디렉토리가 필요합니다')
+      if (!value) throw new Error('--out 에는 디렉토리가 필요합니다')
       reportRaw = value
       i += 1
       continue
@@ -203,9 +221,9 @@ export function parseArgs(argv) {
   // --vault 미지정 → 스크립트 자기 리포 루트(REPO_ROOT). cwd 폴백이 아니라 import.meta.url 파생이라
   // 엉뚱한 리포를 읽지 않는다(cwd 무관·결정적). 다른 vault 는 --vault 로 override.
   if (!options.vault) options.vault = REPO_ROOT
-  // validate 기본 실행은 검증 전용이라 vault 를 더럽히지 않는다. 리포트를 쓰는 주체는 `--report` 를
-  // 명시하는 빌드 체인이다(summary `--out` 과 같은 "명시 출력만 쓴다" 계약).
-  if (reportRaw !== undefined) options.report = resolveFromVault(options.vault, reportRaw)
+  // validate 기본 실행은 검증 전용이라 vault 를 더럽히지 않는다 — 결론은 stdout 으로만 나간다.
+  // 파일을 쓰는 주체는 `--out` 을 명시하는 빌드 체인이다(나머지 3 CLI 와 같은 "명시 출력만 쓴다" 계약).
+  if (reportRaw !== undefined) options.reportDir = resolveFromVault(options.vault, reportRaw)
 
   // Layer B fail-closed: --env 미지정 → prod(draft 숨김) + 관측 가능한 warning(silent 폴백 금지).
   if (options.env === null) {
@@ -321,8 +339,26 @@ function reportStats({ body, feeds, stats, summary }) {
   }
 }
 
+/**
+ * 결론 요약 stdout — **게이트보다 먼저** 나간다(`buildContent` 의 `onReport`). 게이트가 막아도 남는
+ * 것이 요점이다: 실패하면 에러 문구는 "무엇이 걸렸는가" 만 말하고 "그때 vault 가 어떤 상태였는가" 는
+ * 말하지 않는다.
+ *
+ * 리포트 payload 를 그대로 쓰므로 `--out` 파일과 값이 갈릴 수 없다(같은 객체에서 파생). `generatedAt`
+ * 은 싣지 않는다 — 실행마다 달라져 출력 대조를 못 하게 만들고, 그 값이 필요한 쪽은 파일이다.
+ */
+function printReportSummary(report) {
+  console.log(
+    `[wiki] validate env=${report.env}` +
+      ` total=${report.summary.total} included=${report.summary.included} excluded=${report.summary.excluded}` +
+      ` prunedFeeds=${report.prunedFeeds} unresolved=${report.unresolvedPaths.length}` +
+      ` invalidExcludedRefs=${report.invalidExcludedRefs.length}` +
+      ` sourceCommit=${report.sourceCommit}`,
+  )
+}
+
 function usage() {
-  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error] [--report <dir>]'
+  return 'Usage: node scripts/validate.mjs [--vault <vault repo>] [--env dev|prod] [--schema <dir>] [--deadlinks ignore|warn|error] [--out <dir>]'
 }
 
 function writeReport({ dir, env, report }) {
