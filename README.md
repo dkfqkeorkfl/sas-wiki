@@ -43,6 +43,7 @@ node scripts/feeds.mjs --env dev --count 20
 
 ```text
 wiki/**/*.md            문서 원본. 폴더 구조가 곧 위키의 계층이다
+  dev/**                개발용 예제 문서 — 이 폴더 아래는 전부 draft 다(아래 dev / prod)
 scripts/
   summary.mjs           엔드포인트 겸 생성기 — 화면 뼈대 + summary 아티팩트
   feeds.mjs             엔드포인트 겸 생성기 — 뉴스 피드 + feeds 아티팩트
@@ -290,8 +291,8 @@ node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
 결론 요약과 리포트 파일은 **게이트보다 먼저** 나간다. 그래서 피드 해석 실패처럼 검증이 막히는 상황에서도 "그때 vault 가 어떤 상태였는지"가 남는다 — 에러 문구는 무엇이 걸렸는지만 말하고 그건 말해 주지 않는다. 리포트 **파일** 쓰기 실패는 검증 판정을 실패로 승격하지 않고 stderr 로만 알린다. 기본 실행은 파일을 쓰지 않아 vault 를 더럽히지 않는다.
 
 ```text
-[wiki] validate env=dev total=6 included=6 excluded=0 prunedFeeds=1 unresolved=0 invalidExcludedRefs=0 sourceCommit=<40hex>
-[wiki] docs=6 body=5 feeds=5 prune=1 prunedFeeds=1 unresolved=0 warnings=0
+[wiki] validate env=dev total=6 included=6 excluded=0 prunedFeeds=0 unresolved=0 invalidExcludedRefs=0 sourceCommit=<40hex>
+[wiki] docs=6 body=5 feeds=6 prune=1 prunedFeeds=0 unresolved=0 warnings=0
 ```
 
 두 줄의 성격이 다르다. 첫 줄은 **vault 상태 결론**이라 게이트 앞에서 나오고 실패해도 남는다. 둘째 줄은 조립된 payload 의 통계 + 경고 상세라 **통과했을 때만** 나온다.
@@ -786,6 +787,8 @@ dev → prod 승격은 어떤 신호로 숨겼느냐에 따라 다르다.
 
 - **플래그로 숨긴 문서** — `draft` 를 지우면 끝이다. id 도 경로도 바뀌지 않는다.
 - **`dev/` 폴더로 숨긴 문서** — 폴더 밖으로 옮겨야 한다. id 는 그대로지만 **경로가 바뀐다**(= URL 과 wiki `--path` 가 바뀐다). 이동은 `git mv` 로 커밋한다(rename 으로 기록돼야 id 가 산다).
+
+**개발용 예제 문서는 `wiki/dev/` 아래에 모은다.** 이 리포에 들어 있는 6건이 그것이고, 새로 만드는 예제도 거기에 둔다. 폴더만 봐도 샘플인지 알 수 있게 하려는 컨벤션이며, 그 문서들은 frontmatter `draft` 플래그도 함께 달고 있다 — 두 신호가 OR 로 겹치는 것이 정상이고, 어느 한쪽을 지워도 여전히 숨는다.
 
 ---
 
