@@ -23,7 +23,21 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { deriveGeneratedAt } from '../lib/parse-vault.mjs'
 import { buildContent, parseArgs } from '../validate.mjs'
-import { cleanup, commit, git, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
+import {
+  cleanup,
+  commit,
+  git,
+  initVault,
+  makeOut as makeTempOut,
+} from './helpers/tmp-git-vault.mjs'
+
+const outputDirs = []
+function makeOut() {
+  const out = makeTempOut()
+  outputDirs.push(out)
+  return out
+}
+afterAll(() => cleanup(...outputDirs))
 
 // ── 합성 시딩 원자 (helpers/tmp-git-vault.writeDoc 는 draft·비유효 id 를 못 넣으므로 로컬 확장) ──
 let idSeq = 0
@@ -91,10 +105,6 @@ function feedRefsId(result, id) {
 // A. parseArgs --env (순수 · in-process)
 // ────────────────────────────────────────────────────────────────────────────
 describe('parseArgs --env — dev|prod · fail-closed 기본 · bogus throw', () => {
-  afterAll(() => {
-    vi.restoreAllMocks()
-  })
-
   it('--env dev → options.env === "dev" (RED — 현행은 알 수 없는 인자로 throw)', () => {
     expect(parseArgs(['--vault', 'v', '--env', 'dev']).env).toBe('dev')
   })
@@ -109,11 +119,14 @@ describe('parseArgs --env — dev|prod · fail-closed 기본 · bogus throw', ()
 
   it('--env 미지정 → console.error 경고 (silent 폴백 금지 — RED: 현행은 경고 없음)', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      parseArgs(['--vault', 'v'])
 
-    parseArgs(['--vault', 'v'])
-
-    expect(spy).toHaveBeenCalled()
-    expect(spy.mock.calls.flat().join(' ')).toMatch(/prod|fail-closed|미지정/i)
+      expect(spy).toHaveBeenCalled()
+      expect(spy.mock.calls.flat().join(' ')).toMatch(/prod|fail-closed|미지정/i)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('--env 잘못된 값(staging) → throw (E3 조용한 폴백 금지)', () => {

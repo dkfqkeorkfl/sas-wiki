@@ -43,8 +43,8 @@ import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 import { buildContent } from '../validate.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-// `IMPORTANCE` 는 아직 export 가 아니다 → **namespace import** 로 받는다. named import 로 적으면 ESM
-//   링크가 이 파일을 통째로 죽여(collection error) AN1~AN4·IM1·IM2 의 red 사유까지 사라진다(§2.4).
+// `IMPORTANCE` 는 정적 export 다. namespace import 로 모듈 표면을 받아 IM3 에서 export 존재와
+//   리터럴 4값을 함께 검증하고, 나머지 계약 케이스도 동일 모듈 인스턴스를 사용한다.
 const feedModule = await import(new URL('../lib/feed.mjs', import.meta.url).href)
 
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')

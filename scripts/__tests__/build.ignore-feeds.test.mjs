@@ -125,7 +125,9 @@ describe('build 배선 — fail-open / fail-loud 구분', () => {
 
   it('스키마 위반 ignore-feeds.json → build FAIL(throw, warn 아님) (#6 fail-loud)', () => {
     // when 누락 + 비-12hex id → 신뢰 못 할 목록은 조용히 무시하지 않고 build 를 끊는다.
-    expect(() => build([{ id: 'ABC' }])).toThrow()
+    expect(() => build([{ id: 'ABC' }])).toThrow(
+      /ignore-feeds\.json 스키마 위반[\s\S]*(필수 필드 누락 "when"|pattern 위반)/u,
+    )
   })
 })
 

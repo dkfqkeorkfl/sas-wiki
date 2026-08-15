@@ -29,6 +29,21 @@ const DRIVER = path.join(HERE, 'helpers', 'atomic-stress.mjs')
 
 const GENERATIONS = 40
 
+// 드라이버는 `ROLE`(기본 `driver`)·`PAYLOAD_KB`(기본 256)·`GENERATIONS`·`CACHE_DIR` 를 **환경에서**
+//   읽는다. 그래서 자식 env 를 `{ ...process.env }` 로만 넘기면 러너를 띄운 셸에 남아 있던 값이
+//   그대로 새어 든다 — 특히 `ROLE=producer` 가 있으면 최상위 호출이 드라이버 분기가 아니라
+//   **생산자 자식 분기로 들어가** 보고 JSON 을 내지 않는다. 페이로드 크기도 마찬가지로 흔들려
+//   "커널이 1회 write 로 내보내지 못할 만큼 크게" 라는 이 스펙의 전제가 조용히 깨진다.
+//   네 값을 **전부 명시**해 주변 환경이 결과를 바꾸지 못하게 한다.
+const PAYLOAD_KB = 256
+const driverEnv = (cacheDir) => ({
+  ...process.env,
+  CACHE_DIR: cacheDir,
+  GENERATIONS: String(GENERATIONS),
+  PAYLOAD_KB: String(PAYLOAD_KB),
+  ROLE: 'driver',
+})
+
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
@@ -46,10 +61,20 @@ describe('원자 발행 동시성 — 컨테이너 로컬 fs 하드 게이트 (A
 
       const child = spawnSync(process.execPath, [DRIVER], {
         encoding: 'utf8',
-        env: { ...process.env, CACHE_DIR: cacheDir, GENERATIONS: String(GENERATIONS) },
+        env: driverEnv(cacheDir),
         maxBuffer: 16 * 1024 * 1024,
         timeout: 120_000,
       })
+
+      // 자식의 종료 상태를 **먼저** 판정한다. 이걸 건너뛰고 곧장 `JSON.parse(child.stdout)` 로 가면
+      //   드라이버가 spawn 조차 못 했거나(`error`), 타임아웃으로 시그널에 죽었거나(`signal`),
+      //   비정상 종료한(`status !== 0`) 경우가 **파싱 에러로 위장**된다 — 원인이 "원자성 위반"이
+      //   아니라 "자식이 죽었다" 인데 실패 메시지는 그 사실을 가리키지 않는다.
+      expect(child.error, `드라이버 spawn 실패: ${child.error?.message ?? ''}`).toBeUndefined()
+      expect(child.signal, `드라이버가 시그널로 종료(타임아웃 의심): ${child.stderr}`).toBeNull()
+      expect(child.status, `드라이버 비정상 종료: ${child.stderr}`).toBe(0)
+      expect(child.stdout.trim(), `드라이버 보고가 비었다: ${child.stderr}`).not.toBe('')
+
       const report = JSON.parse(child.stdout)
 
       // ① 미구현 신호를 **먼저** 명시한다 — 이게 없으면 "생산자가 아무것도 안 써서 소비자가 아무 실패도

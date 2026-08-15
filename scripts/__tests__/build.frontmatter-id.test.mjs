@@ -26,7 +26,9 @@ describe('R3 build — frontmatter id 없으면 실패한다(git-hash 구제 제
       commit(vault, 'chore: HBM 문서 생성')
 
       // 현행: git-hash(12-hex) 가 id 로 주입돼 통과 → build 성공(no-throw) → 이 단언이 RED.
-      expect(() => buildContent({ out, vault })).toThrow()
+      expect(() => buildContent({ out, vault })).toThrow(
+        /문서 제외[\s\S]*SCHEMA_VIOLATION[\s\S]*필수 필드 누락 "id"/iu,
+      )
     } finally {
       cleanup(vault, out)
     }

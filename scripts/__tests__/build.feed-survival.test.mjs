@@ -21,13 +21,13 @@
 //
 // 자기참조 공허성(§2.3): 경로·subject·사유는 전부 리터럴이다. 부재 단언 앞에 **위험 실재 앵커**를 둔다.
 // 비용(§7.3): CLI 를 spawn 하지 않는다 — `buildContent` 를 import 해 in-process 로 문다.
-import { writeFileSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
+import { buildContent, main } from '../validate.mjs'
 import { ID_A, T1, T2, seedSurvivalVault } from './helpers/survival-vault.mjs'
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
@@ -65,12 +65,16 @@ const tuplesOf = (items) =>
 function commitWithMessageFile(vault, message, date) {
   const messagePath = path.join(tmpdir(), `wiki-red-msg-${process.pid}-${Date.now()}.txt`)
   writeFileSync(messagePath, message, 'utf8')
-  git(vault, ['add', '-A'])
-  git(vault, ['commit', '--no-gpg-sign', '-F', messagePath], {
-    GIT_AUTHOR_DATE: date,
-    GIT_COMMITTER_DATE: date,
-  })
-  return git(vault, ['rev-parse', 'HEAD'])
+  try {
+    git(vault, ['add', '-A'])
+    git(vault, ['commit', '--no-gpg-sign', '-F', messagePath], {
+      GIT_AUTHOR_DATE: date,
+      GIT_COMMITTER_DATE: date,
+    })
+    return git(vault, ['rev-parse', 'HEAD'])
+  } finally {
+    rmSync(messagePath, { force: true })
+  }
 }
 
 describe('buildContent — 검증 경로의 사유별 생존 (BE1·BE2 🔴RED(flip) · 원장 ②⑬⑭)', () => {
@@ -191,10 +195,9 @@ describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 ·
     }
   })
 
-  it('PS4: 미발행 커밋은 요약 줄 warnings 항에 합산된다(§7.4 stats 합산 계약) (🔴RED)', () => {
-    // `reportStats` 는 export 되지 않으므로(모듈 로컬) stdout 을 직접 잡을 수 없다 → 그 줄이 세는
-    //   **합산 계약**을 stats 로 단언한다. off-convention 이 빠진 자리를 이 항이 잇는다(Task 6 GOTCHA).
+  it('PS4: 미발행 커밋은 요약 줄 warnings 항에 합산된다(§7.4 stats 합산 계약) (🔴RED)', async () => {
     const vault = initVault()
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
       writeDoc(vault, 'company/공개', { id: ID_A, wikiRoot: 'wiki' })
       commit(vault, 'chore: 문서 생성')
@@ -203,10 +206,18 @@ describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 ·
 
       expect(git(vault, ['log', '-1', '--format=%s'])).toBe('feed:') // 앵커: 위험이 실재한다
 
-      const { stats } = buildContent({ env: 'dev', vault })
+      await main(['--vault', vault, '--env', 'dev'])
+      const printed = spy.mock.calls.flat().join('\n')
+      const warningTotal = Number(/\bwarnings=(\d+)\b/u.exec(printed)?.[1] ?? Number.NaN)
+      const warningDetails = printed
+        .split('\n')
+        .filter((line) => /\]\s+(unpublished-feed|deadlink|warning):/u.test(line))
+      const unpublishedDetails = warningDetails.filter((line) => line.includes('unpublished-feed:'))
 
-      expect(stats.warnings.length + stats.unpublishedFeedCommits.length).toBeGreaterThanOrEqual(1)
+      expect(unpublishedDetails.length, '앵커: 미발행 피드 상세가 출력되지 않음').toBeGreaterThan(0)
+      expect(warningTotal, '요약 warnings 가 상세 경고 개수와 다름').toBe(warningDetails.length)
     } finally {
+      spy.mockRestore()
       cleanup(vault)
     }
   })
