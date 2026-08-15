@@ -14,7 +14,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const SCRIPTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const ARTIFACT_MODULE = path.join(SCRIPTS_DIR, 'lib', 'artifact.mjs')
@@ -30,7 +30,7 @@ const PUBLICATIONS = [
 const SCHEMA_VERSION = 1
 
 /**
- * 소비자 자식 — 생산자들이 갈아끼우는 동안 세 산출물을 **프로덕션 독자**로 반복해 읽는다.
+ * 소비자 자식 — 생산자들이 갈아끼우는 동안 두 산출물을 **프로덕션 독자**로 반복해 읽는다.
  *
  * ★ v3 P1(§4.10 MW2-b · flip): 세대 좌표를 **`sourceCommit`** 으로 둔다. 그 값이 실제로 굴러야
  *   하므로 호출부는 라운드마다 **커밋**한다(미커밋 저장은 HEAD 를 움직이지 않는다 — 그 계약은
@@ -119,33 +119,60 @@ export async function runGeneratorRace({
       })
     : null
   let consumerOut = ''
+  let consumerStderr = ''
+  let consumerSpawnError = null
   consumer?.stdout.on('data', (chunk) => {
     consumerOut += chunk
+  })
+  // stderr 를 배수하지 않으면 파이프 버퍼가 차는 순간 자식이 그 지점에서 멈춘다(관측되지 않는
+  // 행 — write() 가 블록되는 Node 스트림 backpressure). 수집한 내용은 반환값에 실어 진단 가능하게 한다.
+  consumer?.stderr.on('data', (chunk) => {
+    consumerStderr += chunk
+  })
+  // `error` 핸들러가 없으면 spawn 실패(예: 실행 파일 경로 오류)가 unhandled 'error' 이벤트로
+  // 프로세스를 죽인다(Node `child_process` 문서: listener 없는 'error' 는 예외를 던진다).
+  consumer?.on('error', (error) => {
+    consumerSpawnError = error
   })
 
   const producers = []
   try {
-    for (let round = 0; round < rounds; round += 1) {
-      onRound?.(round)
-      const started = children.map((child) =>
-        runChild(
-          path.join(SCRIPTS_DIR, child.script),
-          ['--vault', vault, ...child.args],
-          timeoutMs,
-        ),
-      )
-      producers.push(...(await Promise.all(started)))
+    try {
+      for (let round = 0; round < rounds; round += 1) {
+        onRound?.(round)
+        const started = children.map((child) =>
+          runChild(
+            path.join(SCRIPTS_DIR, child.script),
+            ['--vault', vault, ...child.args],
+            timeoutMs,
+          ),
+        )
+        producers.push(...(await Promise.all(started)))
+      }
+    } finally {
+      writeFileSync(donePath, 'ok')
     }
+    if (consumer !== null) await new Promise((resolve) => consumer.on('close', resolve))
   } finally {
-    writeFileSync(donePath, 'ok')
+    // done-marker 기록 뒤(생산 루프·소비자 대기 어느 쪽에서든) 예외가 나도 이 정리는 반드시 돈다 —
+    // 바깥 `finally` 라서 안쪽에서 무엇이 던져지든 건너뛰지 않는다(잔재 파일이 다음 실행을 오염시키는 것을 막는다).
+    //
+    // ★ 순서가 계약이다: **소비자를 먼저 끊고** 마커를 지운다. 소비자 루프의 종료 조건은 이 마커의
+    //   존재뿐인데(데드라인이 없다), 예외 경로에서는 마커 기록과 삭제 사이에 `await` 가 없어 마커가
+    //   1ms 도 못 살 수 있다. 그 사이 소비자가 한 바퀴를 돌고 있으면 마커를 **영영 못 보고** 무한히
+    //   돈다 — 잔재 파일을 없애려던 정리가 고아 프로세스를 만드는 형태다. 정상 경로에서는 위에서
+    //   이미 close 를 기다렸으므로 `exitCode` 가 채워져 있어 아무 일도 하지 않는다.
+    if (consumer !== null && consumer.exitCode === null && consumer.signalCode === null) {
+      consumer.kill()
+    }
+    rmSync(donePath, { force: true })
   }
-
-  if (consumer !== null) await new Promise((resolve) => consumer.on('close', resolve))
-  rmSync(donePath, { force: true })
 
   return {
     artifacts: files.map((entry) => ({ ...entry, ...readPublication(entry.file) })),
     consumer: parseJsonOrNull(consumerOut),
+    consumerSpawnError,
+    consumerStderr,
     producers,
   }
 }
@@ -207,8 +234,10 @@ function parseJsonOrNull(raw) {
   }
 }
 
+// 수동 `'file://' + absolute` 조립은 공백·`#`·`?` 등에서 파손되고 플랫폼(드라이브 문자 등)에 따라
+// 비이식적이다 — 표준 API 가 경로 인코딩을 책임지게 한다(Node `node:url` 문서: `pathToFileURL`).
 function pathToUrl(absolute) {
-  return new URL(`file://${absolute}`).href
+  return pathToFileURL(absolute).href
 }
 
 /** 자식 하나를 동기로 돌리는 편의(워밍업 등) — 경합이 아닌 준비 단계 전용이다. */

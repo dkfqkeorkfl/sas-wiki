@@ -11,13 +11,25 @@ export const T1 = '2026-01-01T00:00:00Z'
 export const T2 = '2026-01-02T00:00:00Z'
 export const T3 = '2026-01-03T00:00:00Z'
 
+/** `draftBy` 허용값 — 이 밖의 값(오타 포함)은 조용히 다른 픽스처로 전환되지 않고 거부된다. */
+const DRAFT_BY_VALUES = ['folder', 'frontmatter']
+
 /**
  * RR-BASE — 공개(active), 실험(draft), 폐기(deleted)를 각각 1건씩 가리키는 feed 3건.
  *
  * `draftBy: 'folder'` 는 `wiki/dev/실험.md`, `'frontmatter'` 는 `wiki/lab/실험.md` + `draft: true`.
  * 호출부는 이 원자로 관측하려는 동작을 직접 단언한다. 이 헬퍼에는 expect 를 두지 않는다.
+ *
+ * ★ `draftBy === 'folder' ? … : …` 삼항이 세 군데다 — `'folder'` 가 아닌 모든 값(오타 포함)이
+ * 조용히 `'frontmatter'` 분기로 갔었다. 호출부는 "폴더 기반 draft 를 시딩했다"고 믿는데 실제로는
+ * 다른 픽스처를 받는 사고가 관측 없이 일어난다. 그래서 허용 목록 밖은 여기서 즉시 거부한다.
  */
 export function seedSurvivalVault({ draftBy = 'folder' } = {}) {
+  if (!DRAFT_BY_VALUES.includes(draftBy)) {
+    throw new Error(
+      `seedSurvivalVault: draftBy 가 '${draftBy}' 다 — 허용값은 ${DRAFT_BY_VALUES.map((v) => `'${v}'`).join(' 또는 ')} 뿐이다.`,
+    )
+  }
   const vault = initVault()
   writeDoc(vault, 'company/공개', { id: ID_A, wikiRoot: 'wiki' })
   const draftRel = draftBy === 'folder' ? 'dev/실험' : 'lab/실험'

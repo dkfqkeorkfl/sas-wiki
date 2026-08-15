@@ -34,7 +34,8 @@ const BASE_BRANCH = 'main'
 const SEED_BRANCH_RE = /^test(?:-[\w.-]+)?$/
 
 // ── 결정성 6필드 (git t/test-lib.sh 의 test_tick 관례 · build.smoke.test.mjs:28-57 미러) ──
-// 하나라도 빠지면 SHA 가 환경마다 달라진다 = 문서 id 가 흔들린다.
+// 하나라도 빠지면 SHA 가 환경마다 달라진다 = 피드 id 가 흔들린다(문서 id 는 frontmatter 저작
+// UUIDv7 이라 SHA 와 무관하게 불변이다 — 흔들리는 것은 피드 id = 커밋 해시다. 아래 :5 참조).
 const BOT_EMAIL = 'bot@sas.wiki'
 const BOT_NAME = 'SAS Wiki Bot'
 const FIRST_TICK = 1_136_239_445
@@ -386,7 +387,8 @@ function assertGitWorktree(repoDir) {
  * **detached HEAD** 상태이고, 이미 시딩된 커밋을 가리키고 있어도 로컬 브랜치 ref 는 없다
  * (원격 추적 ref 만 있다). 그 상태에서 로컬 ref 만 확인하면 "시딩 안 됨"으로 오판해 `main` 위에
  * 히스토리를 **처음부터 다시 쌓는다** — 베이스가 한 커밋이라도 전진해 있으면 조용히 다른 SHA 체인이
- * 만들어지고(= 문서 id 가 전부 바뀐다), push 를 시도하는 순간에야 non-fast-forward 로 알게 된다.
+ * 만들어지고(= 피드 id 가 전부 바뀐다 · 문서 id 는 frontmatter 저작 UUIDv7 이라 무관하다),
+ * push 를 시도하는 순간에야 non-fast-forward 로 알게 된다.
  * → 로컬 ref · 원격 추적 ref · 현재 HEAD 를 **전부** 본다.
  */
 function assertNotSeeded(repoDir, branch) {
@@ -413,24 +415,114 @@ function assertSeedBranchAllowed(branch) {
   }
 }
 
+/**
+ * 기존 브랜치를 재사용해도 되는지 확인한다 — `assertNotSeeded` 는 "vault 문서가 이미 있는가" 만
+ * 본다. 그 앞에서 통과했더라도 그 브랜치의 tip 이 `baseRef` 에서 갈라진 게 아니라 **임의의 다른
+ * 계보**일 수 있다(예: 사람이 수동으로 만든 `test` 브랜치가 다른 커밋 위에 있는 경우) — 그 위에
+ * 조용히 이어 쌓으면 결과 히스토리가 뒤섞인다. `merge-base --is-ancestor` 로 계보를 확인하고,
+ * 아니면 **거부**한다(브랜치를 지우거나 강제로 옮기지 않는다 — 이 리포는 히스토리 재작성이 곧
+ * 데이터 손실이다. 되살리려면 사람이 명시적으로 브랜치를 지워야 한다 — `assertNotSeeded` 와
+ * 같은 어휘).
+ */
+function assertBranchRootedAt(repoDir, branch, baseRef) {
+  const ref = `refs/heads/${branch}`
+  try {
+    git(repoDir, ['merge-base', '--is-ancestor', baseRef, ref])
+  } catch (error) {
+    if (error.status !== 1) throw error
+    throw new Error(
+      `'${branch}' 가 이미 있지만 베이스(${baseRef})에서 갈라진 tip 이 아니다 — 임의의 다른 ` +
+        `계보 위에 이어 쌓는 것을 거부한다.\n` +
+        `다시 만들려면 그 브랜치를 명시적으로 버리고(git branch -D ${branch}) 시작하라.`,
+    )
+  }
+}
+
 function checkoutSeedBranch(repoDir, branch, baseRef) {
-  if (refExists(repoDir, `refs/heads/${branch}`)) git(repoDir, ['checkout', '-q', branch])
-  else git(repoDir, ['checkout', '-q', '-b', branch, baseRef])
+  if (refExists(repoDir, `refs/heads/${branch}`)) {
+    assertBranchRootedAt(repoDir, branch, baseRef)
+    git(repoDir, ['checkout', '-q', branch])
+  } else {
+    git(repoDir, ['checkout', '-q', '-b', branch, baseRef])
+  }
+}
+
+/**
+ * 커밋 직후 결과가 우리가 쓴 그대로인지 확인한다(부모·트리·저자/커미터 메타).
+ *
+ * `--no-gpg-sign` 만으로는 **hook 개입에 의한 부분 시딩**을 못 막는다 — `pre-commit`/`commit-msg`
+ * 훅이 인덱스를 바꾸거나(스테이징한 파일 일부를 되돌리는 등) 저자를 바꿔도 `git commit` 자체는
+ * exit 0 이다. `--no-verify` 로 훅을 끄는 것은 답이 아니다(정책·PreToolUse 훅이 실제로 막는다).
+ * 그래서 **막지 못해도 관측되게** 한다 — 이 확인이 없으면 훅이 조용히 다른 트리를 실어도
+ * `seedVault` 는 성공한 것처럼 반환한다. 그것이 "부분 시딩이 조용히 남는다"는 원래 결함이다.
+ */
+function assertCommitMatchesIntent(repoDir, { beforeHead, identity, stagedTree }) {
+  const [
+    head,
+    parent,
+    tree,
+    authorName,
+    authorEmail,
+    authorDate,
+    committerName,
+    committerEmail,
+    committerDate,
+  ] = git(repoDir, [
+    'log',
+    '-1',
+    '--date=raw',
+    '--format=%H%n%P%n%T%n%an%n%ae%n%ad%n%cn%n%ce%n%cd',
+  ]).split('\n')
+
+  if (parent !== beforeHead) {
+    throw new Error(
+      `커밋(${head}) 후 부모가 예상과 다르다(hook 이 커밋을 더 쌓았을 수 있다): ` +
+        `예상=${beforeHead} 실제=${parent}`,
+    )
+  }
+  if (tree !== stagedTree) {
+    throw new Error(
+      `커밋(${head}) 후 트리가 'add -A' 로 스테이징한 것과 다르다(hook 이 내용을 바꿨을 수 있다): ` +
+        `예상=${stagedTree} 실제=${tree}`,
+    )
+  }
+  if (
+    authorName !== identity.GIT_AUTHOR_NAME ||
+    authorEmail !== identity.GIT_AUTHOR_EMAIL ||
+    authorDate !== identity.GIT_AUTHOR_DATE
+  ) {
+    throw new Error(
+      `커밋(${head}) 저자 메타가 지정한 값과 다르다(hook 개입 의심): ${authorName} <${authorEmail}> ${authorDate}`,
+    )
+  }
+  if (
+    committerName !== identity.GIT_COMMITTER_NAME ||
+    committerEmail !== identity.GIT_COMMITTER_EMAIL ||
+    committerDate !== identity.GIT_COMMITTER_DATE
+  ) {
+    throw new Error(
+      `커밋(${head}) 커미터 메타가 지정한 값과 다르다(hook 개입 의심): ${committerName} <${committerEmail}> ${committerDate}`,
+    )
+  }
 }
 
 /** 결정성 6필드 + `--no-gpg-sign` 으로 커밋한다. 하나라도 빠지면 SHA 가 환경마다 달라진다. */
 function commit(repoDir, message) {
   tick += TICK_STEP
   const date = `${tick} +0000`
-  git(repoDir, ['add', '-A'])
-  git(repoDir, ['commit', '-q', '--no-gpg-sign', '-m', message], {
+  const identity = {
     GIT_AUTHOR_DATE: date,
     GIT_AUTHOR_EMAIL: BOT_EMAIL,
     GIT_AUTHOR_NAME: BOT_NAME,
     GIT_COMMITTER_DATE: date,
     GIT_COMMITTER_EMAIL: BOT_EMAIL,
     GIT_COMMITTER_NAME: BOT_NAME,
-  })
+  }
+  git(repoDir, ['add', '-A'])
+  const beforeHead = git(repoDir, ['rev-parse', 'HEAD'])
+  const stagedTree = git(repoDir, ['write-tree'])
+  git(repoDir, ['commit', '-q', '--no-gpg-sign', '-m', message], identity)
+  assertCommitMatchesIntent(repoDir, { beforeHead, identity, stagedTree })
   return git(repoDir, ['rev-parse', 'HEAD'])
 }
 
@@ -445,11 +537,22 @@ function docPath(repoDir, relDoc) {
   return path.join(repoDir, WIKI_DIR, `${relDoc}.md`)
 }
 
-/** 문자열 1건 치환(정확히 1회 등장해야 한다 — 조용한 no-op 을 막는다). */
+/**
+ * 문자열 1건 치환(**정확히 1회** 등장해야 한다 — 조용한 no-op 을 막는다).
+ *
+ * `includes`(존재만 확인) + `replace`(첫 건만 치환)의 조합은 "정확히 1회" 를 검증하지 않는다 —
+ * 2회 이상 등장하면 첫 건만 조용히 바뀌고 나머지는 그대로 남는다(부분 치환이 시딩 성공처럼 보인다).
+ * 그래서 등장 횟수를 직접 세어 1이 아니면 던진다.
+ */
 function editDoc(repoDir, relDoc, from, to) {
   const full = docPath(repoDir, relDoc)
   const before = fs.readFileSync(full, 'utf8')
-  if (!before.includes(from)) throw new Error(`치환 대상을 찾지 못했다: ${relDoc} <- "${from}"`)
+  const occurrences = before.split(from).length - 1
+  if (occurrences !== 1) {
+    throw new Error(
+      `치환 대상이 정확히 1회 등장해야 한다: ${relDoc} <- "${from}" 이(가) ${occurrences}회 등장했다.`,
+    )
+  }
   fs.writeFileSync(full, before.replace(from, to), 'utf8')
 }
 

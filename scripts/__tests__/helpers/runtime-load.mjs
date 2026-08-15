@@ -37,8 +37,20 @@ const SCRIPTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
  *             stderr: string, stdout: string }}
  *   `gitCalls` = 자식이 낸 git 호출의 argv 배열들 · `loadedUrls` = 실행된 모듈 url(중복 제거·정렬)
  */
+// 이 헬퍼가 항상 강제하는 환경변수 — 호출부가 `env` 옵션으로 덮어쓰면 계측(NODE_V8_COVERAGE)이나
+// 9p safe.directory 방어가 조용히 무효화된다. 공유 헬퍼라 "조용한 무시"가 다음 호출부를 속인다 —
+// 충돌은 무시하지 않고 즉시 던진다(스프레드 순서만으로는 "덮어썼는데 왜 안 먹히지" 를 남긴다).
+const FORCED_ENV_KEYS = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0', 'NODE_V8_COVERAGE'] // prettier-ignore
+
 export function runCliWithLoadLog(scriptName, args = [], options = {}) {
   const { cwd, env: extraEnv = {}, timeoutMs = 120_000, vault } = options
+  const collidingKeys = FORCED_ENV_KEYS.filter((key) => key in extraEnv)
+  if (collidingKeys.length > 0) {
+    throw new Error(
+      `runCliWithLoadLog: extraEnv 가 강제 변수를 덮으려 한다(${collidingKeys.join(', ')}) — ` +
+        '이 헬퍼는 계측·safe.directory 방어를 항상 강제한다. 호출부에서 이 키들을 넘기지 마라.',
+    )
+  }
   const shim = makeGitCountShim()
   const coverageDir = mkdtempSync(path.join(tmpdir(), 'wiki-v8cov-'))
   const scriptPath = path.join(SCRIPTS_DIR, scriptName)
@@ -50,13 +62,15 @@ export function runCliWithLoadLog(scriptName, args = [], options = {}) {
       encoding: 'utf8',
       env: {
         ...shim.env(process.env),
+        // ★ 강제 변수는 항상 `extraEnv` **뒤**(=이긴다)에 둔다. 위 사전 검사가 이미 충돌을 막지만,
+        //   스프레드 순서 자체도 방어선으로 유지한다(이중 방어 — 검사 로직만 믿지 않는다).
+        ...extraEnv,
         // 9p 소유자 불일치 방어 — 실 리포를 spawn 하는 케이스의 관례(cli-contract.test.mjs:56-62).
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: 'safe.directory',
         GIT_CONFIG_VALUE_0: '*',
         // ★ 부모 값을 그대로 물려받으면 앞 실행의 url 이 섞인다 — 반드시 덮어쓴다.
         NODE_V8_COVERAGE: coverageDir,
-        ...extraEnv,
       },
       maxBuffer: 64 * 1024 * 1024,
       timeout: timeoutMs,

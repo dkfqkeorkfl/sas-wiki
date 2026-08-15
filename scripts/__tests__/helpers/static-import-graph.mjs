@@ -19,26 +19,88 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /**
- * `^import … from '<rel>'` 과 `^import '<rel>'` 를 잡는다.
+ * 주석(줄·블록)을 걷어낸 코드만 남긴다 — 따옴표 상태를 추적하는 문자 스캐너다(정규식 치환이
+ * 아니다). 정규식 두 방(블록 먼저 → 줄 나중)을 순서대로 쏘면 두 맹점이 생긴다: ① 문자열·템플릿
+ * 리터럴 안의 슬래시-슬래시 쌍·슬래시-별표 쌍도 주석으로 오인해 그 뒤 실제 코드를 지운다. ② 줄 주석
+ * 안에 우연히 슬래시-별표 쌍이 있으면 블록 주석 시작으로 오인해 다음 별표-슬래시 쌍까지 실제
+ * 코드를 통째로 삼킨다 — 이 리포에서 같은
+ * 형태의 스캐너가 실제로 16파일 773줄을 이렇게 놓쳤다(선례: `feeds.env-leak.verify.test.mjs`·
+ * `docs-contract.test.mjs` 의 `codeOnly`/`stripComments`, 같은 규칙을 이 파일 안에 지역 구현한다 —
+ * 파편화된 스캐너를 한 모듈로 통합하는 것은 이 phase 범위가 아니다).
+ *
+ * 그래서 이 스캐너는 **줄 주석을 블록 주석보다 먼저 판정**하고, 홑따옴표·겹따옴표·백틱 문자열
+ * 안에서는 어떤 주석 판정도 하지 않는다(역슬래시 이스케이프 포함). 미종료 블록 주석은 EOF 까지
+ * 소거한다(자바스크립트의 실제 동작과 같다).
+ *
+ * ★ 한계(정직하게 적어 둔다): 정규식 리터럴은 문자열로 취급하지 않는다 — 완전한 판별에는 JS
+ *   렉서가 필요하고 그건 이 파서의 몫이 아니다(이 리포의 실제 소스에 그런 형태가 없음을 전제한다).
+ */
+function codeOnly(text) {
+  let out = ''
+  let quote = null
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      out += char
+      if (char === '\\') {
+        out += text[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    if (char === '/' && text[index + 1] === '/') {
+      while (index < text.length && text[index] !== '\n') index += 1
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const close = text.indexOf('*/', index + 2)
+      index = close === -1 ? text.length : close + 1
+      continue
+    }
+    out += char
+  }
+  return out
+}
+
+/**
+ * `^import … from '<rel>'` · `^import '<rel>'` · `^export … from '<rel>'`(정적 재export)를 잡는다.
  *
  * · `^` + `m` 플래그: **줄 시작**만 — `const m = await import('./x.mjs')` 는 애초에 매칭 후보가 아니다.
+ *   (`codeOnly` 가 주석을 먼저 걷어내므로 블록 주석 안의 줄시작 `import`/`export` 는 후보에서
+ *   빠진다 — 이전엔 주석을 안 걷어내 오탐했다.)
  * · `import\s+`: `import(` 는 `\s+` 가 없어 걸리지 않는다(줄 시작 동적 import 방어).
  * · `[^'"()]*?`: 명세부(`{ a, b }` · `* as ns` · 기본 바인딩)를 건너뛴다. 개행을 허용하므로
  *   여러 줄에 걸친 `import {\n  a,\n} from './x.mjs'` 도 잡는다(이 리포의 실제 스타일).
  *   **괄호를 배제**하므로 `import ('…')` 같은 동적 형태로 새지 않는다.
+ * · `export\s+(?:\*(?:\s+as\s+[^\s'"()]+)?|\{[^'"()]*?\})\s+from\s+`: `export { x } from './y.mjs'` ·
+ *   `export * from './y.mjs'` · `export * as ns from './y.mjs'` — **정적 재export**. 이전엔 이 형태를
+ *   전혀 세지 않아 금지 의존성이 재export 를 타고 폐쇄에서 빠져나갈 수 있었다.
  * · `(\.[^'"]+)`: 상대경로(`./`·`../`)만 캡처 — 패키지·내장은 첫 글자가 `.` 이 아니라 탈락한다.
+ *
+ * ★ 유지되는 기존 계약: 동적 `await import()` 는 여전히 안 세고, 패키지·내장(`'node:fs'`·`'unified'`)
+ *   도 여전히 안 센다(D-A 경계 — `:12-17` 참조). `summary.import-graph.test.mjs` 의 IG3~IG5 가 이
+ *   비-공허성을 테스트로 문다.
  */
-const STATIC_IMPORT_RE = /^import\s+(?:[^'"()]*?\s+from\s+)?['"](\.[^'"]+)['"]/gmu
+const STATIC_IMPORT_RE =
+  /^(?:import\s+(?:[^'"()]*?\s+from\s+)?|export\s+(?:\*(?:\s+as\s+[^\s'"()]+)?|\{[^'"()]*?\})\s+from\s+)['"](\.[^'"]+)['"]/gmu
 
 /**
- * 소스 텍스트에서 **정적** 상대 import 지정자를 등장 순서대로 모은다(중복 제거).
+ * 소스 텍스트에서 **정적** 상대 import/재export 지정자를 등장 순서대로 모은다(중복 제거).
+ * 주석(줄·블록) 안의 오탐은 `codeOnly` 가 앞단에서 걷어낸다.
  *
  * @param {string} source 모듈 소스 텍스트
  * @returns {string[]} 예: `['./lib/atomic.mjs', './lib/payloads.mjs']`
  */
 export function staticRelativeImports(source) {
   const out = []
-  for (const match of source.matchAll(STATIC_IMPORT_RE)) {
+  for (const match of codeOnly(source).matchAll(STATIC_IMPORT_RE)) {
     if (!out.includes(match[1])) out.push(match[1])
   }
   return out

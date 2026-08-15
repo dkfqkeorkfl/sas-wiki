@@ -36,45 +36,119 @@ export function githubSlug(text) {
 }
 
 /**
+ * 코드펜스 여는 줄의 마커를 잡는다 — CommonMark spec(§4.5 Fenced code blocks, spec.commonmark.org)
+ * 축자 인용:
+ *   "A code fence is a sequence of at least three consecutive backtick characters (`) or
+ *   tildes (~). ... The line with the opening code fence may be indented up to three spaces."
+ *   "The content of the code block consists of all subsequent lines, until a closing code
+ *   fence of the **same type** as the code block began with (backticks or tildes), and **with
+ *   at least as many backticks or tildes as the opening code fence**."
+ * 종류·길이를 무시한 단순 토글은 ``` 로 연 펜스가 ~~~ 로도, 더 짧은 펜스로도 닫힌 것처럼 오판한다.
+ *
+ * @returns {{ char: string, length: number } | null}
+ */
+function matchFenceMarker(line) {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})/)
+  return match ? { char: match[1][0], length: match[1].length } : null
+}
+
+/**
+ * 코드펜스 안 여부를 줄 단위로 계산한다 — S1(fence 종류·길이)·S2(fence 안 링크 제외)·S3(fence 안
+ * 마커 제외)이 **같은 규칙을 공유**한다(REFACTOR: 파일 안 로컬 통합 — 새 헬퍼 파일 추출 금지).
+ *
+ * @param {string[]} lines
+ * @returns {boolean[]} `lines` 와 같은 길이 — i번째 줄이 펜스 **안**(여는/닫는 줄 포함)이면 true
+ */
+function computeFenceMask(lines) {
+  const mask = []
+  let opening = null
+  for (const line of lines) {
+    const marker = matchFenceMarker(line)
+    if (opening === null) {
+      if (marker) {
+        opening = marker
+        mask.push(true)
+      } else {
+        mask.push(false)
+      }
+      continue
+    }
+    mask.push(true)
+    if (marker && marker.char === opening.char && marker.length >= opening.length) {
+      opening = null
+    }
+  }
+  return mask
+}
+
+/**
+ * ATX heading 하나를 줄에서 뽑는다(없으면 `null`) — CommonMark spec(§4.2 ATX headings) 축자 인용:
+ *   "The opening # character may be indented 0-3 spaces. The opening sequence of # characters
+ *   must be followed by spaces or tabs, or by the end of line. ... A closing sequence of any
+ *   number of unescaped # characters ... is optional; it must be preceded by spaces or tabs
+ *   and may be followed by spaces or tabs only."
+ * G4: 3칸까지 들여쓴 heading 과 닫는 `#` 시퀀스(`## 제목 ##`)를 반영한다(이전엔 둘 다 무시했다).
+ *
+ * @returns {string | null}
+ */
+function matchAtxHeading(line) {
+  const opening = line.match(/^ {0,3}#{1,6}(?:[ \t]+(.*))?$/)
+  if (!opening) return null
+  const raw = (opening[1] ?? '').trim()
+  return raw.replace(/(?:^|[ \t])#+[ \t]*$/, '').trim()
+}
+
+/**
  * ATX heading 텍스트 — **코드펜스 안은 제외**(AC5).
  *
  * 앵커가 실재한다: `README.md:189` 에 bash 주석 `# 1페이지 → items: …` 가 **실제로 있다**.
  * 펜스를 안 보면 그것이 heading 으로 세어져 slug 집합이 오염되고, AC1 이 조용히 넓어진다.
  */
 export function extractHeadings(markdown) {
+  const lines = markdown.split('\n')
+  const fenced = computeFenceMask(lines)
   const headings = []
-  let inFence = false
-  for (const line of markdown.split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence
-      continue
-    }
-    if (inFence) continue
-    const match = line.match(/^#{1,6}\s+(.*)$/)
-    if (match) headings.push(match[1].trim())
+  for (const [index, line] of lines.entries()) {
+    if (fenced[index]) continue
+    const heading = matchAtxHeading(line)
+    if (heading !== null) headings.push(heading)
   }
   return headings
 }
 
 /**
+ * 한 줄 안의 인라인 코드 스팬을 제거한다 — CommonMark spec(§6.1 Code spans) 요지: 여는/닫는
+ * 백틱 런(run)의 **길이가 같아야** 스팬이 닫힌다(``` `a` ``` · ``` ``a` `` ``` 둘 다 유효).
+ * 줄을 넘어가는 스팬은 다루지 않는다(그 경우는 이미 코드펜스이거나 극히 드문 형태다 — 근사 범위).
+ */
+function stripInlineCode(line) {
+  return line.replace(/(`+)[^`]*?\1/g, '')
+}
+
+/**
  * 절간 링크의 slug — `](#slug)` 만. 외부 링크(`](http…`)는 **구조적으로 제외**된다(AC7).
+ * **코드펜스·인라인 코드 안은 제외**(S2) — 그 안의 `](#…)` 는 예시 텍스트이지 실제 링크가 아니다.
  *
  * 외부 링크를 검사 대상에 넣지 않는 이유: 네트워크 의존이라 비결정적이고 느리다. 그 결정을 여기
  * 주석과 AC7 케이스 **양쪽**에 남긴다 — 다음 사람이 범위를 넓히려 할 때 근거가 보여야 한다.
  */
 export function extractAnchorLinks(markdown) {
+  const lines = markdown.split('\n')
+  const fenced = computeFenceMask(lines)
   const slugs = []
-  const pattern = /\]\(#([^)]+)\)/g
-  let match = pattern.exec(markdown)
-  while (match !== null) {
-    slugs.push(match[1])
-    match = pattern.exec(markdown)
+  for (const [index, line] of lines.entries()) {
+    if (fenced[index]) continue
+    for (const match of stripInlineCode(line).matchAll(/\]\(#([^)]+)\)/g)) {
+      slugs.push(match[1])
+    }
   }
   return slugs
 }
 
 /**
  * 결속 마커 구간 — `<!-- contract:<name> -->` … `<!-- /contract:<name> -->` 사이의 줄들.
+ * **코드펜스 안의 마커는 세지 않는다**(S3) — 안 그러면 코드블록에 마커를 적어 계약 구간을
+ * 위조할 수 있다(스푸핑).
  *
  * ★ **`null` 을 돌려준다(throw 하지 않는다)** — 마커 부재로 파일의 다른 케이스까지 죽으면
  *   collection error 가 되고, 그것을 러너 요약이 **PASS 로 오보고**한다(§7.3). 부재는 `*0` 앵커
@@ -86,9 +160,11 @@ export function extractAnchorLinks(markdown) {
  */
 export function extractMarkerBlock(markdown, name) {
   const lines = markdown.split('\n')
+  const fenced = computeFenceMask(lines)
   const openIndexes = []
   const closeIndexes = []
   for (const [index, line] of lines.entries()) {
+    if (fenced[index]) continue
     if (line.includes(`<!-- contract:${name} -->`)) openIndexes.push(index)
     if (line.includes(`<!-- /contract:${name} -->`)) closeIndexes.push(index)
   }
