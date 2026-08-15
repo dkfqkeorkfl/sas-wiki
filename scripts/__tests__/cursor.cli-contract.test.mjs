@@ -40,6 +40,7 @@ import { listTracked, scanTracked } from './helpers/tracked-scan.mjs'
 import {
   initTinyRepo,
   makeRealGitRunner,
+  readFeedPage,
   runFeedsCli,
   seedFeedVault,
 } from './helpers/cursor-vault.mjs'
@@ -372,6 +373,41 @@ describe('exit code 충돌 — 사유는 stderr 가 가른다 (CQ6 · 규범 P)'
 
     // 둘 다 무효면 **어느 사유인지 stderr 가 말한다**(OQ-P2-4 (a) = env 먼저).
     expect(both.stderr, both.stderr).toMatch(ENV_VOCAB)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 진단 마스킹 — `readFeedPage` 실패 메시지가 `spawnEnv` 원문을 흘리지 않는다 (자격증명 서브타입)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('진단 마스킹 — spawnEnv 가 진단 메시지로 새지 않는다', () => {
+  it('실패 진단이 spawnEnv 원문 값 없이 마스크 표식만 남긴다 (앵커 쌍)', () => {
+    // "시크릿 0"은 마스킹으로도, 진단 자체가 사라져도 성립한다 — 그래서 **부재(①)와 마스크 존재(②)를
+    //   함께** 묻는다. ②가 없으면 ①은 "로그가 안 났다"와 구분되지 않는다.
+    const secretValue = 'sekrit-token-6f21-do-not-leak'
+    const spawnEnv = {
+      ...process.env,
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'safe.directory',
+      GIT_CONFIG_VALUE_0: '*',
+      WIKI_TEST_FAKE_SECRET: secretValue,
+    }
+
+    // `--after` 형식 위반은 git 을 부르기 전에 exit 2 로 거부된다(D10 ①) — 결정적이고 빠르다.
+    let thrown
+    try {
+      readFeedPage(base.vault, { after: 'not-a-valid-cursor', count: 1, spawnEnv })
+    } catch (error) {
+      thrown = error
+    }
+
+    expect(thrown, '잘못된 --after 인데도 readFeedPage 가 throw 하지 않았다').toBeInstanceOf(Error)
+    // ① 원문 부재
+    expect(thrown.message, '진단 메시지에 spawnEnv 원문 값이 그대로 남아 있다').not.toContain(
+      secretValue,
+    )
+    // ② 마스크 존재(앵커) — ①만 있으면 "진단이 통째로 사라졌다"와 구분되지 않는다.
+    expect(thrown.message, '진단 메시지에 마스크 표식(***)이 없다').toContain('***')
   })
 })
 

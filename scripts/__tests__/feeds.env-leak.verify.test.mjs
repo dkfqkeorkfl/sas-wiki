@@ -65,9 +65,58 @@ const NEW_TEST_FILES = [
  */
 const LEGACY_PREFIX_RE = /uwiki|cwiki/
 
-/** 주석(줄·블록)을 걷어낸 코드만 남긴다 — LG1 은 **테스트 입력**의 레거시 토큰을 문다. */
-const codeOnly = (source) =>
-  source.replaceAll(/\/\*[\s\S]*?\*\//g, '').replaceAll(/(^|[^:])\/\/.*$/gm, '$1')
+/**
+ * 주석(줄·블록)을 걷어낸 코드만 남긴다 — LG1 은 **테스트 입력**의 레거시 토큰을 문다.
+ *
+ * 따옴표 상태를 추적하는 문자 스캐너다(정규식 치환이 아니다) — 정규식 두 방을 순서대로 쏘면
+ * 두 가지 맹점이 생긴다: ① 문자열·템플릿 리터럴 안의 슬래시-슬래시·슬래시-별표 쌍도 주석으로
+ * 오인해 그 뒤의 실제 코드를 지운다. ② 줄 주석 안에 우연히 슬래시-별표 쌍이 있으면(예: 이 함수를
+ * 설명하는 주석 자체) 블록 주석 시작으로 오인해 다음 별표-슬래시 쌍까지 실제 코드를 통째로 삼킨다
+ * — 이 리포에서 같은 형태의 스캐너가 실제로 16파일 773줄을 이렇게 놓쳤다.
+ *
+ * 그래서 이 스캐너는 **줄 주석을 블록 주석보다 먼저 판정**한다(순서가 반대면 위 ②를 그대로
+ * 물려받는다). 그리고 홑따옴표·겹따옴표·백틱 문자열 안에서는 어떤 주석 판정도 하지 않는다
+ * (역슬래시 이스케이프 처리 포함). 미종료 블록 주석은 EOF 까지 소거한다(자바스크립트의 실제
+ * 동작과 같다).
+ *
+ * ★ 남아 있는 한계(정직하게 적어 둔다): **정규식 리터럴은 문자열로 취급하지 않는다.** 그래서
+ *   `/…\/\//` 처럼 이스케이프된 슬래시가 연달아 끝나는 정규식은 줄 주석 시작으로 오인된다.
+ *   완전한 판별에는 JS 렉서가 필요하고(정규식과 나눗셈은 선행 토큰으로만 갈린다) 그건 이 가드의
+ *   몫이 아니다. 위 `NEW_TEST_FILES` 7개에 그런 형태가 **0건**임을 확인하고 남긴 한계다.
+ */
+function codeOnly(text) {
+  let out = ''
+  let quote = null
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      out += char
+      if (char === '\\') {
+        out += text[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    if (char === '/' && text[index + 1] === '/') {
+      while (index < text.length && text[index] !== '\n') index += 1
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const close = text.indexOf('*/', index + 2)
+      index = close === -1 ? text.length : close + 1
+      continue
+    }
+    out += char
+  }
+  return out
+}
 
 describe('prod 누출 가드 — 헤르메틱 (LK1)', () => {
   it('LK1: 전량 draft vault 는 dev 에서 3건이고 prod 에서 0건이다', () => {
@@ -146,9 +195,12 @@ function restoreEnv(name, value) {
  */
 const REAL_VAULT_WALK_TIMEOUT = 120_000
 
+/** dev 기대 건수 — **리터럴로 박지 않고 신원 목록에서 유도**한다(vault 히스토리 하드결합 금지). */
+const EXPECTED_DEV_COUNT = DRAFT_BACKED_TITLES.length + 1 // draft 유래 5 + 삭제 유래 1
+
 describe('prod 누출 가드 — 실 vault 신원 고정 (LK2 🔴RED(flip) · OQ-P2-1 = A)', () => {
   it(
-    'LK2: dev 6건 · prod 는 **정확히 1건**이고 그 1건이 삭제 유래이며 draft 유래 5건은 전부 부재다',
+    'LK2: dev 는 신원 목록 전건 · prod 는 **정확히 1건**이고 그 1건이 삭제 유래이며 draft 유래는 전부 부재다',
     { timeout: REAL_VAULT_WALK_TIMEOUT },
     () => {
       const { dev, prod } = withSafeDirectory(() => ({
@@ -156,15 +208,34 @@ describe('prod 누출 가드 — 실 vault 신원 고정 (LK2 🔴RED(flip) · O
         prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
       }))
 
-      // ★ 앵커: dev 6건이 먼저다(픽스처=실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
-      expect(dev).toHaveLength(6)
-      expect(titlesOf(dev)).toContain(DELETED_BACKED_TITLE)
-      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(dev)).toContain(title)
+      // ★ 앵커: dev 건수가 신원 목록과 맞아야 한다(픽스처=실 vault 가 비지 않았다). 진단 메시지가
+      //   "예제 vault 내용이 바뀌었다"와 "prod 로 누출됐다"를 갈라 준다 — 이 앵커가 잡는 것은 전자다.
+      expect(
+        dev,
+        `dev 건수가 신원 목록(${EXPECTED_DEV_COUNT}건)과 다르다 — 예제 vault 내용이 바뀌었을 수 있다`,
+      ).toHaveLength(EXPECTED_DEV_COUNT)
+      expect(
+        titlesOf(dev),
+        '삭제 유래 신원이 dev 에 없다 — 예제 vault 내용이 바뀌었을 수 있다',
+      ).toContain(DELETED_BACKED_TITLE)
+      for (const title of DRAFT_BACKED_TITLES) {
+        expect(
+          titlesOf(dev),
+          `draft 유래 신원 "${title}" 이 dev 에 없다 — 예제 vault 내용이 바뀌었을 수 있다`,
+        ).toContain(title)
+      }
 
-      // 개수 → **신원**으로 승격. 오분류면 6건이 되고 예제 뉴스 5건이 상용으로 샌다.
-      expect(titlesOf(prod)).toEqual([DELETED_BACKED_TITLE])
-      expect(prod[0].docs).toEqual([]) // D9 — 삭제는 연결만 끊는다(문서는 draft 였던 적이 없다)
-      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(prod)).not.toContain(title)
+      // 개수 → **신원**으로 승격. 오분류면 prod 가 dev 와 같은 개수가 되고 예제 뉴스가 상용으로 샌다.
+      expect(
+        titlesOf(prod),
+        'prod 가 삭제 유래 1건 그대로가 아니다 — prod 로 누출됐을 수 있다',
+      ).toEqual([DELETED_BACKED_TITLE])
+      expect(prod[0].docs, 'D9 위반 — 삭제 유래 feed 가 문서 연결을 여전히 갖고 있다').toEqual([]) // D9 — 삭제는 연결만 끊는다(문서는 draft 였던 적이 없다)
+      for (const title of DRAFT_BACKED_TITLES) {
+        expect(titlesOf(prod), `draft 유래 신원 "${title}" 이 prod 로 누출됐다`).not.toContain(
+          title,
+        )
+      }
     },
   )
 })

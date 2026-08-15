@@ -94,6 +94,9 @@ describe('원자 발행 동시성 — 컨테이너 로컬 fs 하드 게이트 (A
       expect(report.consumer.enoent).toBe(0)
       expect(report.consumer.parseFail).toBe(0)
       expect(report.consumer.unknownGeneration).toBe(0)
+      // ④ 소비자 루프 상한(consume() 의 데드라인)을 실제로 소모했는지 — 옵션만 두고 결과를 안 보면
+      //    "무한 행을 막는 장치가 있다"는 조용한 주장으로 남는다.
+      expect(report.consumer.timedOut, '소비자 루프가 데드라인을 소모했다').toBe(false)
     },
   )
 })

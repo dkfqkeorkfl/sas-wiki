@@ -84,6 +84,13 @@ export function seedFeedVault({ feedCount, suppressLatest = 0 }) {
 }
 
 /**
+ * `runFeedsCli` 의 기본 spawn 상한(ms) — 호출부가 `timeoutMs` 를 안 주면 이 값이 적용된다(상한 없는
+ * 호출을 없앤다). `helpers/runtime-load.mjs` 의 자식 spawn 기본 상한(`timeoutMs = 120_000`)과 같은
+ * 값을 골라, 이 리포에 "기본 spawn 상한"의 서로 다른 매직넘버가 여럿 생기지 않게 한다.
+ */
+const DEFAULT_SPAWN_TIMEOUT_MS = 120_000
+
+/**
  * `feeds.mjs` 를 자식 프로세스로 띄운다 — **판정하지 않는다**(raw spawnSync 결과 그대로).
  *
  * `after`·`count` 는 **등호 결합**으로 넘긴다. 공백 분리는 `util.parseArgs` 가 값이 `-` 로 시작하는
@@ -107,8 +114,19 @@ export function runFeedsCli(vault, options = {}) {
     encoding: 'utf8',
     env: spawnEnv ?? childEnv(),
     maxBuffer: 64 * 1024 * 1024,
-    ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+    timeout: timeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS,
   })
+}
+
+/**
+ * 진단용 `options` 사본 — `spawnEnv` 가 있으면 **키는 남기고 값만 마스킹**한다. 무엇이 주입됐는지는
+ * 진단에 필요하지만(어떤 env 변수 이름을 넘겼는가), 값 자체는 호출부가 `process.env` 파생을 통째로
+ * 넘기는 관례라 CI 로그에 자격증명이 그대로 찍힐 수 있다(자격증명 서브타입).
+ */
+function redactForDiagnostics(options) {
+  if (options.spawnEnv === undefined) return options
+  const maskedEnv = Object.fromEntries(Object.keys(options.spawnEnv).map((key) => [key, '***']))
+  return { ...options, spawnEnv: maskedEnv }
 }
 
 /**
@@ -120,7 +138,7 @@ export function readFeedPage(vault, options = {}) {
   const result = runFeedsCli(vault, options)
   if (result.status !== 0) {
     throw new Error(
-      `[RED] feeds CLI exit=${result.status} args=${JSON.stringify(options)}\n${(result.stderr ?? '').trim()}`,
+      `[RED] feeds CLI exit=${result.status} args=${JSON.stringify(redactForDiagnostics(options))}\n${(result.stderr ?? '').trim()}`,
     )
   }
   try {

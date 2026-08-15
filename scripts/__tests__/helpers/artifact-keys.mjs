@@ -82,10 +82,57 @@ export function runPackageScript(name, { cwd, env = {}, timeoutMs = 600_000, vau
   }
 }
 
+/**
+ * `&&` 로 분할하되 `'`·`"` **안의 `&&` 는 자르지 않는다**(원문 보존 계약 — 따옴표 표현식이 스텝
+ * 경계로 잘못 잘리면 그 표현식이 깨진다).
+ *
+ * 인용 규칙은 POSIX 셸을 따른다(이 명령들은 `shell: true` 로 실행되므로 셸이 실제로 그렇게 읽는다):
+ * 홑따옴표 안에서는 **역슬래시도 그냥 글자**라 `'…'` 는 다음 홑따옴표에서 반드시 끝나고, 겹따옴표
+ * 밖·안에서는 `\` 가 다음 한 글자를 이스케이프한다. 세 규칙이 다 필요하다 — 같은 파일의 `quote()`
+ * 는 경로 안의 홑따옴표를 `'\''`(닫고 · **따옴표 밖에서** 이스케이프된 따옴표 · 다시 열기)로 내보내는데,
+ * 밖의 이스케이프를 빼먹으면 그 자리에서 따옴표 상태가 반대로 뒤집혀 뒤따르는 `&&` 를 자르지 못한다.
+ */
+function splitStepsOutsideQuotes(command) {
+  const steps = []
+  let current = ''
+  let quote = null
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index]
+    if (quote) {
+      current += char
+      if (char === '\\' && quote === '"') {
+        current += command[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '\\') {
+      current += char + (command[index + 1] ?? '')
+      index += 1
+      continue
+    }
+    if (char === "'" || char === '"') {
+      quote = char
+      current += char
+      continue
+    }
+    if (char === '&' && command[index + 1] === '&') {
+      steps.push(current)
+      current = ''
+      index += 1
+      continue
+    }
+    current += char
+  }
+  steps.push(current)
+  return steps
+}
+
 /** `&&` 스텝 중 `scripts/*.mjs` 를 부르는 것에만 `--vault <tmp>` 를 덧붙인다(그 외는 원문 그대로). */
 function retargetVault(rawCommand, vault) {
-  return rawCommand
-    .split('&&')
+  return splitStepsOutsideQuotes(rawCommand)
     .map((step) =>
       /scripts\/[\w.-]+\.mjs/u.test(step) ? `${step.trim()} --vault ${quote(vault)}` : step.trim(),
     ) // prettier-ignore

@@ -31,10 +31,47 @@ const ROLE = process.env.ROLE ?? 'driver'
 
 const targetPath = (cacheDir) => path.join(cacheDir, 'summary.json')
 const donePath = (cacheDir) => path.join(cacheDir, 'PRODUCER_DONE')
+/** 소비자가 읽기 루프에 들어갔다는 신호 — 생산자가 이 마커를 기다린 뒤 세대 루프를 시작한다. */
+export const readyPath = (cacheDir) => path.join(cacheDir, 'CONSUMER_READY')
 
-/** 세대 g 의 정본 — 소비자가 "중간 세대(찢겼거나 섞인 내용)" 를 판별할 수 있게 세대 번호를 심는다. */
+/**
+ * 세대 g 전용 채움 문자열 — filler 를 세대에 **결속**한다. 길이만 확인하는 오라클은 다른 세대의
+ * filler 가 통째로 섞여 들어와도 그대로 통과시킨다(세대마다 같은 바이트였을 때가 정확히 그 상태다).
+ *
+ * 문자 하나를 세대별로 순환시키면 `GENERATIONS` 가 알파벳을 넘는 순간 충돌하므로, 세대 번호 자체를
+ * 되풀이한 뒤 잘라 쓴다 — 어떤 세대 수에서도 두 세대의 filler 가 같아지지 않는다. 길이는 여전히
+ * `FILLER_LENGTH` 그대로다(커널이 1회 write 로 못 내보낼 만큼 크게 유지하는 것이 이 스펙의 전제다).
+ */
+function fillerFor(generation) {
+  return `${generation}|`.repeat(Math.ceil(FILLER_LENGTH / `${generation}|`.length)).slice(0, FILLER_LENGTH) // prettier-ignore
+}
+
+/** 세대 g 의 정본 — filler·marker·generation 이 전부 같은 세대에서 나왔는지 소비자가 가릴 수 있다. */
 function generationPayload(generation) {
-  return { filler: 'x'.repeat(FILLER_LENGTH), generation, marker: `generation-${generation}` }
+  return {
+    filler: fillerFor(generation),
+    generation,
+    marker: `generation-${generation}`,
+  }
+}
+
+/** 생산자 준비-대기 상한(ms) — 소비자 신호가 비정상적으로 늦어도 생산자가 무한 행하지 않는다. */
+const PRODUCER_READY_TIMEOUT_MS = 10_000
+
+/**
+ * 소비자가 읽기 루프에 들어갔다는 신호(`readyPath`)를 기다린다.
+ *
+ * 신호가 없으면: 생산자는 `spawn` 직후 곧장 쓰기 시작하고, 소비자는 `import(self)` 동적 해석이
+ * 끝난 뒤에야 읽기를 시작한다. 두 시점 사이에 여유가 있으면 생산자가 40세대를 전부 써버려
+ * 소비자는 마지막 세대 하나만 보고, "여러 세대를 목격했다" 단언이 스케줄링 운에 좌우된다.
+ * 상한을 넘기면 신호 없이 진행한다 — 소비자 쪽 못 봄은 그 자체가 `generationsSeen` 단언으로
+ * 드러나므로, 여기서 무한정 기다리는 새 무한 행을 만들지 않는다.
+ */
+function waitForConsumerReady(cacheDir) {
+  const deadline = Date.now() + PRODUCER_READY_TIMEOUT_MS
+  while (!existsSync(readyPath(cacheDir)) && Date.now() < deadline) {
+    // 로컬 fs 폴링 — 두 프로세스 모두 컨테이너 로컬이라 비용이 낮다(consume() 과 같은 방식).
+  }
 }
 
 async function runProducer(cacheDir) {
@@ -51,29 +88,48 @@ async function runProducer(cacheDir) {
     }
   }
 
+  waitForConsumerReady(cacheDir)
+
   let writes = 0
-  for (let generation = 1; generation <= GENERATIONS; generation += 1) {
-    loaded.writeFileAtomic(targetPath(cacheDir), JSON.stringify(generationPayload(generation)))
-    writes += 1
+  // 루프 중 throw 해도 done 마커는 반드시 남긴다 — 안 그러면 소비자의 `for(;;)` 가 마커를 영원히
+  //   기다리게 된다(그 실패 자체가 관측되지 않는 무한 행이 된다).
+  try {
+    for (let generation = 1; generation <= GENERATIONS; generation += 1) {
+      loaded.writeFileAtomic(targetPath(cacheDir), JSON.stringify(generationPayload(generation)))
+      writes += 1
+    }
+    writeFileSync(donePath(cacheDir), 'ok')
+    return { writes }
+  } catch (error) {
+    writeFileSync(donePath(cacheDir), 'producer-error')
+    return { producerError: error instanceof Error ? error.message : String(error), writes }
   }
-  writeFileSync(donePath(cacheDir), 'ok')
-  return { writes }
 }
+
+/** 소비자 루프 상한(ms) — 생산자가 done 마커를 끝내 안 남기면 이 루프가 그 사실을 관측하고
+ *  스스로 멈춘다(무한 행 방지). `timedOut` 은 판정하지 않는다 — 사실로만 보고한다. */
+const CONSUMER_DEADLINE_MS = 60_000
 
 /** 소비자 루프 — 생산자 종료 표식이 보일 때까지 read + JSON.parse 를 반복하며 실패를 분류 집계한다. */
 export function consume(cacheDir) {
   const target = targetPath(cacheDir)
   const done = donePath(cacheDir)
   const seen = new Set()
+  const deadline = Date.now() + CONSUMER_DEADLINE_MS
   let enoent = 0
   let parseFail = 0
   let published = false
   let reads = 0
+  let timedOut = false
   let unknownGeneration = 0
 
   // 생산자가 끝나도 한 바퀴 더 돈다 — 마지막 rename 직후 상태까지 관측 범위에 넣는다.
   let trailing = 2
   for (;;) {
+    if (Date.now() > deadline) {
+      timedOut = true
+      break
+    }
     const finished = existsSync(done)
     try {
       const raw = readFileSync(target, 'utf8')
@@ -84,7 +140,8 @@ export function consume(cacheDir) {
         const intact =
           parsed.marker === `generation-${parsed.generation}` &&
           typeof parsed.filler === 'string' &&
-          parsed.filler.length === FILLER_LENGTH
+          parsed.filler.length === FILLER_LENGTH &&
+          parsed.filler === fillerFor(parsed.generation)
         if (intact) seen.add(parsed.generation)
         else unknownGeneration += 1
       } catch {
@@ -102,7 +159,7 @@ export function consume(cacheDir) {
       if (trailing <= 0) break
     }
   }
-  return { enoent, generationsSeen: seen.size, parseFail, reads, unknownGeneration }
+  return { enoent, generationsSeen: seen.size, parseFail, reads, timedOut, unknownGeneration }
 }
 
 /**
@@ -112,8 +169,10 @@ export function consume(cacheDir) {
  * 그 안에서 `spawn`(비동기)으로 생산자를 띄운다 — **동시에 도는 프로세스가 2개**가 된다.
  */
 const BOOTSTRAP = `
+const { writeFileSync } = require('node:fs')
 const { spawn } = require('node:child_process')
 const self = process.env.SELF_PATH
+const cacheDir = process.env.CACHE_DIR
 const producer = spawn(process.execPath, [self], {
   env: { ...process.env, ROLE: 'producer' },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -123,7 +182,10 @@ let err = ''
 producer.stdout.on('data', (chunk) => { out += chunk })
 producer.stderr.on('data', (chunk) => { err += chunk })
 import(self).then(async (mod) => {
-  const consumer = mod.consume(process.env.CACHE_DIR)
+  // 생산자는 이 신호를 기다린 뒤에야 세대 루프를 시작한다(barrier) — dynamic import 해석이 끝나기
+  //   전에 생산자가 전 세대를 써버려 소비자가 마지막 세대만 보는 경합을 없앤다.
+  writeFileSync(mod.readyPath(cacheDir), 'ready')
+  const consumer = mod.consume(cacheDir)
   await new Promise((resolve) => producer.on('close', resolve))
   let parsed
   try { parsed = JSON.parse(out) } catch { parsed = { raw: out.slice(0, 500), stderr: err.slice(0, 800) } }
@@ -137,6 +199,7 @@ function runDriver() {
   mkdirSync(cacheDir, { recursive: true })
   rmSync(donePath(cacheDir), { force: true })
   rmSync(targetPath(cacheDir), { force: true })
+  rmSync(readyPath(cacheDir), { force: true })
 
   try {
     const child = spawnSync(process.execPath, ['-e', BOOTSTRAP], {

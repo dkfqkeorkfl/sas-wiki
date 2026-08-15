@@ -23,9 +23,32 @@ export const ARTIFACT_FIXTURE_DIR = path.join(
   'artifact',
 )
 
-/** 픽스처 절대 경로. 존재 여부는 확인하지 않는다(부재도 스펙이 관측할 사실이다). */
+/**
+ * `target` 이 `base` 안쪽(자기 자신 포함)인지 확인하고 절대경로를 돌려준다. 벗어나면 **throw**다
+ * (`expect` 없는 파일이라 사실을 던지는 것이 규범 D 의 fail-loud 형태다). 문자열 `startsWith` 만
+ * 쓰면 `<base>-evil` 같은 형제 디렉토리가 접두어로 통과한다 — 그래서 경계 뒤에 구분자를 강제한다.
+ */
+function assertContained(base, target, label) {
+  const resolvedBase = path.resolve(base)
+  const resolvedTarget = path.resolve(target)
+  const contained =
+    resolvedTarget === resolvedBase || resolvedTarget.startsWith(resolvedBase + path.sep)
+  if (!contained) {
+    throw new Error(
+      `[containment] ${label} 이 기준 디렉토리 밖을 가리킨다: ${resolvedTarget} (기준: ${resolvedBase})`,
+    )
+  }
+  return resolvedTarget
+}
+
+/** 픽스처 절대 경로. 존재 여부는 확인하지 않는다(부재도 스펙이 관측할 사실이다). `name` 에 `..` 가
+ *  섞여 `ARTIFACT_FIXTURE_DIR` 밖을 가리키면 throw(containment). */
 export function artifactFixturePath(name) {
-  return path.join(ARTIFACT_FIXTURE_DIR, name)
+  return assertContained(
+    ARTIFACT_FIXTURE_DIR,
+    path.join(ARTIFACT_FIXTURE_DIR, name),
+    'artifactFixturePath(name)',
+  )
 }
 
 /** 픽스처 **바이트**(utf8 텍스트). 파싱하지 않는다 — `truncated.json` 은 파싱되지 않는 것이 계약이다. */
@@ -38,9 +61,16 @@ export function readArtifactFixtureText(name) {
  *
  * 권한 변조(RD8 EACCES) 같은 파괴적 관측은 커밋된 원본에 하면 안 된다 — 워킹트리가 더러워지고
  * 다음 케이스가 그 잔재를 본다. 복사본에만 한다.
+ *
+ * `destName` 에 `..` 가 섞여 `destDir` 밖을 가리키면 throw(containment) — 호출부가 준 `destDir`
+ * 자체는 신뢰하고(그 경계 안이면 허용), `destName` 이 그 경계를 벗어나는 것만 막는다.
  */
 export function copyArtifactFixture(name, destDir, destName = name) {
-  const dest = path.join(destDir, destName)
+  const dest = assertContained(
+    destDir,
+    path.join(destDir, destName),
+    'copyArtifactFixture(destDir, destName)',
+  )
   fs.mkdirSync(path.dirname(dest), { recursive: true })
   fs.copyFileSync(artifactFixturePath(name), dest)
   return dest

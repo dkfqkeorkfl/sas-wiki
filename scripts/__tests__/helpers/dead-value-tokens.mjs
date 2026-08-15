@@ -40,19 +40,44 @@ const TOKEN_PARTS = [
 export const DEAD_VALUE_TOKENS = TOKEN_PARTS.map((parts) => parts.join(''))
 
 /**
+ * 이름 → 그 항목을 구성하는 **조각 배열**(위 `TOKEN_PARTS` 의 원소 그대로 다시 적은 것 — 조립하지
+ * 않으므로 완성 토큰 리터럴이 새로 생기지 않는다). `TOKEN` 은 숫자 위치가 아니라 이 조각 배열로
+ * `TOKEN_PARTS` 를 찾는다 — `TOKEN_PARTS` 안에서 항목 순서가 바뀌어도 깨지지 않는다(위치 결속이
+ * 사라진다). 항목이 통째로 없어지면(조각 신원을 못 찾으면) 아래 `resolveToken` 이 **모듈 로드
+ * 시점에 throw** 한다 — 인덱스가 어긋난 채 엉뚱한 토큰을 조용히 가리키는 경로가 없다.
+ */
+const TOKEN_PART_SIGNATURE = {
+  CORRELATION_FIELD: ['inputs', 'Fingerprint'],
+  FEEDS_STAMP_VALUE: ['sas-wiki/', 'fee', 'ds'],
+  MISMATCH_REASON: ['pro', 'ducer-mismatch'],
+  REPORT_STAMP_VALUE: ['sas-wiki/', 'rep', 'ort'],
+  SUMMARY_STAMP_VALUE: ['sas-wiki/', 'sum', 'mary'],
+}
+
+/** `signature` 와 조각 배열이 정확히 같은 `TOKEN_PARTS` 항목을 찾아 조립된 토큰을 돌려준다. */
+function resolveToken(signature) {
+  const index = TOKEN_PARTS.findIndex(
+    (parts) =>
+      parts.length === signature.length && parts.every((part, position) => part === signature[position]), // prettier-ignore
+  )
+  if (index === -1) {
+    throw new Error(
+      `[dead-value-tokens] TOKEN_PARTS 에서 조각 신원을 찾지 못했다: ${JSON.stringify(signature)}`,
+    )
+  }
+  return DEAD_VALUE_TOKENS[index]
+}
+
+/**
  * 이름으로 꺼내 쓰는 통로 — 스펙 본문이 값을 리터럴로 적지 않아도 되게 한다.
  *
  * ★ **키 이름에도 판정 토큰을 쓰지 않는다**(맨단어 하나가 그대로 토큰인 것이 있다). 키가 토큰을
  *   담으면 이 파일이 스캔에 걸려 DV3 이 영원히 red 가 되고, 그 red 의 "수리" 가 자기 제외다.
  *   그래서 표지 계열은 `STAMP` 로 부른다.
  */
-export const TOKEN = {
-  CORRELATION_FIELD: DEAD_VALUE_TOKENS[0],
-  FEEDS_STAMP_VALUE: DEAD_VALUE_TOKENS[7],
-  MISMATCH_REASON: DEAD_VALUE_TOKENS[9],
-  REPORT_STAMP_VALUE: DEAD_VALUE_TOKENS[8],
-  SUMMARY_STAMP_VALUE: DEAD_VALUE_TOKENS[6],
-}
+export const TOKEN = Object.fromEntries(
+  Object.entries(TOKEN_PART_SIGNATURE).map(([name, signature]) => [name, resolveToken(signature)]),
+)
 
 /** 삭제되는 계산 모듈이 리포에서 유일하게 쓰던 내장 모듈 지정자(같은 이유로 조각이다). */
 export const CRYPTO_SPECIFIER = ['node:', 'cry', 'pto'].join('')

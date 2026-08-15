@@ -9,8 +9,10 @@
 //   에서 `entries.map` **TypeError**(의도한 미구현)로 실패한다.
 //
 // 계약(GREEN 이 구현):
-//   feeds(vault, {from,to,count,after}) — P5 부터 **아티팩트 소비자**다(D-E). 억제·정렬·경계·
-//   tie-break·continuation 은 `pageFeeds` 에 **위임**(endpoints 층 재구현 금지 · SSOT · FC5).
+//   feeds(vault, {from,to,count,after}) — 매 호출마다 `walkCursorPage`(`lib/feed-cursor.mjs`)로
+//   커서 기반 **라이브 워크**해 페이지를 계산한다(D-E). `pageFeeds` 는 개념째 사라졌고 이 함수는
+//   사전 빌드된 아티팩트를 소비하지 않는다 — 억제·정렬·경계·tie-break·continuation 은 그 워크
+//   안에서 결정된다(endpoints 층 재구현 금지 원칙은 유지된다).
 //     from/to/count 의미 표면 보존(값경계·상한) · nextCursor 필드 **가산**(당시 schemaVersion 불변).
 //     ☞ P4 에서 공용 `SCHEMA_VERSION` 이 1 → 2, P5(D-G · §4 원장 ⑭)가 2 → **3** 이 된다 — feeds
 //     봉투 **형태**는 스키마 버전 리셋 외엔 그대로다.
@@ -127,6 +129,41 @@ describe('endpoints.feeds — 억제는 `ignore.mjs` 한 곳이다 (E-F3 🔴RED
       const page = await feeds(vault, 'dev', { count: 10, ignore: path.join(vault, 'ignore-feeds.json') }) // prettier-ignore
 
       expect(titlesOf(page)).toEqual(['n3-남음', 'n1']) // 억제(n2) + git 워크 순서(최신 → 과거)
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  it('E-F3 소유권 앵커: 스키마 위반 억제 목록에서 로더의 fail-loud 가 그대로 올라온다', async () => {
+    // ★ 위 케이스의 단언은 **출력 동치성뿐**이다 — `feeds.mjs` 가 로더를 인라인 재구현해도 같은
+    //   출력을 내면 통과한다. 그래서 소유권을 따로 문다.
+    //
+    // ★★ 관측 수단으로 기각한 두 가지(둘 다 이 축에서 **공허**하다 · 실측):
+    //   ① 실행 계측(`NODE_V8_COVERAGE`) — `lib/feed-cursor.mjs` 가 억제 **필터**(`applyIgnoreFeeds`)
+    //      때문에 이미 `lib/ignore.mjs` 를 import 하고 `feeds.mjs` 는 어차피 `walkCursorPage` 를
+    //      부른다. 그래서 **로더**를 재구현해도 그 모듈은 다른 경로로 여전히 로드된다.
+    //   ② 정적 import 존재 확인 — 재구현자가 쓰지 않는 import 를 남겨 두면 그대로 통과한다.
+    //      이 리포에는 미사용 import 를 잡는 린터가 없어서(훅·CI·ESLint 부재가 계약이다) 그 형태가
+    //      실제로 관측됐다: import 를 남긴 채 로더만 인라인했더니 이 파일이 전부 green 이었다.
+    //
+    // 그래서 **로더만 갖는 계약**을 문다. `lib/ignore.mjs` 의 `loadIgnoreFeedsAt` 은 파일이
+    // 존재하되 스키마를 위반하면 **throw** 한다(fail-open 은 부재일 때뿐이다 — "신뢰 못 할 억제
+    // 목록을 조용히 무시하지 않는다"). 아래 목록은 **JSON 으로는 멀쩡하고** 스키마만 위반하므로,
+    // 소박한 `JSON.parse` 재구현은 이것을 통과시켜 **검증되지 않은 억제**를 적용해 버린다.
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'company/삼성', { id: ID_A })
+      commit(vault, 'chore: 삼성 생성')
+      const target = seedFeed(vault, { date: T1, subject: 'n1' })
+      const ignorePath = path.join(vault, 'ignore-feeds.json')
+      // 필수 필드 `when` 이 없다 — 파싱은 되고 검증만 실패한다. `id` 는 유효해서, 검증을 건너뛰는
+      //   구현이라면 이 항목으로 **실제 억제가 일어난다**(그래서 부작용이 관측 가능한 형태다).
+      writeFileSync(ignorePath, JSON.stringify([{ id: target }]), 'utf8')
+      await prebuildArtifacts(vault, 'dev')
+
+      await expect(feeds(vault, 'dev', { count: 10, ignore: ignorePath })).rejects.toThrow(
+        /스키마 위반/u,
+      )
     } finally {
       cleanup(vault)
     }
