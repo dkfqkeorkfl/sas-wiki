@@ -46,7 +46,10 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_C, title: '온디바이스 AI' }) // 변조: C
       commit(vault, 'chore: 온디바이스 AI id 변조')
 
-      expect(() => buildContent({ out, vault })).toThrow()
+      // bare toThrow() 는 **아무 이유로나** 실패해도 통과한다 — 게이트가 진짜 변조 사유
+      // (doc-gate.mjs 의 ID_TAMPERED)로 막았는지, 아니면 무관한 예외(예: 스키마 오류)로 우연히
+      // 막혔는지 구별하지 못한다. 정체를 물어 진짜 게이트가 발화했음을 증명한다.
+      expect(() => buildContent({ out, vault })).toThrow(/ID_TAMPERED/)
     } finally {
       cleanup(vault, out)
     }

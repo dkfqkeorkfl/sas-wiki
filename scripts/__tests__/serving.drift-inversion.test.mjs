@@ -217,8 +217,13 @@ describe('두 번째 깊은 사유도 같은 반전 (DR6 · 🔴RED flip)', () =
     expect(state.excluded.map((entry) => entry.reasonCode)).toEqual([DELETED_ID_REUSE])
 
     const page = await feeds(reuse.vault, 'dev', {})
-    const item = page.items.at(0)
-    expect(item).toBeDefined() // 피드 자체는 생존한다(fail-open)
+    // 앵커: 위험 실재 — 응답에 피드가 최소 1건 있다(빈 배열에서 `.at(0)` 이 `undefined` 를 내
+    //   아래 toBeDefined() 가 항상 지는 것을 배제).
+    expect(page.items.length).toBeGreaterThan(0)
+    // `.at(0)` 은 이 vault 에 피드가 정확히 1건뿐이라 **우연히** 맞는다 — 다른 피드가 앞에 끼면
+    //   조용히 엉뚱한 항목을 검사한다. 실제로 이 시딩이 만든 feedId 로 찾는다.
+    const item = page.items.find((entry) => entry.id === reuse.feedId)
+    expect(item, `feedId=${reuse.feedId} 를 찾지 못함 — items=${JSON.stringify(page.items.map((entry) => entry.id))}`).toBeDefined() // prettier-ignore
     expect(docIdsOf(item)).toEqual([])
 
     expect(await wiki(reuse.vault, 'dev', reuse.reusedRel)).toBeNull()

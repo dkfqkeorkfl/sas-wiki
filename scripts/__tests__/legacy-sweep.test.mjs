@@ -385,6 +385,19 @@ describe('예외 양방향 — 죽은 예외는 실패다 (LS3 pair · CX-6E)', 
     const totalRemoved = Object.values(removedById).reduce((sum, count) => sum + count, 0)
     expect(totalRemoved).toBeGreaterThan(0)
 
+    // 하한 앵커(scannedLines 관례와 같은 방향 · G1): `itBlockRange` 는 텍스트 기반 블록 파싱이라
+    //   포맷이 바뀌면(마커 문구 변경·닫는 줄 들여쓰기 변경 등) 조용히 무너질 수 있다 — E2·E6 의
+    //   `covers()` 가 그 결과에 기대므로, 파싱이 **오늘 알려진 마커에서 실제로 무언가 찾는다**를
+    //   직접 못박는다. 이게 없으면 파싱이 null 을 내도 "면제 0건" 이라는 간접 신호(위 dead 판정)로만
+    //   드러나 itBlockRange 자체가 원인이라는 진단이 안 남는다.
+    const cn1Range = itBlockRange(readLines('scripts/__tests__/build.convention-scope.test.mjs'), 'CN1:') // prettier-ignore
+    expect(cn1Range, 'itBlockRange 가 CN1 블록을 못 찾았다(E2 커버리지가 조용히 변질된다)').not.toBeNull() // prettier-ignore
+    const seedVaultLines = readLines('scripts/__tests__/seed-example-vault.test.mjs')
+    const seedRangeA = itBlockRange(seedVaultLines, '예제 커밋 17건이 ')
+    const seedRangeB = itBlockRange(seedVaultLines, '커밋은 신규 파일을 정확히 1개 만든다')
+    expect(seedRangeA, 'itBlockRange 가 E6 첫 마커를 못 찾았다(커버리지가 조용히 변질된다)').not.toBeNull() // prettier-ignore
+    expect(seedRangeB, 'itBlockRange 가 E6 둘째 마커를 못 찾았다(커버리지가 조용히 변질된다)').not.toBeNull() // prettier-ignore
+
     const dead = EXCEPTIONS.filter((entry) => removedById[entry.id] === 0).map((entry) => entry.id)
     expect(
       dead,

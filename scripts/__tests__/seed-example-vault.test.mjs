@@ -1,13 +1,13 @@
 // @vitest-environment node
 //
-// RED-A · 시드 스크립트 계약 — scripts/wiki/seed-example-vault.mjs (plan Task 1 / tdd §4.1)
+// RED-A · 시드 스크립트 계약 — scripts/__tests__/helpers/seed-example-vault.mjs (plan Task 1 / tdd §4.1)
 //
 // RED 사유: seed-example-vault.mjs 가 **아직 없다** → 아래 import 가 모듈 해석 단계에서 실패한다.
 //   무관한 문법 오류·셋업 붕괴가 아니라 **의도한 미구현** 때문에 실패한다.
 //
 // GREEN 대상의 계약:
 //   export function seedVault({ repo, branch = 'test' }) → { branch, head, commits: string[] }
-//   CLI: node scripts/wiki/seed-example-vault.mjs --repo sas-wiki --branch test
+//   CLI: node scripts/__tests__/helpers/seed-example-vault.mjs --repo sas-wiki --branch test
 //   엔트리가드: import.meta.url === pathToFileURL(process.argv[1]).href  (build.mjs:268 선례)
 //
 // 왜 함수를 export 하고 CLI 를 얇게 두는가:
@@ -39,6 +39,12 @@ const { seedVault } = await import(pathToFileURL(SEED_SCRIPT).href)
 
 // 베이스 리포의 루트 커밋 — 실 sas-wiki 의 README 커밋에 대응한다(시딩은 이 위에 얹힌다).
 const BASE_SUBJECT = 'Initialize README with project title'
+
+// 시더가 실제로 문서를 쓰는 루트 — **리터럴**이다(규범 A: 헬퍼의 WIKI_DIR 을 import 하지 않는다.
+//   자기참조 공허 금지 — 헬퍼가 스스로 잘못된 값을 내도 여기서 같은 값을 베끼면 못 잡는다).
+//   이 값이 헬퍼(`helpers/seed-example-vault.mjs:45` 의 `WIKI_DIR`)와 어긋나면, 아래 "결정성"
+//   테스트의 짝 앵커(거부되지 않은 시딩은 이 경로를 만든다)가 먼저 깨져 드러난다.
+const SEEDED_DOC_ROOT = 'wiki'
 
 // 베이스 커밋의 6필드 고정(결정성). 시드 스크립트도 같은 규율을 따라야 A-1 이 통과한다.
 const BASE_IDENTITY = {
@@ -107,6 +113,10 @@ describe('seedVault — 결정성', () => {
     expect(execGit(first, ['rev-parse', 'test'])).toBe(execGit(second, ['rev-parse', 'test']))
     expect(a.head).toBe(b.head)
     expect(a.head).toBe(execGit(first, ['rev-parse', 'test']))
+    // 짝 앵커: 거부되지 않은 시딩은 문서 루트를 **실제로** 만든다 — 안전 가드 스위트의
+    //   `existsSync(path.join(repo, SEEDED_DOC_ROOT))` 부재 단언이 리터럴 드리프트로 공허해지면
+    //   여기가 먼저 깨진다(위 SEEDED_DOC_ROOT 주석).
+    expect(existsSync(path.join(first, SEEDED_DOC_ROOT))).toBe(true)
   })
 
   it('CLI 로 실행해도 예제 17커밋을 쌓고 exit 0 이다', () => {
@@ -145,9 +155,21 @@ describe('seedVault — 안전 가드(되돌릴 수 없는 쓰기 차단)', () =
       const repo = freshClone(`guard-allow-${branch.trim() || 'empty'}`)
 
       expect(() => seedVault({ branch, repo })).toThrow()
-      expect(existsSync(path.join(repo, 'vault'))).toBe(false)
+      // `repo/vault` 는 시더가 **어떤 경우에도** 만들지 않는 경로다(문서 루트는 SEEDED_DOC_ROOT).
+      //   그 경로를 확인하면 거부가 실제로 일어났는지와 무관하게 항상 참이라 공허하다 — 시더가
+      //   실제로 쓰는 문서 루트가 비어 있는지를 물어야 거부가 "아무것도 만들지 않았다"를 증명한다.
+      expect(existsSync(path.join(repo, SEEDED_DOC_ROOT))).toBe(false)
     },
   )
+
+  it('허용 목록의 `test-*` 패턴도 실제로 통과한다(양성 케이스)', () => {
+    // 위 it.each 는 **거부**만 확인한다 — 허용 목록이 정확히 `test` 하나가 아니라 `test-*` 패턴까지
+    //   넓다는 위 주석의 주장은 어디서도 실행되지 않는다. `test-foo` 가 실제로 받아들여지는지
+    //   직접 확인한다(리터럴 — 시더의 정규식을 import 하지 않는다 · 규범 A).
+    const repo = freshClone('guard-allow-test-star')
+
+    expect(() => seedVault({ branch: 'test-foo', repo })).not.toThrow()
+  })
 
   it('detached HEAD 로 이미 시딩된 커밋을 가리키고 있으면 재시딩을 거부한다', () => {
     // 서브모듈은 포인터(SHA)로 체크아웃되므로 **detached HEAD** 가 정상 상태다 — 이미 시딩된
@@ -207,13 +229,17 @@ describe('seedVault — 안전 가드(되돌릴 수 없는 쓰기 차단)', () =
   it('origin 에 push 하지 않는다', () => {
     // plan Task 1: "스크립트는 절대 push 하지 않는다". push 는 메인 에이전트의 명시적 행위여야 한다 —
     // 스크립트가 push 하면 "계약 검증 후 push" 게이트(tdd §2.1 ⑦)가 통째로 무력화된다.
+    //
+    // `refs/heads/test` 하나만 보면 태그·다른 브랜치·`main` 변조(force-push)는 못 잡는다 — origin 의
+    //   ref 전체(refname+objectname) 스냅샷을 시딩 전/후로 떠서 **무변화**를 묻는다. 개수 리터럴이
+    //   아니라 전/후 집합 동일성이라 origin 이 어떤 ref 를 몇 개 갖든 흔들리지 않는다.
     const repo = freshClone('nopush')
+    const originRefsBefore = execGit(ctx.originDir, ['for-each-ref', '--format=%(refname) %(objectname)']) // prettier-ignore
 
     seedVault({ branch: 'test', repo })
 
-    const originRefs = execGit(ctx.originDir, ['for-each-ref', '--format=%(refname)'])
-    expect(originRefs).toContain('refs/heads/main')
-    expect(originRefs).not.toContain('refs/heads/test')
+    const originRefsAfter = execGit(ctx.originDir, ['for-each-ref', '--format=%(refname) %(objectname)']) // prettier-ignore
+    expect(originRefsAfter).toBe(originRefsBefore)
   })
 
   it('main 브랜치에 커밋을 얹지 않는다(test 는 일방통행)', () => {

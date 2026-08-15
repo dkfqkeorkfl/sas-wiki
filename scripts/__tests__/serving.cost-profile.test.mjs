@@ -6,8 +6,11 @@
 //   Task 9 로 소멸하지만 그것이 지키려던 것("서빙이 문서당 git 을 팔지 않는다")은 더 강한 형태로
 //   남는다 — **히트 경로의 git 호출 multiset === `[]`**. 삭제가 아니라 교체다.
 //
-// ★ v3 P1 Task 6 이후 조회 도구는 아티팩트를 읽기만 한다. git 을 한 번이라도 부르면 그 자체가
-//   생성기 판정 경로가 되살아났다는 신호다. 그래서 **빈 multiset 동치**로 못박는다.
+// ★ 정정(v3 P2 이후 오늘의 상태로 — 케이스 본문 PU4·PU5 대조): 이 "조회는 아티팩트만 읽는다 —
+//   git 을 한 번이라도 부르면 판정 경로가 되살아났다는 신호"는 이제 `wiki.mjs`(PU5)에만 참이다.
+//   `feeds.mjs`(PU4)는 반대로 뒤집혔다 — 조회가 커서 기반 라이브 워크로 교체되며 git 호출이
+//   **정상**이 됐고(`LIVE_WALK_VERBS` 절 참고), 판정 대상은 "0건" 이 아니라 "그 동사 집합이 반드시
+//   난다"로 바뀌었다. **빈 multiset 동치**로 못박는 것은 `wiki.mjs`(PU5) 쪽만이다.
 //
 // ★ 규범 G(이 phase 신설): "열지 않았다" 는 정적 그래프가 아니라 **실행에서** 관측한다. 재생성 분기가
 //   `await import()` 라서 정적 게이트(FC1·WK8)가 green 인 채로 툴체인이 로드되는 상태가 성립한다
@@ -28,7 +31,7 @@
 // ★ 비용 설계: 자식 spawn 이 케이스당 수 초라 **측정은 `beforeAll` 에서 4회만** 하고 각 케이스는
 //   그 관측을 읽기만 한다(공유 가변 상태가 아니라 고정된 사실이다). 케이스별 상한을 명시한다 —
 //   느슨하게 푸는 것이 아니라 **실제 상한을 정직하게 적는 것**이다(AT6 선례).
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -97,6 +100,12 @@ beforeAll(async () => {
   const feedsOut = path.join(control.vault, 'cache', 'feeds.dev.json')
   warm = runCliWithLoadLog('summary.mjs', ['--env', 'dev', '--out', summaryOut], { vault: control.vault }) // prettier-ignore
   warmFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=200', '--out', feedsOut], { vault: control.vault }) // prettier-ignore
+  // S4: `warmFeeds` 의 spawn 결과가 이전까지 어디서도 확인되지 않았다 — warm/cold arm 준비가
+  //   조용히 무너져도(예: 생성기가 exit 0 이면서 아티팩트를 못 씀) 그것을 잡는 히트 케이스가 없었다
+  //   (다른 vault·다른 CLI 를 호출하는 hitFeeds/coldFeeds 로는 이 준비 단계 실패가 전파되지 않는다).
+  //   exit 0 과 아티팩트 실재를 함께 못박는다 — exit 0 인데 파일이 없으면 exit code 만으로는 못 잡는다.
+  expect(warmFeeds.exitCode, warmFeeds.stderr).toBe(0)
+  expect(existsSync(feedsOut), 'warmFeeds 준비가 feeds 아티팩트를 만들지 않았다').toBe(true)
 
   // ★ §4.5-③ arm 갱신 — D15 로 `--count` 가 **필수**가 되므로 PU4 가 관측하는 이 arm 이 그것을 실어야
   //   한다. 안 실으면 C4 착륙 즉시 이 arm 이 exit 2(count 누락)가 되어 PU4 의 red 사유가 「조회가 git 을
@@ -128,20 +137,48 @@ const gitVerbs = (observation) =>
   observation.gitCalls.map((argv) => argv.filter((token) => !token.startsWith('-')).join(' '))
 
 /**
- * 그 동사를 낸 git 호출 수. `argv` **원소 동등**으로 센다 — `gitVerbs` 는 `-c core.quotepath=false`
- * 의 값 토큰(대시로 시작하지 않는다)을 앞에 남기므로 첫 토큰을 동사로 삼으면 조용히 빗나간다.
+ * git argv 의 **verb 위치**(첫 서브커맨드 토큰). `-c <key>=<value>` 글로벌 옵션이 verb 앞에 올 수
+ * 있고 그 값 토큰(`core.quotepath=false` 등)은 대시로 시작하지 않으므로 "대시로 시작하지 않는 첫
+ * 토큰"을 그대로 verb 로 삼으면 그 값을 verb 로 오인한다(`gitVerbs` 의 문자열 표현이 같은 이유로
+ * 이 자리에 못 쓰인다 — 그 주석). `-c` 뒤 토큰은 항상 그 값이므로 함께 건너뛴다.
+ */
+function gitVerb(argv) {
+  let index = 0
+  while (index < argv.length) {
+    if (argv[index] === '-c') {
+      index += 2
+      continue
+    }
+    if (argv[index].startsWith('-')) {
+      index += 1
+      continue
+    }
+    return argv[index]
+  }
+  return undefined
+}
+
+/**
+ * 그 동사가 **verb 위치**에서 실제로 불린 횟수. `argv.includes(verb)` 는 그 문자열이 인자값·경로로
+ * 위장돼 있어도(예: `git log --grep rev-list` — 'rev-list' 가 grep 패턴 값일 뿐 verb 가 아니다) 참이
+ * 되므로 위치 무관 매칭은 위장에 취약하다 — verb 위치만 본다.
  */
 const verbCount = (observation, verb) =>
-  observation.gitCalls.filter((argv) => argv.includes(verb)).length
+  observation.gitCalls.filter((argv) => gitVerb(argv) === verb).length
 
-/** 프로덕션 소스만 읽어 붙인다(`__tests__`·`helpers` 제외) — 트립와이어가 자기 자신을 물지 않게. */
+/** 프로덕션 소스만 읽어 붙인다(테스트 트리 제외) — 트립와이어가 자기 자신을 물지 않게.
+ *  ★ `helpers` 를 이름으로 블랭킷 제외하지 않는다 — 그러면 장차 프로덕션 `scripts/helpers/` 가
+ *  생겨도 스캔에서 조용히 빠진다. 오늘 모든 `helpers/` 는 `__tests__/` 아래에만 산다(실측:
+ *  `scripts/__tests__/helpers` · `scripts/lib/__tests__/helpers` 둘뿐 — `find scripts -type d -name
+ *  helpers` 확인)이므로 `__tests__` 하나만 걸러도 오늘의 헬퍼는 전부 빠지고, 제외 범위는 **테스트
+ *  트리 아래로만** 좁혀진다. */
 function productionSources() {
   const chunks = []
   const stack = [SCRIPTS_DIR]
   while (stack.length > 0) {
     const current = stack.pop()
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      if (entry.name === '__tests__' || entry.name === 'helpers') continue
+      if (entry.name === '__tests__') continue
       const child = path.join(current, entry.name)
       if (entry.isDirectory()) stack.push(child)
       else if (entry.isFile() && entry.name.endsWith('.mjs')) chunks.push(readFileSync(child, 'utf8')) // prettier-ignore
@@ -186,8 +223,22 @@ describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip) v3 P2: 조회가 
     expect(hitFeeds.gitCalls.length, `git 호출 0건 (exit=${hitFeeds.exitCode})`).toBeGreaterThan(0)
 
     // 규범 N — 개수 단독 금지: **정렬 verb 집합 동등**과 verb 별 개수 하한을 함께 문다.
-    const observed = LIVE_WALK_VERBS.filter((verb) => verbCount(hitFeeds, verb) > 0)
-    expect(observed, `관측된 git 호출: ${JSON.stringify(gitVerbs(hitFeeds))}`).toEqual(LIVE_WALK_VERBS) // prettier-ignore
+    // ★ 이 단언이 **무는 방향과 안 무는 방향**을 정직하게 적어 둔다.
+    //   · 문다(누락): 기대 동사 중 하나라도 verb 위치에서 나지 않으면 red 다. 위장에 속지 않는 것은
+    //     `verbCount` 가 `argv.includes` 가 아니라 `gitVerb`(verb 위치)로 세기 때문이다 — 실측
+    //     프로브에서 `git log --grep rev-list` 처럼 값 토큰에 동사 문자열만 끼워 넣은 호출이 예전
+    //     구현을 통과했다.
+    //   · 안 문다(잉여): 아래 `filter` 로 기대 집합 밖 동사는 버린다. **의도한 것**이다 — 라이브
+    //     워크는 가용성 확인·문서 해석 계층에서도 git 을 부르므로 "이 동사들만 난다"는 참이 아니다.
+    //     잉여 동사를 금지하고 싶으면 그것은 별도 축이어야 한다(여기서 뭉치면 둘 다 못 문다).
+    //   그래서 `observedVerbs` 를 기대 배열에서 유도하지 않고 `hitFeeds.gitCalls` 에서 직접 뽑는다 —
+    //   집계의 출처는 실측 데이터이고, 기대 집합은 **비교 상대**로만 쓰인다.
+    const observedVerbs = [...new Set(hitFeeds.gitCalls.map((argv) => gitVerb(argv)))]
+      .filter((verb) => LIVE_WALK_VERBS.includes(verb))
+      .sort()
+    expect(observedVerbs, `관측된 git 호출: ${JSON.stringify(gitVerbs(hitFeeds))}`).toEqual(
+      [...LIVE_WALK_VERBS].sort(),
+    )
     expect(verbCount(hitFeeds, 'rev-parse')).toBeGreaterThanOrEqual(1)
     expect(verbCount(hitFeeds, 'rev-list')).toBeGreaterThanOrEqual(1)
   })
@@ -282,7 +333,12 @@ describe('캐시 부재 — 판정 주체가 갈린다 (PU6 · PU6b · v3 P2 이
     // 앵커: 같은 CLI 가 **아티팩트가 있으면 exit 0 이고 파싱 가능한 JSON 을 낸다**(PU4·TR2 의 arm).
     expect(hitWiki.exitCode, hitWiki.stderr).toBe(0)
 
-    expect(coldWiki.exitCode, `준비 단계 feeds --out exit=${warmFeeds.exitCode}`).not.toBe(0)
+    // 진단 변수 오귀속 정정: 이 실패 메시지는 이 assert 의 대상(`coldWiki` · `cold.vault`)이
+    //   아니라 **다른 vault**(`control.vault`)에서 만든 `warmFeeds.exitCode` 를 보여주고 있었다 —
+    //   coldWiki 가 예상과 달리 exit 0 이 나도 그 메시지는 coldWiki 자신에 대해 아무것도 말해 주지
+    //   않는다. 이 파일의 기존 관례(`expect(x.exitCode, x.stderr)`)를 따라 coldWiki 자신의 stderr 로
+    //   교정한다.
+    expect(coldWiki.exitCode, coldWiki.stderr).not.toBe(0)
     expect(coldWiki.stdout).toBe('')
     // 메시지가 **무엇을 하라는지** 말한다 — "실패했다" 만으로는 사람이 다음 행동을 모른다.
     expect(coldWiki.stderr).toMatch(/빌드|build/i)

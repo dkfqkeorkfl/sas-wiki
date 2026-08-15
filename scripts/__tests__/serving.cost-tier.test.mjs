@@ -74,7 +74,15 @@ describe('티어 선택 불가 — 파싱은 **항상** 깊다 (CT1 · P5 D-I �
 
     // 앵커 ①: 두 파싱 다 **실제로 문서를 냈다**(빈 vault 에서 0 == 0 으로 공허 통과하는 것을 배제).
     expect(plainParse.gate.visibleDocs.length).toBeGreaterThan(0)
-    expect(revivedParse.gate.visibleDocs).toHaveLength(plainParse.gate.visibleDocs.length)
+    // 개수만 같으면 통과하는 비교는 **치환 공격**(개수는 동일·내용은 상이)에도 통과한다 —
+    //   신원(frontmatter id) 집합으로 승격한다. 개수 리터럴은 박지 않는다(vault 히스토리 하드결합).
+    const plainDocIds = new Set(plainParse.gate.visibleDocs.map((doc) => doc.frontmatter.id))
+    const revivedDocIds = new Set(revivedParse.gate.visibleDocs.map((doc) => doc.frontmatter.id))
+    // 앵커 ①-b: 신원 추출 자체가 살아 있다 — id 를 못 읽어 양쪽이 `{undefined}` 가 되면 위 개수
+    //   앵커를 통과한 채로 집합 동등도 참이 되어(같은 공허가 형태만 바꿔 살아남는다) 승격이 무의미해진다.
+    expect(plainDocIds.size, '앵커: 문서 신원이 실제로 추출됐다').toBeGreaterThan(0)
+    expect(plainDocIds.has(undefined), '앵커: id 추출이 깨져 전부 undefined 가 아니다').toBe(false)
+    expect(revivedDocIds).toEqual(plainDocIds)
 
     // 앵커 ②: 이 vault·이 함수가 깊은 티어 호출을 **실제로** 낸다(관측자가 죽어서 0인 것을 배제).
     expect(deepTierCalls(plain.calls).length).toBeGreaterThan(0)
