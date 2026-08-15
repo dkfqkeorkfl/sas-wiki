@@ -39,7 +39,11 @@ beforeAll(() => {
   process.env.GIT_CONFIG_KEY_0 = 'safe.directory'
   process.env.GIT_CONFIG_VALUE_0 = VAULT
   // 마이그레이션 전엔 12-hex 주입이 UUIDv7 스키마에 걸려 throw 할 수 있다(수렴 RED — 정상).
-  ctx.result = buildContent({ out: ctx.out, vault: VAULT })
+  //
+  // ★ `env` 를 빼면 안 된다. 기본값이 `prod` 인데 이 vault 의 문서는 전부 `wiki/dev/` 아래라
+  //   prod 에서는 문서 모집단이 통째로 비어(docs=0) 아래 단언들이 빈 배열끼리 비교하는 공허
+  //   통과가 된다. 여기서 `dev` 를 명시하는 것이 이 파일의 검사 대상을 존재하게 만드는 조건이다.
+  ctx.result = buildContent({ env: 'dev', out: ctx.out, vault: VAULT })
 })
 
 afterAll(() => {
