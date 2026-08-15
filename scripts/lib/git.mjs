@@ -10,6 +10,18 @@ const STATUS_LINE_RE = /^([A-Z])(\d*)\t(.+)$/
 // 어긋난다 — 모든 경로 조회 호출에 붙인다.
 const QUOTEPATH_OFF = ['-c', 'core.quotepath=false']
 
+// `%x00` 은 git `Documentation/pretty-formats.adoc` 이 규정한 바이트 값 placeholder 다. 모든 필드
+// 사이에 이것을 두면 **저자가 쓰는 커밋 텍스트가 레코드 구분자가 되지 못한다** — 커밋 메시지에 담을
+// 수 있는 제어문자(US·RS·TAB 등)를 구분자로 쓰면 body 한 줄로 경계를 밀어 `hash` 자리를 탈취할 수
+// 있고, 그 값이 뒤이어 `git show <hash>` 의 위치 인자로 흘러간다.
+//
+// `-z` 로 대체할 수 없다 — `git rev-list -z --format=…` 은 fatal 이라 `git log` 경로와 갈라진다.
+// 두 경로가 공유할 수 있는 앵커는 `%x00` placeholder 뿐이다.
+export const COMMIT_RECORD_FORMAT = '%H%x00%aI%x00%s%x00%b%x00'
+
+const COMMIT_HASH_RE = /^[0-9a-f]{40}$/u
+const COMMIT_HEADER_RE = /^\r?\n?(?:commit [0-9a-f]{40}\r?\n)?/u
+
 /** 히스토리 계층 술어 — 경로 prefix 는 HEAD 상태 개념이라 과거 경로에 걸면 안 된다. */
 export const anyMarkdown = (filePath) => filePath.endsWith('.md')
 
@@ -149,30 +161,51 @@ export function readIdAtDeletion(runGit, { path: relFilePath, sha }) {
 }
 
 export function collectGitLog(runGit) {
-  const sep = String.fromCodePoint(31)
-  const end = String.fromCodePoint(30)
-  const format = ['%H', '%aI', '%s', '%b'].join(sep) + end
   let raw
   try {
-    raw = runGit(['log', `--format=${format}`, '--date=iso-strict'])
+    raw = runGit(['log', `--format=${COMMIT_RECORD_FORMAT}`, '--date=iso-strict'])
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (/does not have any commits yet|unknown revision/i.test(message)) return []
     throw error
   }
-  return raw
-    .split(end)
-    .map((record) => record.replace(/^\r?\n/, ''))
-    .filter((record) => record.trim() !== '')
-    .map((record) => {
-      const [hash, authorDate, subject, body] = record.split(sep)
-      return {
-        authorDate,
-        body: (body || '').replace(/^\n+/, '').replace(/\s+$/, ''),
-        hash,
-        subject: subject || '',
-      }
+  return parseCommitRecords(raw)
+}
+
+/**
+ * `%H%x00%aI%x00%s%x00%b%x00` 출력의 공용 파서.
+ *
+ * git 은 마지막 NUL 뒤에 개행을 붙이므로 split 결과는 레코드당 4토큰과 잉여 1토큰이다. 빈 stdout
+ * 은 그 잉여 토큰만 가진다. `git rev-list --format` 이 붙이는 `commit <hash>` 헤더와 레코드 사이
+ * 개행은 hash 토큰에서 제거하되, arity 와 40-hex hash 가 깨지면 조용히 필드를 밀지 않고 멈춘다.
+ */
+export function parseCommitRecords(raw) {
+  if (raw === '') return []
+
+  const tokens = raw.split('\x00')
+  if (tokens.length % 4 !== 1) {
+    throw new Error(`git 커밋 레코드 프레이밍이 올바르지 않습니다: 토큰 ${tokens.length}개`)
+  }
+
+  const trailer = tokens.pop()
+  if (trailer !== '\n' && trailer !== '\r\n' && trailer !== '') {
+    throw new Error('git 커밋 레코드 프레이밍이 올바르지 않습니다: 잘못된 후행 데이터')
+  }
+
+  const records = []
+  for (let index = 0; index < tokens.length; index += 4) {
+    const hash = tokens[index].replace(COMMIT_HEADER_RE, '')
+    if (!COMMIT_HASH_RE.test(hash)) {
+      throw new Error(`git 커밋 hash 형식이 올바르지 않습니다: ${hash}`)
+    }
+    records.push({
+      authorDate: tokens[index + 1],
+      body: tokens[index + 3].replace(/^\n+/, '').replace(/\s+$/u, ''),
+      hash,
+      subject: tokens[index + 2] || '',
     })
+  }
+  return records
 }
 
 /**
@@ -191,6 +224,13 @@ export function getCommitDocStatuses(runGit, sha, isDocPath, { diffMerges } = {}
     ...(diffMerges ? [`--diff-merges=${diffMerges}`] : []),
     '--name-status',
     '--format=',
+    // ★ `sha` 는 마지막 **위치 인자**라 옵션 종료 없이는 `--output=<경로>` 같은 값이 옵션으로 승격해
+    //   git 이 임의 경로에 파일을 쓴다(실측: 파일 생성 + exit 0). `--` 로는 대체할 수 없다 — 값이
+    //   pathspec 이 되어 exit 0 + 빈 결과가 되고, 그 빈 결과가 "변경 없음"으로 오독된다.
+    //   `gitcli(7)` 이 이 용도로 `--end-of-options` 를 규정하며, `git-show(1)`·`git-rev-list(1)`
+    //   man page 에는 없지만 git 의 `revision.c setup_revisions()` 가 리비전을 받는 명령 전반에서
+    //   처리한다.
+    '--end-of-options',
     sha,
   ])
   const statuses = []

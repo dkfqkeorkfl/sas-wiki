@@ -2,9 +2,11 @@ import { parseCommitForFeed } from './feed.mjs'
 import {
   anyMarkdown,
   buildPathIndex,
+  COMMIT_RECORD_FORMAT,
   collectEverDeletedDocPaths,
   getCommitDocStatuses,
   makeGitRunner,
+  parseCommitRecords,
 } from './git.mjs'
 import { judgeFeedSurvival } from './feed-survival.mjs'
 import { loadHeadDocState } from './head-state.mjs'
@@ -121,7 +123,7 @@ function buildResolveContext(vaultDir, resolvedRunGit, env, injectedHeadState) {
 function revListFeedCandidates(runGit) {
   let raw
   try {
-    raw = runGit(['rev-list', '--author-date-order', 'HEAD', '--format=%H%x09%aI%x09%s%x09%b%x1e'])
+    raw = runGit(['rev-list', '--author-date-order', 'HEAD', `--format=${COMMIT_RECORD_FORMAT}`])
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (/does not have any commits yet|unknown revision|bad revision/i.test(message)) return []
@@ -143,33 +145,11 @@ function readCommitRecords(runGit, shas) {
   const raw = runGit([
     'rev-list',
     '--no-walk=unsorted',
-    '--format=%H%x09%aI%x09%s%x09%b%x1e',
+    `--format=${COMMIT_RECORD_FORMAT}`,
     '--end-of-options',
     ...shas,
   ])
   return parseCommitRecords(raw)
-}
-
-function parseCommitRecords(raw) {
-  return (
-    raw
-      .split('\x1e')
-      // git 은 각 커밋의 format 출력 뒤에 개행을 붙인다 → `\x1e` 로 자르면 **첫 레코드를 뺀 나머지**는
-      // 선행 `\n` 을 달고 온다. `^commit …` 는 (m 플래그 없이) 문자열 시작에 고정돼 있어 그 선행 개행 탓에
-      // 두 번째 레코드부터 헤더줄이 안 벗겨지고, hash 필드에 `\ncommit <sha>\n<hash>` 가 섞여 이후 모든
-      // git 조회가 조용히 실패했다(피드 1건만 resolve). 선행 개행을 함께 소거한다.
-      .map((record) => record.replace(/^\r?\n?commit [0-9a-f]{40}\r?\n/u, '').trimEnd())
-      .filter(Boolean)
-      .map((record) => {
-        const [hash, authorDate, subject, ...bodyParts] = record.split('\t')
-        return {
-          authorDate,
-          body: bodyParts.join('\t').replace(/^\n+/, '').replace(/\s+$/u, ''),
-          hash,
-          subject: subject || '',
-        }
-      })
-  )
 }
 
 function resolveFeedItems(vaultDir, runGit, commits, context) {

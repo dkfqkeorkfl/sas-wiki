@@ -32,9 +32,7 @@ import {
   underWikiPrefix,
 } from '../git.mjs'
 
-const US = String.fromCodePoint(31) // Unit Separator (필드)
-const RS = String.fromCodePoint(30) // Record Separator (레코드)
-const rec = (h, d, s, b) => `${h}${US}${d}${US}${s}${US}${b}${RS}`
+const rec = (h, d, s, b) => `${h}\x00${d}\x00${s}\x00${b}\x00\n`
 
 /** `rev-parse --is-shallow-repository` · `config --get remote.origin.partialclonefilter` 에 답하는 stub. */
 function stubRunner({ filter = '', shallow = 'false' } = {}) {
@@ -83,11 +81,15 @@ describe('makeGitRunner', () => {
 })
 
 describe('collectGitLog', () => {
-  it('US/RS 레코드 stdout 을 hash·authorDate·subject·body 로 파싱한다', () => {
+  it('NUL 프레임 stdout 을 hash·authorDate·subject·body 로 파싱한다', () => {
     const stdout =
-      rec('h1', '2026-01-02T00:00:00+00:00', 'feed: a', 'body1') +
-      '\n' +
-      rec('h2', '2026-01-01T00:00:00+00:00', 'chore: b', '')
+      rec(
+        '1111111111111111111111111111111111111111',
+        '2026-01-02T00:00:00+00:00',
+        'feed: a',
+        'body1',
+      ) +
+      rec('2222222222222222222222222222222222222222', '2026-01-01T00:00:00+00:00', 'chore: b', '')
 
     const calls = []
     const log = collectGitLog((args) => {
@@ -98,7 +100,7 @@ describe('collectGitLog', () => {
     expect(log).toHaveLength(2)
     expect(log[0]).toMatchObject({
       authorDate: '2026-01-02T00:00:00+00:00',
-      hash: 'h1',
+      hash: '1111111111111111111111111111111111111111',
       subject: 'feed: a',
     })
     expect(log[1].subject).toBe('chore: b')

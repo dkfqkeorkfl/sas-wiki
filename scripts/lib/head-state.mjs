@@ -70,14 +70,26 @@ export function loadHeadDocState(
     wikiPrefix: WIKI_PREFIX,
     wikiSchema: loadSchema(path.join(schemaDir, 'wiki-doc.schema.json')),
   })
-  const visibleDocs = judged.visible
-  const excluded = judged.excluded
+  const draftPublicCollisions = env === 'dev' ? new Map() : findDraftPublicIdCollisions(parsedDocs)
+  const collisionDocs = new Set([...draftPublicCollisions.values()].flat())
+  const collisionPaths = new Set([...collisionDocs].map((doc) => docPath(doc, WIKI_PREFIX)))
+  const collisionExcluded = [...draftPublicCollisions].flatMap(([id, docs]) =>
+    docs.map((doc) => ({
+      id,
+      message: `중복 id 발견: ${id}`,
+      path: docPath(doc, WIKI_PREFIX),
+      reasonCode: 'DUPLICATE_ID',
+    })),
+  )
+  const excluded = [
+    ...judged.excluded.filter((entry) => !collisionPaths.has(entry.path)),
+    ...collisionExcluded,
+  ].sort((a, b) => a.path.localeCompare(b.path, 'ko'))
+  const visibleDocs = judged.visible.filter((doc) => !collisionDocs.has(doc))
   const excludedPaths = new Set(excluded.map((entry) => entry.path))
   // 비교 좌표는 **판정한 쪽과 같은 함수**로 만든다 — 문자열을 각자 조립하면 한쪽만 정규화가 바뀔 때
   //   매칭이 조용히 어긋나 "제외했는데 여전히 서빙되는" 상태가 된다.
-  const invalidDocs = visibleCandidates.filter((doc) =>
-    excludedPaths.has(docPath(doc, WIKI_PREFIX)),
-  )
+  const invalidDocs = parsedDocs.filter((doc) => excludedPaths.has(docPath(doc, WIKI_PREFIX)))
   const invalidSet = new Set(invalidDocs)
   const invalidRefs = invalidDocs
     .map((doc) => ({ filePath: `${WIKI_PREFIX}${doc.relPath}.md`, id: doc.frontmatter.id }))
@@ -110,4 +122,22 @@ export function loadHeadDocState(
     strayDocPaths,
     visibleDocs,
   }
+}
+
+/** prod 에서만 숨겨지는 draft 가 공개 문서의 id 를 재사용하는 그룹. draft끼리의 중복은 규정하지 않는다. */
+function findDraftPublicIdCollisions(parsedDocs) {
+  const docsById = new Map()
+  for (const doc of parsedDocs) {
+    const id = doc.frontmatter?.id
+    if (typeof id !== 'string') continue
+    if (!docsById.has(id)) docsById.set(id, [])
+    docsById.get(id).push(doc)
+  }
+
+  return new Map(
+    [...docsById].filter(([, docs]) => {
+      const draftFlags = docs.map((doc) => isDraft(doc))
+      return draftFlags.includes(true) && draftFlags.includes(false)
+    }),
+  )
 }
