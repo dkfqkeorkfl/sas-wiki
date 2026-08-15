@@ -38,7 +38,11 @@
 // 규범 D: 시딩 헬퍼에는 `expect` 를 두지 않는다.
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { cleanup, commit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs'
+import {
+  seedCollisionVault,
+  seedDistinctVault,
+} from '../../__tests__/helpers/draft-id-collision-vault.mjs'
+import { cleanup } from '../../__tests__/helpers/tmp-git-vault.mjs'
 
 const headStateModule = await import(new URL('../head-state.mjs', import.meta.url).href).catch(
   (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
@@ -67,10 +71,6 @@ function expectSeamPresent() {
 }
 
 const ID_SHARED = '0192a000-0000-7000-8000-0000000000aa'
-const ID_OTHER = '0192b000-0000-7000-8000-0000000000bb'
-const REL_PUBLIC = 'company/공개'
-/** `wiki/dev/` 폴더 안의 문서는 그 위치만으로 draft 다(frontmatter 플래그와 동치인 두 신호 중 하나). */
-const REL_DRAFT = 'dev/초안'
 const PUBLIC_PATH = 'wiki/company/공개.md'
 const DRAFT_PATH = 'wiki/dev/초안.md'
 /** 제외 목록의 경로 좌표계. 정렬 리터럴로 못박는다(규범 N). */
@@ -80,23 +80,8 @@ const DUPLICATE_MESSAGE = `중복 id 발견: ${ID_SHARED}`
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
-/** public 1건 + draft 1건이 **같은 id** 를 쓰는 vault. */
-function seedCollisionVault() {
-  const vault = initVault()
+function trackVault(vault) {
   tmps.push(vault)
-  writeDoc(vault, REL_PUBLIC, { id: ID_SHARED })
-  writeDoc(vault, REL_DRAFT, { id: ID_SHARED })
-  commit(vault, 'chore: 공개 문서 + 같은 id draft')
-  return vault
-}
-
-/** 형태는 같고 **id 만 다른** 대조군 vault. */
-function seedDistinctVault() {
-  const vault = initVault()
-  tmps.push(vault)
-  writeDoc(vault, REL_PUBLIC, { id: ID_SHARED })
-  writeDoc(vault, REL_DRAFT, { id: ID_OTHER })
-  commit(vault, 'chore: 공개 문서 + 다른 id draft')
   return vault
 }
 
@@ -112,7 +97,7 @@ describe('seam 선단언 (DC0 · 🟢)', () => {
 describe('prod 는 draft 의 공개 id 재사용을 잡는다 (DC1 · 🔴RED)', () => {
   it('DC1: prod 에서 두 경로가 `DUPLICATE_ID` 로 제외된다 (🔴RED)', () => {
     expectSeamPresent()
-    const vault = seedCollisionVault()
+    const vault = trackVault(seedCollisionVault())
 
     // 앵커 ①(규범 B): **같은 vault** 를 dev 로 보면 오늘도 두 경로가 제외된다 — 픽스처가 충돌을
     //   실제로 만들었음을 먼저 증명한다. 이게 없으면 prod 단언은 "충돌이 애초에 없었다" 와 같다.
@@ -123,7 +108,7 @@ describe('prod 는 draft 의 공개 id 재사용을 잡는다 (DC1 · 🔴RED)',
     // 앵커 ②(오탐 배제): 형태가 같고 id 만 다른 vault 는 prod 에서 제외가 0건이다 — 「전부 제외」로
     //   통과하는 하드코딩 구현을 배제한다.
     expect(
-      loadHeadDocState(seedDistinctVault(), 'prod').excluded,
+      loadHeadDocState(trackVault(seedDistinctVault()), 'prod').excluded,
       '다른 id vault 의 prod 제외',
     ).toEqual([])
 
@@ -147,14 +132,14 @@ describe('dev 판정은 불변이다 (DC2 · 🟢pin)', () => {
 
     // 양성 대조를 케이스 안에 둔다(규범 B/U): 형태가 같고 id 만 다른 vault 는 dev 에서 제외 0건이고
     //   두 문서가 그대로 남는다. 이게 없으면 「dev 는 늘 전부 제외한다」는 구현도 아래를 통과한다.
-    const clean = loadHeadDocState(seedDistinctVault(), 'dev')
+    const clean = loadHeadDocState(trackVault(seedDistinctVault()), 'dev')
     expect(clean.excluded, '다른 id vault 의 dev 제외').toEqual([])
     expect(
       clean.headDocs.map((doc) => doc.filePath).toSorted(),
       '다른 id vault 의 dev HEAD 문서',
     ).toEqual([PUBLIC_PATH, DRAFT_PATH].toSorted())
 
-    const state = loadHeadDocState(seedCollisionVault(), 'dev')
+    const state = loadHeadDocState(trackVault(seedCollisionVault()), 'dev')
 
     expect(pathsOf(state.excluded), 'dev 제외 경로 집합').toEqual(COLLIDING_PATHS)
     expect(

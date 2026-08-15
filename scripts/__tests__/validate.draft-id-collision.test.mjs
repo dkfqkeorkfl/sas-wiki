@@ -40,6 +40,7 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { seedCollisionVault, seedDistinctVault } from './helpers/draft-id-collision-vault.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -60,9 +61,6 @@ function expectSeamPresent() {
 const ID_SHARED = '0192a000-0000-7000-8000-0000000000aa'
 const ID_OTHER = '0192b000-0000-7000-8000-0000000000bb'
 const ID_THIRD = '0192c000-0000-7000-8000-0000000000cc'
-const REL_PUBLIC = 'company/공개'
-/** `wiki/dev/` 폴더 안의 문서는 그 위치만으로 draft 다. */
-const REL_DRAFT = 'dev/초안'
 const PUBLIC_PATH = 'wiki/company/공개.md'
 const DRAFT_PATH = 'wiki/dev/초안.md'
 const COLLIDING_PATHS = [PUBLIC_PATH, DRAFT_PATH]
@@ -70,6 +68,11 @@ const EXCESS_MESSAGE = '문서 제외 2건이 허용치 0건을 초과했습니�
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
+
+function trackVault(vault) {
+  tmps.push(vault)
+  return vault
+}
 
 function runCli(args) {
   return spawnSync(process.execPath, [VALIDATE, ...args], {
@@ -86,26 +89,6 @@ function runCli(args) {
 
 /** stdout·stderr 를 한 문자열로 — 사유가 어느 채널로 나가든 같은 못이 잡게 한다. */
 const outputOf = (run) => `${run.stdout}${run.stderr}`
-
-/** public 1건 + draft 1건이 **같은 id** 를 쓰는 vault. */
-function seedCollisionVault() {
-  const vault = initVault()
-  tmps.push(vault)
-  writeDoc(vault, REL_PUBLIC, { id: ID_SHARED })
-  writeDoc(vault, REL_DRAFT, { id: ID_SHARED })
-  commit(vault, 'chore: 공개 문서 + 같은 id draft')
-  return vault
-}
-
-/** 형태는 같고 **id 만 다른** 대조군 vault. */
-function seedDistinctVault() {
-  const vault = initVault()
-  tmps.push(vault)
-  writeDoc(vault, REL_PUBLIC, { id: ID_SHARED })
-  writeDoc(vault, REL_DRAFT, { id: ID_OTHER })
-  commit(vault, 'chore: 공개 문서 + 다른 id draft')
-  return vault
-}
 
 /** 실 vault 형태 — 공개 문서 0건 + draft 3건(전부 고유 id). prod 가시 문서가 0건이 된다. */
 function seedAllDraftVault() {
@@ -131,7 +114,7 @@ describe('seam 선단언 (DC0-CLI · 🟢)', () => {
 describe('prod 는 draft 의 공개 id 재사용에 실패한다 (DC4 · 🔴RED)', () => {
   it('DC4: 충돌 vault 의 `--env prod` 가 실패하고 사유·두 경로를 낸다 (🔴RED)', () => {
     expectSeamPresent()
-    const vault = seedCollisionVault()
+    const vault = trackVault(seedCollisionVault())
 
     // 앵커(규범 B): **같은 vault** 를 dev 로 돌리면 오늘도 실패한다 — 픽스처가 충돌을 실제로
     //   만들었음을 먼저 증명한다. 이게 없으면 prod 단언은 "충돌이 애초에 없었다" 와 구분되지 않는다.
@@ -152,7 +135,7 @@ describe('prod 는 draft 의 공개 id 재사용에 실패한다 (DC4 · 🔴RED
 describe('dev CLI 동작은 불변이다 (DC5 · 🟢pin)', () => {
   it('DC5: 충돌 vault 의 `--env dev` 는 exit 1 · `DUPLICATE_ID` 2건이다 (🟢pin)', () => {
     expectSeamPresent()
-    const dev = runCli(['--vault', seedCollisionVault(), '--env', 'dev'])
+    const dev = runCli(['--vault', trackVault(seedCollisionVault()), '--env', 'dev'])
     const output = outputOf(dev)
 
     expect(dev.status, 'dev 종료코드').toBe(1)
@@ -173,7 +156,7 @@ describe('충돌이 없으면 종전대로 통과한다 (DC6·DC7 · 🟢앵커)
   it('DC6: id 만 다른 대조군은 prod·dev 모두 exit 0 이다 (🟢앵커 · 오탐 배제)', () => {
     // 이 못이 없으면 「prod 에서 draft 가 있으면 무조건 실패」라는 과잉 차단 구현도 DC4 를 통과한다.
     expectSeamPresent()
-    const vault = seedDistinctVault()
+    const vault = trackVault(seedDistinctVault())
 
     expect(runCli(['--vault', vault, '--env', 'prod']).status, 'prod 종료코드').toBe(0)
     expect(runCli(['--vault', vault, '--env', 'dev']).status, 'dev 종료코드').toBe(0)
