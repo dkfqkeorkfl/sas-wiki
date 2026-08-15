@@ -36,7 +36,7 @@
 // 규범 A: 기대 키 배열·스키마 required·계약 버전은 **전부 리터럴**이다(프로덕션 상수 import 금지).
 // 규범 B: 모든 부재 단언 앞에 **위험 실재 앵커**를 둔다.
 // 규범 C10: 신설 seam 은 `await import` 로 붙들어 **collection error 가 아니라 케이스 실패**로 만든다.
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -154,11 +154,24 @@ beforeAll(() => {
         ...process.env,
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: 'safe.directory',
-        GIT_CONFIG_VALUE_0: '*',
+        // `'*'`(전 경로 허용) 대신 이 spawn 이 실제로 향하는 대상(seeded.vault)으로 좁힌다 —
+        //   `helpers/tracked-scan.mjs` 의 `gitEnv(root)` 와 같은 형태.
+        GIT_CONFIG_VALUE_0: seeded.vault,
       },
       maxBuffer: 64 * 1024 * 1024,
+      // `spawnSync` 는 동기 호출이라 vitest 의 it()-레벨 타임아웃(비동기 타이머)으로는 자식의 hang
+      //   을 끊을 수 없다 — `timeout` 옵션 자체가 유일한 안전장치다. 이 beforeAll 의 케이스 상한
+      //   (300_000, 아래 두 번째 인자)과 같은 값을 재사용한다.
+      timeout: 300_000,
     },
   )
+  // `timeout` 만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃/spawn 실패로 죽은 자식은 진단 없이
+  //   그냥 `built.artifact` 부재로만 뒤에서(KY1) 에둘러 드러난다. 여기서 원인을 바로 밝힌다.
+  if (built.run.error || built.run.signal) {
+    throw new Error(
+      `[Arrange] summary --out 서브프로세스 비정상 종료: error=${built.run.error?.message ?? 'none'} signal=${built.run.signal ?? 'none'}`,
+    )
+  }
   built.feedsRun = spawnSync(
     process.execPath,
     [FEEDS_CLI, '--vault', seeded.vault, '--env', 'dev', '--count=200', '--out', built.feeds],
@@ -168,11 +181,17 @@ beforeAll(() => {
         ...process.env,
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: 'safe.directory',
-        GIT_CONFIG_VALUE_0: '*',
+        GIT_CONFIG_VALUE_0: seeded.vault,
       },
       maxBuffer: 64 * 1024 * 1024,
+      timeout: 300_000,
     },
   )
+  if (built.feedsRun.error || built.feedsRun.signal) {
+    throw new Error(
+      `[Arrange] feeds --out 서브프로세스 비정상 종료: error=${built.feedsRun.error?.message ?? 'none'} signal=${built.feedsRun.signal ?? 'none'}`,
+    )
+  }
 }, 300_000)
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -556,10 +575,33 @@ describe('겹4 텍스트 — 판정 토큰 0 (DV0~DV6)', () => {
   it('DV5: 스캐너가 **미추적 파일까지** 훑는다 (pair)', () => {
     // ★ 파훼 ③(`git add` 전 파일에 토큰 부활) 방어. `.gitignore` 를 존중하므로 `cache/`·`logs/` 는
     //   자동 제외된다 — **별도 경로 제외를 쓰지 않는다**(그 자체가 면제의 다른 이름이다).
-    const source = readFileSync(path.join(HERE, 'helpers', 'tracked-scan.mjs'), 'utf8')
+    //
+    // ★ 소스 문자열만 보지 않는다 — `'--others'`·`'--exclude-standard'` 가 주석으로만 남아도(실제
+    //   git 호출에서는 빠져도) 문자열 검사는 통과한다. 실제 tmp git 저장소로 동작을 태운다.
+    const repo = mkdtempSync(path.join(tmpdir(), 'wiki-dv5-untracked-'))
+    tmps.push(repo)
+    const identity = {
+      GIT_AUTHOR_EMAIL: 'bot@sas.wiki',
+      GIT_AUTHOR_NAME: 'SAS Wiki Bot',
+      GIT_COMMITTER_EMAIL: 'bot@sas.wiki',
+      GIT_COMMITTER_NAME: 'SAS Wiki Bot',
+    }
+    const run = (args) =>
+      execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', env: { ...process.env, ...identity } }) // prettier-ignore
 
-    expect(source).toContain('--others')
-    expect(source).toContain('--exclude-standard')
+    run(['init', '-q', '-b', 'main'])
+    writeFileSync(path.join(repo, 'tracked.txt'), 'tracked\n', 'utf8')
+    run(['add', 'tracked.txt'])
+    run(['commit', '-q', '--no-gpg-sign', '-m', 'init'])
+    // .gitignore 는 커밋되지 않아도(워킹트리에만 있어도) git 이 존중한다.
+    writeFileSync(path.join(repo, '.gitignore'), 'ignored.txt\n', 'utf8')
+    writeFileSync(path.join(repo, 'untracked.txt'), 'untracked\n', 'utf8') // git add 하지 않는다
+    writeFileSync(path.join(repo, 'ignored.txt'), 'ignored\n', 'utf8')
+
+    const { files } = listTracked(repo)
+
+    expect(files, '--others 가 실제로 미추적 파일을 담는다').toContain('untracked.txt')
+    expect(files, '--exclude-standard 가 .gitignore 를 존중한다').not.toContain('ignored.txt')
   })
 
   it('DV6: 면제 목록의 길이가 **0** 이다 (pair · 규범 H)', () => {

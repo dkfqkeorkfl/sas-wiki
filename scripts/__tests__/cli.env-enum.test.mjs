@@ -64,21 +64,39 @@ afterAll(() => cleanup(...tmps))
 /**
  * 절대 스크립트 경로로 실행한다(cwd 무관 재현).
  *
- * `GIT_CONFIG_*` 주입은 `cli-contract.test.mjs:56-62` 관례다 — vitest 가 `GIT_CONFIG_GLOBAL=/dev/null`
+ * `GIT_CONFIG_*` 주입은 `cli-contract.test.mjs:52-89` 관례다 — vitest 가 `GIT_CONFIG_GLOBAL=/dev/null`
  * 로 전역 safe.directory 예외를 지우므로, 9p/컨테이너에서 소유자가 다르면 자식 git 이
  * dubious-ownership 로 죽는다. `SOURCE_DATE_EPOCH` 는 결정성 관례(기존 CLI 테스트 동일).
+ *
+ * ★ `vault` 는 기본값(`VAULT`)이 있는 세 번째 인자다 — 이 파일의 모든 호출부가 실제로 겨냥하는
+ * 대상이 `VAULT`(이 파일 하나뿐인 tmp vault) 이기 때문이다. `safe.directory` 값을 `'*'`(전 경로
+ * 허용) 대신 이 인자로 좁힌다 — git 은 값을 실재 경로로 정규화하므로 존재하지 않는 경로는 신뢰하지
+ * 않는다(git-config(1)).
  */
-function runCli(script, args) {
-  return spawnSync(process.execPath, [script, ...args], {
+function runCli(script, args, vault = VAULT) {
+  const result = spawnSync(process.execPath, [script, ...args], {
     encoding: 'utf8',
     env: {
       ...process.env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'safe.directory',
-      GIT_CONFIG_VALUE_0: '*',
+      GIT_CONFIG_VALUE_0: vault,
       SOURCE_DATE_EPOCH: '1700000000',
     },
+    // 이 파일의 여러 케이스가 같은 CLI 를 **3벌씩** 돌린다(EV5·EV6). `spawnSync` 는 동기 호출이라
+    //   vitest 의 it()-레벨 타임아웃(비동기 타이머)으로는 자식의 hang 을 끊을 수 없다 — `timeout`
+    //   옵션 자체가 유일한 안전장치다. EV6 의 케이스 상한(120초, :202 참조)과 같은 값을 재사용한다.
+    timeout: 120_000,
   })
+
+  // 옵션만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃/spawn 실패로 죽은 자식은 `error`·`signal`
+  //   이 채워진다(정상적인 비0 종료와 뚜렷이 구별된다). 여기서 즉시 크게 실패시킨다.
+  if (result.error || result.signal) {
+    throw new Error(
+      `runCli 자식 프로세스 비정상 종료: script=${script} error=${result.error?.message ?? 'none'} signal=${result.signal ?? 'none'}`,
+    )
+  }
+  return result
 }
 
 /** active 1 + draft 1 + 각각을 가리키는 `feed:` 1건 — **dev 와 prod 의 산출이 실제로 다르다**. */
@@ -158,6 +176,12 @@ describe('세 CLI 의 문구가 하나다 (EV5 · 🔴RED)', () => {
     //   문구를 내 세 문구가 다르다는 결론이 나는데, 그것은 이 케이스가 겨냥한 결함이 아니다.
     const wiki = runCli(WIKI, ['--vault', VAULT, '--env', TYPO_ENV, '--summary', summaryFile(VAULT, 'dev')]) // prettier-ignore
 
+    // stderr 문구만 비교하고 exit status 를 안 보면, 문구는 그대로 낸 채 "성공"(exit 0)으로 조용히
+    //   빠지는 회귀가 안 잡힌다 — 세 CLI 모두 **거부**(exit 2)했다는 것 자체를 먼저 못박는다.
+    expect(summary.status).toBe(EXIT_ENUM_ERROR)
+    expect(feeds.status).toBe(EXIT_ENUM_ERROR)
+    expect(wiki.status).toBe(EXIT_ENUM_ERROR)
+
     // 앵커: 기준이 되는 `summary` 의 문구가 **비어 있지 않고** 오타값을 되비춘다 — 셋 다 빈 stderr 라
     //   서로 "같은" 것이 되는 공허 통과를 배제한다.
     expect(summary.stderr.trim().length).toBeGreaterThan(0)
@@ -213,7 +237,15 @@ describe('미지정은 여전히 fail-closed(prod) 다 (EV6 · 🟢pin)', () => 
       // ★★ v3 P2 · §4.2 arm 갱신 — **이 한 줄만** 바뀐다. EV6 의 주제(_"미지정은 여전히
       //   fail-closed(prod)"_)는 그대로다: `--env` 는 계속 안 준다. D15 로 필수가 된 `--count` 만 싣는다.
       //   ★ 위 `SUMMARY` 3벌은 **무변경**이다 — 거기에 `--count`·`--summary` 는 없는 인자다.
-      expect(runCli(FEEDS, ['--vault', VAULT, '--count=5']).status).toBe(0)
+      //
+      // ★ 결과를 버리지 않는다 — `feeds.mjs` 는 `summary.mjs`·`wiki.mjs` 와 달리 산출물을 새로
+      //   계산할 뿐 미리 빌드된 아티팩트를 읽지 않는다(env-mismatch 같은 교차 검증이 없다). 그래서
+      //   `--env` 미지정 기본값이 `prod` 에서 `dev` 로 회귀해도 exit code 는 여전히 0 이라 상태만
+      //   보면 안 잡힌다 — 실제로 prod 뷰와 같은 내용을 냈는지 아래에서 비교한다.
+      const bareFeeds = runCli(FEEDS, ['--vault', VAULT, '--count=5'])
+      const prodFeeds = runCli(FEEDS, ['--vault', VAULT, '--env', 'prod', '--count=5'])
+      expect(bareFeeds.status).toBe(0)
+      expect(prodFeeds.status).toBe(0)
       // ★★ v3 P4 · §4.1 arm 갱신(D27) — wiki arm 도 같은 사유로 한 줄만 바뀐다. EV6 의 주제
       //   (_"`--env` 미지정은 여전히 fail-closed(prod)"_)는 그대로다: `--env` 는 계속 안 준다.
       //   필수가 된 `--summary` 만 싣는다 — 그리고 **prod 아티팩트**를 준다(미지정 = prod 이므로
@@ -228,6 +260,11 @@ describe('미지정은 여전히 fail-closed(prod) 다 (EV6 · 🟢pin)', () => 
       expect(idsOf(prod)).not.toContain(ID_DRAFT)
 
       expect(idsOf(bare)).toEqual(idsOf(prod))
+
+      // 앵커: feeds 도 이 vault 에서 실제로 항목을 낸다 — "둘 다 빈 배열이라 같다" 는 공허 통과를 배제.
+      const bareFeedItems = JSON.parse(bareFeeds.stdout).items
+      expect(bareFeedItems.length).toBeGreaterThan(0)
+      expect(JSON.stringify(bareFeedItems)).toBe(JSON.stringify(JSON.parse(prodFeeds.stdout).items))
     },
   )
 })

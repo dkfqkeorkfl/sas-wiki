@@ -18,7 +18,7 @@
 // 비공허성(vacuity 방지): 각 단언은 tdd.md "무엇을 깨면 red" 를 반영한다 — status 만이 아니라
 //   페이로드 실질(docs.length>0 · id 포함/제외 · null · sourceCommit 동일 · throw)을 확인한다.
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -50,20 +50,42 @@ const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
 // validate.cli.test.mjs:74 runCli 를 mirror + cwd 옵션. 절대 스크립트 경로라 cwd 는 기본값 파생을
 //   흔들지 못해야 한다(C6 가 이를 증명). SOURCE_DATE_EPOCH 는 결정성 관례(기존 CLI 테스트 동일).
 function runCli(script, args, { cwd } = {}) {
-  return spawnSync(process.execPath, [script, ...args], {
+  const result = spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf8',
     // vitest 가 GIT_CONFIG_GLOBAL=/dev/null 로 전역 safe.directory 예외를 지우므로, 9p/컨테이너에서
-    //   기본 vault(=실 repo)가 러너와 다른 소유자면 자식 git 이 dubious-ownership 로 죽는다. safe.directory=*
+    //   기본 vault(=실 repo)가 러너와 다른 소유자면 자식 git 이 dubious-ownership 로 죽는다. safe.directory
     //   를 자식 env 로 주입해 방어(build.uuidv7-e2e.test.mjs 관례). C1/C4a/C6/V1(실 repo) 필수·tmp 케이스 무해.
+    //   ★ 값은 `'*'`(전 경로 허용)가 아니라 **이 파일이 실제로 spawn 하는 대상**(REPO_ROOT)이다 — tmp
+    //   vault 는 mkdtemp 로 실행 유저 소유라 이 예외가 애초에 필요 없고(dubious-ownership 조건에 안
+    //   걸린다), 실 repo(REPO_ROOT = root:root)만 이 예외가 필요하다. git 은 `safe.directory` 값을
+    //   실재 경로로 정규화하므로 존재하지 않는 경로는 신뢰하지 않는다(git-config(1)).
     env: {
       ...process.env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'safe.directory',
-      GIT_CONFIG_VALUE_0: '*',
+      GIT_CONFIG_VALUE_0: REPO_ROOT,
       SOURCE_DATE_EPOCH: '1700000000',
     },
+    // 이 파일의 대다수 케이스는 실 repo(REPO_ROOT) 를 spawn 한다(위 `REAL_REPO_SPAWN_TIMEOUT` 주석의
+    //   실측: 25~31초/회). `spawnSync` 는 **완전히 동기**라 vitest 의 it()-레벨 타임아웃(비동기 타이머)
+    //   으로는 끊을 수 없다 — 자식이 행(hang)하면 워커 전체가 무한정 멈춘다. `timeout` 옵션 자체가
+    //   유일한 안전장치이므로 여기서 직접 건다. 실측 최대(51,546ms, C6 의 2회 spawn 중 1회 몫)의
+    //   수 배 여유를 두면서도, 이 파일이 이미 실 repo 케이스에 쓰는 it()-레벨 상한(120초)과 같은
+    //   값을 재사용한다(새 매직넘버를 만들지 않는다).
+    timeout: REAL_REPO_SPAWN_TIMEOUT,
   })
+
+  // `timeout` 만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃으로 죽은 자식은 `status: null` 이
+  //   되어, 그 뒤 개별 케이스의 `expect(result.status).toBe(0)` 류가 잡아 주기를 바라는 수밖에 없다.
+  //   `error`/`signal` 은 spawnSync 가 **비정상 종료**(spawn 실패·타임아웃·시그널)일 때만 채워지므로,
+  //   정상적인 비0 종료(C4b 의 의도된 에러 경로)와 뚜렷이 구별된다 — 여기서 즉시 크게 실패시킨다.
+  if (result.error || result.signal) {
+    throw new Error(
+      `runCli 자식 프로세스 비정상 종료: script=${script} error=${result.error?.message ?? 'none'} signal=${result.signal ?? 'none'}`,
+    )
+  }
+  return result
 }
 
 /**
@@ -111,20 +133,23 @@ afterAll(() => cleanup(...tmps))
 //   격리는 옳다), 이 컨테이너의 실 repo 는 러너와 소유자가 달라 격리된 git 이 `safe.directory` 예외를
 //   못 보고 **dubious ownership 으로 거부**한다. 러너 프로세스 안에서 생성기를 부르면 그 자리에서
 //   `beforeAll` 이 죽고 **이 파일 19케이스가 통째로 가려진다**(suite 레벨 실패 · 실측).
-//   위 `runCli`(:53-68)는 자식 env 에 `safe.directory=*` 를 주입하는 **이 파일이 이미 채택한 관례**라,
-//   프리빌드를 그 통로에 태우면 같은 방어를 그대로 받는다(환경 우회를 새로 심는 것이 아니다).
+//   위 `runCli`(:52-89)는 자식 env 에 `safe.directory`(REPO_ROOT)를 주입하는 **이 파일이 이미 채택한
+//   관례**라, 프리빌드를 그 통로에 태우면 같은 방어를 그대로 받는다(환경 우회를 새로 심는 것이 아니다).
 //
-// ★ **Task 7(C4) 착륙 시 `--out <경로>` 로 바꾼다.** OT1 이 _"`--out` 미지정 실행은 어떤 파일도 만들지
-//   않는다"_ 를 계약으로 세우므로 그 뒤에는 아래 형태가 아무것도 만들지 않는다. 그때 조용히 빈손이
-//   되지 않도록 exit 0 과 **산출물 실재**를 함께 문다 — 프리빌드가 실패하면 여기서 크게 터진다.
+// ★ `--out <경로>` 로 산출물을 명시해서 쓴다. OT1 이 _"`--out` 미지정 실행은 어떤 파일도 만들지
+//   않는다"_ 를 계약으로 세우므로, `--out` 없이는 이 프리빌드가 애초에 아무것도 쓰지 않는다 — 그
+//   상태에서 산출물 존재만 확인하면 **이전 로컬 실행이 남긴 stale 캐시**(`cache/` 는 gitignore 라
+//   지워지지 않는다)에 기대는 것과 구별되지 않는다. 그래서 먼저 지우고, `--out` 을 준 뒤, exit 0 과
+//   **산출물 실재**를 함께 문다 — 프리빌드가 실패하거나 이번 실행이 아무것도 갱신하지 못하면 여기서
+//   크게 터진다.
 beforeAll(() => {
-  const prebuilt = runCli(SUMMARY, ['--vault', REPO_ROOT, '--env', 'dev'])
+  const artifactPath = summaryArtifactPath(REPO_ROOT, 'dev')
+  rmSync(artifactPath, { force: true })
+
+  const prebuilt = runCli(SUMMARY, ['--vault', REPO_ROOT, '--env', 'dev', '--out', artifactPath])
 
   expect(prebuilt.status, prebuilt.stderr).toBe(0)
-  expect(
-    existsSync(summaryArtifactPath(REPO_ROOT, 'dev')),
-    '프리빌드가 exit 0 인데 산출물이 없다',
-  ).toBe(true)
+  expect(existsSync(artifactPath), '프리빌드가 exit 0 인데 산출물이 없다').toBe(true)
 }, 300_000)
 
 // ── C1: 3 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.

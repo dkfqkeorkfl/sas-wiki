@@ -66,6 +66,17 @@ const ENV_VOCAB = /dev\|prod|dev\b.*prod/iu
 /** 12-hex 커서 정규식 — 리터럴. */
 const HEX12 = /^[0-9a-f]{12}$/u
 
+/**
+ * `runFeedsCli` 의 `spawnSync` 상한(ms) — 이 파일의 모든 호출에 일괄 적용한다.
+ *
+ * `runFeedsCli`(`helpers/cursor-vault.mjs`)는 `timeoutMs` 를 받으면 `spawnSync` 의 `timeout` 옵션으로
+ * 그대로 넘긴다. 이 값을 안 주면 이 파일의 `it()` 케이스 상한(300초·CQ2 는 600초)이 있어도 자식이
+ * 행(hang)하는 것을 못 끊는다 — `spawnSync` 는 완전히 동기라 vitest 의 비동기 타이머로는 끼어들
+ * 수 없기 때문이다. 이 파일의 케이스 상한(300_000)과 같은 값을 재사용한다(새 매직넘버를 만들지
+ * 않는다) — 개별 spawn 은 실측상 수 초~수십 초라 여유가 크다.
+ */
+const CLI_TIMEOUT_MS = 300_000
+
 /** `--count` 값 검증 대상 **9종**. plan·PRD 의 4종으로는 부족하다(tdd §2.5-④ `parseInt` 실측). */
 const BAD_COUNTS = ['abc', '0', '-5', '1.9', '5e2', ' 7', '0x10', '', 'Infinity']
 /** pair 앵커 — 정상값은 통과해야 한다("전부 거부" 구현 배제). */
@@ -83,7 +94,7 @@ beforeAll(() => {
   //   "아티팩트를 읽을 수 없다(exit 1)" 라는 **한 가지 사유**로 red 가 되어, D15·D16·D10 의 구멍이
   //   관측되지 않는다(공허한 red 는 공허한 green 만큼 나쁘다). C4 이후 조회는 이 파일을 읽지 않으므로
   //   이 Arrange 는 무해한 잔재가 된다 — 라이브 워크 계약 자체는 `feed-cursor.test.mjs` WA11-전제가 문다.
-  const prebuilt = runFeedsCli(base.vault, { count: 200, out: 'cache/feeds.dev.json' })
+  const prebuilt = runFeedsCli(base.vault, { count: 200, out: 'cache/feeds.dev.json', timeoutMs: CLI_TIMEOUT_MS }) // prettier-ignore
   if (prebuilt.status !== 0) {
     throw new Error(`[Arrange] feeds --out 실패 exit=${prebuilt.status}\n${prebuilt.stderr}`)
   }
@@ -106,12 +117,15 @@ describe('옵션 주입 차단 (CR7·CR8 · 🔴RED 사유가 커서 검증이 �
       execFileSync('git', ['rev-list', '--max-count=1', `--output=${target}`, 'HEAD'], {
         cwd: base.vault,
         encoding: 'utf8',
-        env: { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: '*' }, // prettier-ignore
+        // `'*'`(전 경로 허용) 대신 이 호출이 실제로 향하는 대상(base.vault)으로 좁힌다 —
+        //   `helpers/tracked-scan.mjs` 의 `gitEnv(root)` 와 같은 형태(git-config(1): 값은 실재
+        //   경로로 정규화되므로 존재하지 않는 경로는 신뢰되지 않는다).
+        env: { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: base.vault }, // prettier-ignore
       })
       expect(existsSync(target), '앵커: 방어 없이 넘기면 파일이 실제로 생긴다').toBe(true)
       rmSync(target, { force: true })
 
-      const result = runFeedsCli(base.vault, { after: `--output=${target}`, count: 5 })
+      const result = runFeedsCli(base.vault, { after: `--output=${target}`, count: 5, timeoutMs: CLI_TIMEOUT_MS }) // prettier-ignore
 
       // 숫자를 요구하지 않는다(규범 P·C9 — 문서 보증은 _"non-zero"_ 까지다).
       expect(result.status, `stdout=${result.stdout}`).not.toBe(0)
@@ -135,6 +149,7 @@ describe('옵션 주입 차단 (CR7·CR8 · 🔴RED 사유가 커서 검증이 �
       const result = runFeedsCli(base.vault, {
         count: 5,
         extraArgs: ['--after', `--output=${target}`],
+        timeoutMs: CLI_TIMEOUT_MS,
       })
 
       expect(result.status).not.toBe(0)
@@ -151,7 +166,7 @@ describe('옵션 주입 차단 (CR7·CR8 · 🔴RED 사유가 커서 검증이 �
       // ★ 앵커 ① (pair): 정상 12-hex 커서는 **exit 0 + 파싱 가능 JSON** 이다 — "전부 거부" 구현 배제.
       //   동시에 이것이 **M3 방어**다: `--` 로 "막았다" 는 구현은 exit 0 + 빈 결과를 내므로 항목 수 0 이
       //   「피드 끝」으로 오인된다. 정상 arm 이 **items 를 실제로 낸다**는 것으로 그 형태를 가른다.
-      const healthy = runFeedsCli(base.vault, { after: base.feedIds[0], count: 2 })
+      const healthy = runFeedsCli(base.vault, { after: base.feedIds[0], count: 2, timeoutMs: CLI_TIMEOUT_MS }) // prettier-ignore
       expect(healthy.status, healthy.stderr).toBe(0)
       const page = JSON.parse(healthy.stdout)
       expect(Array.isArray(page.items)).toBe(true)
@@ -160,7 +175,7 @@ describe('옵션 주입 차단 (CR7·CR8 · 🔴RED 사유가 커서 검증이 �
       )
 
       for (const bad of ['--all', 'main']) {
-        const result = runFeedsCli(base.vault, { after: bad, count: 5 })
+        const result = runFeedsCli(base.vault, { after: bad, count: 5, timeoutMs: CLI_TIMEOUT_MS })
         expect(result.status, `${bad}: stdout=${result.stdout}`).not.toBe(0)
         expect(result.stdout, bad).toBe('')
         expect(result.stderr, `${bad}: ${result.stderr}`).toMatch(CURSOR_VOCAB)
@@ -215,11 +230,11 @@ describe('`--count` 필수·값 검증 (CQ1·CQ2 · 🔴RED 오늘 전부 exit 0
     () => {
       // prettier-ignore
       // 앵커(pair): `--count=5` 는 exit 0 + 파싱 가능 JSON 이다(파서 전체가 죽은 것을 배제).
-      const healthy = runFeedsCli(base.vault, { count: 5 })
+      const healthy = runFeedsCli(base.vault, { count: 5, timeoutMs: CLI_TIMEOUT_MS })
       expect(healthy.status, healthy.stderr).toBe(0)
       expect(() => JSON.parse(healthy.stdout)).not.toThrow()
 
-      const missing = runFeedsCli(base.vault, {})
+      const missing = runFeedsCli(base.vault, { timeoutMs: CLI_TIMEOUT_MS })
       expect(missing.status, `stdout=${missing.stdout}`).toBe(2)
       expect(missing.stdout).toBe('')
       expect(missing.stderr, missing.stderr).toMatch(COUNT_VOCAB)
@@ -237,12 +252,12 @@ describe('`--count` 필수·값 검증 (CQ1·CQ2 · 🔴RED 오늘 전부 exit 0
       //   `String(n) !== raw` 대조가 유일한 방어층이다(`plugin.ts:243` 이 이미 그 형태다).
       // ★ 전부 **등호 결합**이다 — 공백 형태는 값이 `-` 로 시작하는 순간 parseArgs 가 먼저 throw 한다.
       for (const good of GOOD_COUNTS) {
-      const result = runFeedsCli(base.vault, { count: good })
+      const result = runFeedsCli(base.vault, { count: good, timeoutMs: CLI_TIMEOUT_MS })
       expect(result.status, `정상값 ${JSON.stringify(good)}: ${result.stderr}`).toBe(0)
     }
 
       for (const bad of BAD_COUNTS) {
-        const result = runFeedsCli(base.vault, { count: bad })
+        const result = runFeedsCli(base.vault, { count: bad, timeoutMs: CLI_TIMEOUT_MS })
         expect(result.status, `무효값 ${JSON.stringify(bad)}: stdout=${result.stdout.slice(0, 80)}`).toBe(2) // prettier-ignore
         expect(result.stdout, JSON.stringify(bad)).toBe('')
         expect(result.stderr, `${JSON.stringify(bad)}: ${result.stderr}`).toMatch(COUNT_VOCAB)
@@ -256,7 +271,7 @@ describe('`--count` 필수·값 검증 (CQ1·CQ2 · 🔴RED 오늘 전부 exit 0
     () => {
       // prettier-ignore
       // CR7-짝과 같은 층 갈림이다. PRD `:513` 의 _"`-5` 가 exit 2"_ 는 **`--count=-5`** 로 읽어야 참이다.
-      const result = runFeedsCli(base.vault, { extraArgs: ['--count', '-5'] })
+      const result = runFeedsCli(base.vault, { extraArgs: ['--count', '-5'], timeoutMs: CLI_TIMEOUT_MS }) // prettier-ignore
 
       expect(result.status).not.toBe(0)
       expect(result.stdout).toBe('')
@@ -276,9 +291,15 @@ describe('침묵 폴백 소멸 · argv 잔재 0 (CQ3·CQ4·CQ5)', () => {
   /** `feeds.mjs` **소스 텍스트**의 `parseArgs` 옵션 키. 상수를 import 하지 않는다(규범 A). */
   function feedsOptionKeys() {
     const source = readFileSync(path.join(SCRIPTS_DIR, 'feeds.mjs'), 'utf8')
-    const block = source.match(/options:\s*\{([\s\S]*?)\n {4}\},/)
+    const block = source.match(/options:\s*\{([\s\S]*?)\n\s*\},/u)
     if (block === null) return []
-    return [...block[1].matchAll(/^\s{6}([a-z][a-zA-Z]*):\s*\{/gm)].map((match) => match[1]).sort() // prettier-ignore
+    // 들여쓰기 폭에 결속하지 않는다 — 원래 정규식은 키 줄이 **정확히 6칸**이어야 매치됐다. 이
+    //   리포에는 CI·훅이 없어(legacy-sweep.test.mjs) 포맷 드리프트가 실제 위험이고, 폭이 다른
+    //   줄 하나만 스캔에서 조용히 빠져도(예: 재도입된 `from`/`to` 가 다른 폭으로 붙는다) 부재
+    //   단언(`not.toContain('from')`)은 "정말 없다"와 "못 봤다"를 구분하지 못한다. `options:{}` 안의
+    //   `key: {` 형태만 요구하고 앞의 공백 폭은 묻지 않는다 — `node:util.parseArgs` 의 옵션 스키마는
+    //   `{ type, short, multiple, default }` 뿐이라 값 쪽에 중첩 객체가 오지 않으므로 안전하다.
+    return [...block[1].matchAll(/([a-z][a-zA-Z]*):\s*\{/gu)].map((match) => match[1]).sort()
   }
 
   it('CQ3: `DEFAULT_FEED_LIMIT` 이 프로덕션에서 **0건**이다 (침묵 폴백 소멸)', () => {
@@ -335,9 +356,9 @@ describe('침묵 폴백 소멸 · argv 잔재 0 (CQ3·CQ4·CQ5)', () => {
 describe('exit code 충돌 — 사유는 stderr 가 가른다 (CQ6 · 규범 P)', () => {
   it('CQ6: `--env` 오타와 `--count` 무효가 **다른 어휘**로 말한다', { timeout: 300_000 }, () => {
     // OQ-P2-4 (a) — `--env` 를 먼저 본다. 순서는 계약이되 **exit code 로 가르지 않는다**(둘 다 2).
-    const envOnly = runFeedsCli(base.vault, { count: 5, env: 'Dev' })
-    const countOnly = runFeedsCli(base.vault, { count: '0' })
-    const both = runFeedsCli(base.vault, { count: '0', env: 'Dev' })
+    const envOnly = runFeedsCli(base.vault, { count: 5, env: 'Dev', timeoutMs: CLI_TIMEOUT_MS })
+    const countOnly = runFeedsCli(base.vault, { count: '0', timeoutMs: CLI_TIMEOUT_MS })
+    const both = runFeedsCli(base.vault, { count: '0', env: 'Dev', timeoutMs: CLI_TIMEOUT_MS })
 
     expect(envOnly.status).toBe(2)
     expect(countOnly.status).toBe(2)

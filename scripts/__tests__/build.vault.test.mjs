@@ -26,7 +26,7 @@
 //             unresolvedPaths: [{sha,path}], warnings: [{sha,reason}] }
 //   checkInvariants(summary, feeds, body) → 위반 시 throw, 정상이면 void
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -91,8 +91,13 @@ function docFile(relDoc) {
 
 /** 문서 id = frontmatter 에 저작된 불변 UUIDv7 (D1). 이동해도 파일과 함께 옮겨간다 → working tree 에서 읽는다. */
 function docId(relDoc) {
-  const raw = readFileSync(path.join(ctx.vault, docFile(relDoc)), 'utf8')
-  return raw.match(/^id:\s*"([^"]+)"/mu)[1]
+  const file = docFile(relDoc)
+  const raw = readFileSync(path.join(ctx.vault, file), 'utf8')
+  const match = raw.match(/^id:\s*"([^"]+)"/mu)
+  // 매치 실패를 `null[1]` 로 흘리면 픽스처가 드리프트했을 때 opaque 한 TypeError 로 죽는다 — 어느
+  //   문서·어느 파일이 frontmatter id 를 잃었는지 진단 메시지에 남긴다.
+  if (match === null) throw new Error(`frontmatter id 매치 실패(픽스처 드리프트 의심): ${file}`)
+  return match[1]
 }
 
 /** summary 에서 breadcrumb 로 문서를 찾는다(계약에 문자열 path 필드는 없다 — join 으로 유도). */
@@ -105,9 +110,17 @@ function feedOf(title) {
   return ctx.result.feeds.items.find((item) => item.title === title)
 }
 
+// git 서브프로세스 상한 — 락 경합 등으로 자식이 행(hang)해도 워커 전체가 무한정 멈추지 않게 한다.
+//   `execFileSync` 는 이 타임아웃을 초과하면 자식을 죽이고 **자체적으로 throw** 한다(spawnSync 와
+//   달리 결과 객체의 error/signal 을 따로 판정할 필요가 없다 — 옵션만 넣어도 실효가 있다).
+const GIT_SUBPROCESS_TIMEOUT_MS = 120_000
+
 function prepareSeedRepo() {
   const repo = mkdtempSync(path.join(tmpdir(), 'wiki-vault-repo-'))
-  execFileSync('git', ['init', '-q', '-b', 'main', repo], { encoding: 'utf8' })
+  execFileSync('git', ['init', '-q', '-b', 'main', repo], {
+    encoding: 'utf8',
+    timeout: GIT_SUBPROCESS_TIMEOUT_MS,
+  })
   writeFileSync(path.join(repo, 'README.md'), '# sas-wiki\n', 'utf8')
   git(repo, ['add', '-A'])
   execFileSync(
@@ -117,6 +130,7 @@ function prepareSeedRepo() {
       encoding: 'utf8',
       env: { ...process.env, ...BASE_IDENTITY },
       stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: GIT_SUBPROCESS_TIMEOUT_MS,
     },
   )
   seedVault({ branch: 'test', repo })
@@ -412,5 +426,35 @@ describe('실 vault ⑦ 전역 계약', () => {
 
   it('빌드가 서브모듈 워킹트리를 더럽히지 않는다(--out 분리)', () => {
     expect(git(ctx.vault, ['status', '--porcelain'])).toBe('')
+  })
+})
+
+describe('실 vault ⑧ --out 리포트 파일 쓰기(in-memory 만 검증하면 쓰기 회귀가 안 보인다)', () => {
+  // 이 파일의 다른 모든 단언은 `ctx.result`(reportDir 없이 조립한 in-memory payload)만 본다 —
+  //   그래서 `--out` 이 실제로 디스크에 파일을 남기는지는 이 파일 어디에서도 확인되지 않았다
+  //   (416줄에 `existsSync` 가 0건이었다). 파일쓰기 경로가 통째로 회귀해도(예: 쓰기 호출이
+  //   조용히 no-op 이 되어도) exit/반환값만으로는 잡히지 않는다 — 실재를 직접 본다.
+  let outDir
+  let write
+
+  beforeAll(() => {
+    outDir = mkdtempSync(path.join(tmpdir(), 'wiki-vault-out-'))
+    ;({ report: write } = buildContent({ reportDir: outDir, vault: ctx.vault }))
+  })
+
+  afterAll(() => {
+    rmSync(outDir, { force: true, recursive: true })
+  })
+
+  it('report.jsonPath · report.txtPath 가 실제로 디스크에 쓰인다', () => {
+    expect(write.error).toBeNull()
+    expect(existsSync(write.jsonPath), write.jsonPath).toBe(true)
+    expect(existsSync(write.txtPath), write.txtPath).toBe(true)
+  })
+
+  it('쓰인 json 리포트는 이번 실행의 sourceCommit 을 담는다(빈 파일이 통과하는 것을 막는다)', () => {
+    const written = JSON.parse(readFileSync(write.jsonPath, 'utf8'))
+
+    expect(written.sourceCommit).toBe(ctx.result.summary.sourceCommit)
   })
 })

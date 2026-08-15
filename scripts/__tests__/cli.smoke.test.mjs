@@ -6,6 +6,8 @@
 //   시딩으로 1회 태워 "셸이 실제로 돈다"를 고정한다(0% 커버리지 → 셸 분기 커버).
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -47,22 +49,35 @@ async function run(main, argv) {
 //   safe.directory 예외가 사라져 9p/컨테이너에서 실 repo git 이 dubious-ownership 로 죽으므로 주입한다
 //   (build.uuidv7-e2e 관례). tmp vault 케이스엔 무해.
 const SAVED_GIT_ENV = {}
+// REPO_ROOT 프리빌드 산출물 — **실 repo 의 `cache/` 에 쓰지 않는다.** 예전엔 옵션을 안 줘
+//   `prebuildArtifacts` 가 기본 경로(REPO_ROOT/cache/summary.dev.json·feeds.dev.json)에 직접 썼는데,
+//   그 경로는 `cli-contract.test.mjs`·다른 스위트도 함께 건드리는 **공유 자원**이다 — 병렬 실행 중
+//   결과가 그 시점에 누가 마지막으로 썼는지에 따라 달라지는 비결정적 경합이 생긴다. 격리된 tmp
+//   디렉토리에 쓰고, 아래 wiki 스모크가 그 경로를 직접 가리킨다.
+let repoRootOutDir
+let repoRootSummaryPath
 beforeAll(async () => {
   for (const [k, v] of [
     ['GIT_CONFIG_COUNT', '1'],
     ['GIT_CONFIG_KEY_0', 'safe.directory'],
-    ['GIT_CONFIG_VALUE_0', '*'],
+    ['GIT_CONFIG_VALUE_0', REPO_ROOT],
   ]) {
     SAVED_GIT_ENV[k] = process.env[k]
     process.env[k] = v
   }
-  await prebuildArtifacts(REPO_ROOT, 'dev')
+  repoRootOutDir = mkdtempSync(path.join(tmpdir(), 'wiki-smoke-repo-root-'))
+  repoRootSummaryPath = path.join(repoRootOutDir, 'summary.dev.json')
+  await prebuildArtifacts(REPO_ROOT, 'dev', {
+    artifactPath: repoRootSummaryPath,
+    feedsArtifactPath: path.join(repoRootOutDir, 'feeds.dev.json'),
+  })
 })
 afterAll(() => {
   for (const [k, v] of Object.entries(SAVED_GIT_ENV)) {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
   }
+  if (repoRootOutDir) rmSync(repoRootOutDir, { force: true, recursive: true })
 })
 
 let vault
@@ -126,6 +141,24 @@ describe('wiki.mjs CLI smoke', () => {
   })
 
   it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
-    expect(JSON.parse(await run(wikiMain, ['--env', 'dev', '--path', 'no/such', '--summary', REL_SUMMARY_DEV]))).toBeNull() // prettier-ignore
+    // ★ 이 arm 만 격리된 `repoRootSummaryPath`(절대 경로)를 준다 — REPO_ROOT 상대 경로
+    //   (`cache/summary.dev.json`)를 쓰면 위 beforeAll 이 격리하려고 옮긴 경로와 다시 갈라진다.
+    expect(JSON.parse(await run(wikiMain, ['--env', 'dev', '--path', 'no/such', '--summary', repoRootSummaryPath]))).toBeNull() // prettier-ignore
+  })
+
+  it('--summary 누락 → exit 2(에러 경로, stdout 은 비어 있다)', async () => {
+    // 파일 헤더가 주장하는 "에러 경로" 커버리지가 실제로는 이 파일 안에 한 건도 없었다 — 전 케이스가
+    //   성공 경로였다. `main()` 은 `--summary` 미지정을 exit 2 로 거부하는데(wiki.mjs), 그 계약이
+    //   깨져도(예: exit code 만 조용히 0 으로 바뀌어도) 이 파일 안에서는 아무것도 못 잡았다.
+    //   `process.exitCode` 는 프로세스 전역 상태라 — 이 테스트가 끝나기 전에 반드시 원복한다.
+    const before = process.exitCode
+    try {
+      const stdout = await run(wikiMain, ['--vault', vault, '--env', 'dev', '--path', 'company/삼성']) // prettier-ignore
+
+      expect(stdout).toBe('') // 인자 계약 위반 경로는 stdout 을 쓰지 않는다
+      expect(process.exitCode).toBe(2)
+    } finally {
+      process.exitCode = before
+    }
   })
 })
