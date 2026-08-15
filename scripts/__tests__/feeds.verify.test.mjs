@@ -4,8 +4,8 @@
 //   P5 tdd §4 원장 ②
 //
 // 규약: `*.verify.test.*` 는 **GREEN 완료 후**에만 판정에 쓴다(RED 작성자·GREEN 구현자 비노출).
-//   visible E-F1~F3 만으로는 "endpoints.feeds 가 자체 억제·정렬·슬라이스를 재구현" 해도 통과할 수
-//   있다 — 아래가 그 우회를 막는다(Complete Mediation).
+//   ★ 다만 이 파일은 "재구현 우회를 막는 게이트" 가 **아니다.** 한때 그렇게 적혀 있었고 그 서술이
+//   거짓이었다 — 아래 「이 파일이 실제로 무엇을 검증하는가」를 읽어라.
 //
 // ★ v3 P2 재조준 사유(tdd §4.5-⑥ · D20·D39): 조회 경로가 **라이브 커서 워크**로 교체되면서 두 축이
 //   움직인다. ① 억제는 **명시 인자**(`--ignore`/`{ignore}`)로만 걸린다(D20 — 암묵 로드 소멸 · IW6)라
@@ -18,12 +18,19 @@
 //   동치였다. P5 이후 `feeds()` 는 발행 아티팩트(깊은 티어 · 생성기 co-derive)를 읽고, `walkFeeds` 는
 //   여전히 **얕은 티어 참조 구현**이다(D-I 이전) — 실 vault 드리프트 0(tdd M7)에서는 우연히 같아도,
 //   그 동치는 더 이상 "위임 증명" 이 아니다(다른 티어를 대조하는 것이라 재구현 여부와 무관해진다).
-//   위임 증명의 자리는 이제 **아티팩트 파일 자체**가 잇는다(FC3 형태) — feeds() 가 반환하는 모든
-//   item 이 파일에서 읽은 item 과 deep-equal 이면, feeds() 는 item 을 만들지 않고 고르기만 한 것이다.
+//   그 뒤 이 자리에 "위임 증명의 자리는 이제 아티팩트 파일과의 deep-equal 이 잇는다" 고 적혀
+//   있었는데, **그것도 성립하지 않는다.**
 //
-// 게이트 방식: endpoints.feeds(vault, opts).items 의 모든 원소가 **feeds 아티팩트 파일의 item 과
-//   deep-equal**(id 매칭) 임을 강제한다 — 봉투(+nextCursor)만 씌우고 억제·정렬·오프셋을 재구현하지
-//   않으면 항상 성립한다. 세계관 손계산(titles·length)도 병행해 순환 방지.
+// 이 파일이 실제로 무엇을 검증하는가 (변이를 걸어 실측 확정):
+//   · 서빙 층에 억제 필터를 한 번 더 적용하는 재구현(멱등이라 출력이 동일)을 넣으면 이 파일 3케이스가
+//     **전부 green** 이다. 값이 같으면 통과하는 단언은 "그 값을 어떻게 만들었는가" 를 원리적으로 볼 수
+//     없다. 재구현 금지의 소유자는 **소스를 읽는** `feeds.artifact-consumer.test.mjs` 의 FC5 이고,
+//     아티팩트를 손수 읽지 않음의 소유자는 `lib/__tests__/artifact.read.test.mjs` 의 RD11 이다. 같은
+//     변이에서 그 둘만 red 가 되는 것을 확인했다.
+//   · 남아 있는 아티팩트 대조(`expectItemsMatchArtifact`)는 **캐시 티어와 라이브 워크가 같은 item 을
+//     낸다**는 등가 확인이다. 위임 증명이 아니다. 세계관 손계산(titles·length)이 순환을 막는다.
+//   · ★ **V2 는 이 스위트에서 단독 소유하는 축이 있다**(그 케이스 주석 참조). 이 파일을 "중복" 으로
+//     지우면 그 축의 보호가 통째로 사라진다.
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
@@ -56,13 +63,19 @@ function writeIgnore(vault, feedIds) {
   writeFileSync(path.join(vault, 'ignore-feeds.json'), JSON.stringify(entries), 'utf8')
 }
 
-/** 아티팩트 파일에서 읽은 item(id 매칭) — 위임 증명의 좌표(FC3 형태). */
+/** 아티팩트 파일에서 읽은 item(id 매칭). */
 function artifactItemsOf(vault, env = 'dev') {
   return JSON.parse(readFileSync(feedsArtifactFile(vault, env), 'utf8')).items
 }
 
-/** feeds() 가 item 을 **만들지 않는다** — 반환된 모든 item 이 파일에서 읽은 item 과 deep-equal. */
-function expectDelegated(page, vault) {
+/**
+ * 캐시 티어(발행 아티팩트)와 라이브 워크가 **같은 item 을 낸다** — 반환된 모든 item 이 파일에서 읽은
+ * 같은 id 의 item 과 deep-equal.
+ *
+ * ★ 이것은 **위임 증명이 아니다.** 값이 같기만 하면 통과하므로, 서빙 층이 억제·정렬·슬라이스를
+ *   재구현해도 결과가 같으면 그대로 통과한다(실측 확인). 그 축은 소스를 읽는 정적 케이스가 소유한다.
+ */
+function expectItemsMatchArtifact(page, vault) {
   const byId = new Map(artifactItemsOf(vault).map((item) => [item.id, item]))
   expect(page.items.length).toBeGreaterThan(0) // 앵커: 빈 응답으로 공허 통과하는 것을 배제
   for (const item of page.items) expect(item).toEqual(byId.get(item.id))
@@ -85,7 +98,7 @@ describe('endpoints.feeds.verify — 억제 ⟂ 슬라이스 위임 (V1 🔴RED)
 
       const page = await feeds(vault, 'dev', opts)
 
-      expectDelegated(page, vault) // 봉투만 — 재구현 아님(FC3 형태)
+      expectItemsMatchArtifact(page, vault) // 캐시 티어 등가 — 재구현 여부는 여기서 안 갈린다
       expect(page.items).toHaveLength(3) // 억제-후-slice: 창이 꽉 찬다(slice-후-억제면 2)
       expect(titlesOf(page.items)).toEqual(['n5', 'n3', 'n2'])
     } finally {
@@ -102,6 +115,15 @@ describe('endpoints.feeds.verify — 정렬 권위는 git 워크 순서다 (V2 �
     //   워크 순서와 어긋나면 다음 페이지의 시작점 자체가 틀어지기 때문이다(중복·누락).
     //   ⇒ 이 케이스는 **재정렬을 되살린 구현을 red 로 만드는** 자리로 극성이 반전됐다. 옛 방향의
     //   보상(클라이언트가 한 번 더 시간순 정렬)은 **D37 = 파이프라인 P5** 소관이다.
+    //
+    // ★★ **이 케이스는 스위트 전체에서 이 축을 단독 소유한다 — 실측으로 확정했다.** 서빙 층에 `ts`
+    //   내림차순 재정렬을 되살리는 변이를 걸고 대체 후보 5파일(`feeds.artifact-consumer` ·
+    //   `feeds.cursor-paging` · `serving.cost-profile` · `lib/artifact.read` · `lib/feed-cursor`)을
+    //   전부 돌렸더니 55케이스가 **전부 green** 이었고 red 는 이 케이스뿐이었다.
+    //   원인은 시딩에 있다 — 공용 헬퍼 `helpers/cursor-vault.mjs` 의 `seedFeedVault` 는 커밋에 날짜를
+    //   주지 않아 author-date 가 단조 증가한다. 그러면 워크 순서와 ts 내림차순이 **우연히 같아져**
+    //   재정렬을 되살려도 결과가 변하지 않는다. 아래 역행 시딩(T2 → T5 → T3)만 그 둘을 갈라 놓는다.
+    //   ⇒ 이 시딩의 날짜를 "정리" 하지 마라. 그 순간 이 케이스는 아무것도 검증하지 않게 된다.
     const vault = initVault()
     try {
       writeDoc(vault, 'company/삼성', { id: ID_A })
@@ -114,7 +136,7 @@ describe('endpoints.feeds.verify — 정렬 권위는 git 워크 순서다 (V2 �
 
       const page = await feeds(vault, 'dev', opts)
 
-      expectDelegated(page, vault)
+      expectItemsMatchArtifact(page, vault)
       // 커밋 순서(최신 커밋 → 과거)다. ts 내림차순이면 `['최신','중간','최고참']` 이 됐을 것이다 —
       //   두 배열이 **다르다**는 것이 이 시딩의 존재 이유이고, 그래서 이 단언이 방향을 가른다.
       expect(titlesOf(page.items)).toEqual(['중간', '최신', '최고참'])
@@ -141,7 +163,7 @@ describe('endpoints.feeds.verify — offset 무드리프트 (V3 🔴RED)', () =>
 
       const page = await feeds(vault, 'dev', opts)
 
-      expectDelegated(page, vault)
+      expectItemsMatchArtifact(page, vault)
       expect(page.items).toHaveLength(3) // 드리프트로 length 2 가 되면 안 된다
       expect(titlesOf(page.items)).toEqual(['n5', 'n4', 'n2']) // n3 자리를 n2 가 승격
       expect(page.items.every((item) => item && typeof item.ts === 'string')).toBe(true)
