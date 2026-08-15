@@ -28,7 +28,7 @@ describe('R5 build 불변 게이트 — 사후 id 변조 차단', () => {
       commit(vault, 'chore: HBM id 변조')
 
       // 현행: 게이트 부재 + git-hash 주입 → 변조가 통과 → build 성공(no-throw) → 이 단언이 RED.
-      expect(() => buildContent({ out, vault })).toThrow()
+      expect(() => buildContent({ out, vault })).toThrow(/ID_TAMPERED/u)
     } finally {
       cleanup(vault, out)
     }

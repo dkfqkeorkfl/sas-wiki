@@ -50,11 +50,11 @@ const feedsArtifact = (vault, env) => path.join(vault, 'cache', `feeds.${env}.js
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
 /** 9p 공유 마운트 소유자 불일치 방어 — 이 스펙이 겨냥한 실패가 아니다(tdd §7.1). */
-const gitSafeEnv = () => ({
+const gitSafeEnv = (root) => ({
   ...process.env,
   GIT_CONFIG_COUNT: '1',
   GIT_CONFIG_KEY_0: 'safe.directory',
-  GIT_CONFIG_VALUE_0: '*',
+  GIT_CONFIG_VALUE_0: root,
 })
 
 const tmps = []
@@ -126,10 +126,15 @@ describe('리네임 결속 (RN1~RN4 · pin)', () => {
     ])
     expect(renamedFiles.length).toBeGreaterThanOrEqual(19)
 
+    const quotedSpecifier = (specifier) => {
+      const escaped = specifier.replaceAll('.', '\\.')
+      return new RegExp(`['"\u0060]${escaped}['"\u0060]`, 'u')
+    }
     const offenders = [
-      ...scanTracked({ files: scoped('scripts/lib/'), pattern: new RegExp(`'\\./${old}'`, 'u'), repoRoot: REPO_ROOT }).hits, // prettier-ignore
-      ...scanTracked({ files: scoped('scripts/lib/__tests__/'), pattern: new RegExp(`'\\.\\./${old}'`, 'u'), repoRoot: REPO_ROOT }).hits, // prettier-ignore
-      ...scanTracked({ files: scoped('scripts/'), pattern: new RegExp(`'\\.\\.?/lib/${old}'`, 'u'), repoRoot: REPO_ROOT }).hits, // prettier-ignore
+      ...scanTracked({ files: scoped('scripts/lib/'), pattern: quotedSpecifier(`./${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
+      ...scanTracked({ files: scoped('scripts/lib/__tests__/'), pattern: quotedSpecifier(`../${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
+      ...scanTracked({ files: scoped('scripts/'), pattern: quotedSpecifier(`../lib/${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
+      ...scanTracked({ files: scoped('scripts/'), pattern: quotedSpecifier(`./lib/${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
     ].map((hit) => `${hit.path}:${hit.line}`)
 
     expect(offenders, '옛 모듈 지정자가 남아 있다').toEqual([])
@@ -167,12 +172,11 @@ describe('빌드 체인 선언 (BD1·BD2 · 🔴RED 미구현)', () => {
       const raw = scripts[name]
       expect(typeof raw, name).toBe('string')
 
+      expect(raw, `${name} 이 '||' 로 실패를 삼킨다`).not.toContain('||')
       const steps = raw.split('&&').map((step) => step.trim())
-      const ordered = steps
-        .map((step) => step.match(/scripts\/([\w.-]+)\.mjs/u)?.[1])
-        .filter(Boolean)
+      const ordered = steps.map((step) => step.match(/scripts\/([\w.-]+)\.mjs/u)?.[1])
 
-      expect(ordered.slice(0, CHAIN_ORDER.length), name).toEqual(CHAIN_ORDER)
+      expect(ordered, `${name} 에 인식할 수 없는 셸 스텝이 있다`).toEqual(CHAIN_ORDER)
       expect(raw, `${name} 은 && 로 잇는다`).toContain('&&')
       expect(raw, `${name} 이 ';' 로 스텝을 잇는다 — 실패가 삼켜진다`).not.toMatch(/;\s*node\s/u)
     }
@@ -200,16 +204,18 @@ describe('빌드 체인 실행 (BD3~BD5 · 🔴RED 미구현)', () => {
     const seedRun = spawnSync(
       process.execPath,
       [path.join(SCRIPTS_DIR, 'summary.mjs'), '--vault', polluted.vault, '--env', 'dev', '--out', artifact], // prettier-ignore
-      { encoding: 'utf8', env: gitSafeEnv(), maxBuffer: 64 * 1024 * 1024 },
+      { encoding: 'utf8', env: gitSafeEnv(polluted.vault), maxBuffer: 64 * 1024 * 1024 },
     )
     expect(existsSync(artifact), `선행 캐시 생성 실패: ${seedRun.stderr}`).toBe(true)
     const before = statSync(artifact).mtimeMs
+    const beforeContent = readFileSync(artifact, 'utf8')
 
     const failed = runPackageScript('build-dev', { vault: polluted.vault })
 
     // 앵커 ②: 실패 실행 **전후 캐시 mtime 이 동일**하다(비-0 만 보고 넘어가면 반쪽 갱신을 놓친다).
     expect(failed.exitCode, `${failed.stderr}${failed.stdout}`).not.toBe(0)
     expect(statSync(artifact).mtimeMs).toBe(before)
+    expect(readFileSync(artifact, 'utf8')).toBe(beforeContent)
   })
 
   it(

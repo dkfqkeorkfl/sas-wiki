@@ -50,24 +50,6 @@ afterAll(() => cleanup(...tmps))
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
-/** 스키마 어디에 있든 `NO_FRONTMATTER` 를 담은 enum 배열을 찾는다(스키마 구조에 결합하지 않는다). */
-function findReasonEnum(node) {
-  if (Array.isArray(node)) {
-    for (const child of node) {
-      const found = findReasonEnum(child)
-      if (found) return found
-    }
-    return null
-  }
-  if (node === null || typeof node !== 'object') return null
-  if (Array.isArray(node.enum) && node.enum.includes('NO_FRONTMATTER')) return node.enum
-  for (const value of Object.values(node)) {
-    const found = findReasonEnum(value)
-    if (found) return found
-  }
-  return null
-}
-
 describe('배관 — .gitignore (PL1 · 🔴RED)', () => {
   it('PL1: `cache` 가 추가되고 `node_modules`·`logs` 는 **여전히** 있다', () => {
     // 두 번째 단언이 "추가하면서 기존을 지웠다" 를 문다 — 생성물 3종(캐시·리포트·커버리지)이 전부
@@ -102,8 +84,9 @@ describe('배관 — 사유 3자 대조 트립와이어 (PL3 · 🔴RED)', () =>
     const reportSchemaPath = path.join(SCHEMA_DIR, 'report.schema.json')
     expect(existsSync(reportSchemaPath), 'scripts/schema/report.schema.json').toBe(true)
 
-    const schemaEnum = findReasonEnum(readJson(reportSchemaPath))
-    expect(schemaEnum, 'report.schema.json 에 reasonCode enum 이 없다').not.toBeNull()
+    const reportSchema = readJson(reportSchemaPath)
+    const schemaEnum = reportSchema.properties?.excluded?.items?.properties?.reasonCode?.enum
+    expect(Array.isArray(schemaEnum), 'report.schema.json 에 reasonCode enum 이 없다').toBe(true)
     expect([...schemaEnum].toSorted()).toEqual([...REASON_CODES_LITERAL].toSorted())
   })
 
@@ -159,7 +142,7 @@ describe('배관 — 산출물 경로 소유권 (PL5 · `--out` 계약)', () => 
           ...process.env,
           GIT_CONFIG_COUNT: '1',
           GIT_CONFIG_KEY_0: 'safe.directory',
-          GIT_CONFIG_VALUE_0: '*',
+          GIT_CONFIG_VALUE_0: vault,
           SOURCE_DATE_EPOCH: '1700000000',
         },
       })

@@ -39,8 +39,18 @@ const REPO_GITIGNORE = path.join(REPO_ROOT, '.gitignore')
 const REPORT_SCHEMA = path.join(SCRIPTS_DIR, 'schema', 'report.schema.json')
 const PACKAGE_JSON = path.join(REPO_ROOT, 'package.json')
 
-/** 리포트 진단 3키 — F-17. 리터럴이다. */
-const DIAGNOSTIC_KEYS = ['invalidExcludedRefs', 'prunedFeeds', 'unresolvedPaths']
+/** 리포트 top-level 프로퍼티 — F-17. 리터럴이다. */
+const REPORT_PROPERTY_KEYS = [
+  'env',
+  'excluded',
+  'generatedAt',
+  'invalidExcludedRefs',
+  'prunedFeeds',
+  'schemaVersion',
+  'sourceCommit',
+  'summary',
+  'unresolvedPaths',
+]
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const REL_A = 'company/삼성전자'
@@ -123,7 +133,10 @@ describe('리포트 진단 3키 — F-17 (PL11 · 🔴RED 미구현)', () => {
       writeFileSync(path.join(vault, STRAY_PATH), '그냥 메모다. frontmatter 가 없다.\n')
       commit(vault, 'chore: 문서 1건 + 메모 1건')
       writeFileSync(path.join(vault, STRAY_PATH), '메모를 고쳤다. 여전히 frontmatter 가 없다.\n')
-      feedCommit(vault, { date: '2026-05-01T00:00:00Z', subject: '메모장 소식' })
+      const strayFeedSha = feedCommit(vault, {
+        date: '2026-05-01T00:00:00Z',
+        subject: '메모장 소식',
+      })
 
       // 🔴 v3 P1(§4.10 「재작성」 · PL11 · plan Task 7 · D5): 리포트는 **생성기 발행물에서 빠지고**
       //   `validate.mjs --out <dir>` 로 이사한다. 그래서 생성 주체와 읽는 경로를 함께 옮긴다 —
@@ -149,14 +162,12 @@ describe('리포트 진단 3키 — F-17 (PL11 · 🔴RED 미구현)', () => {
 
       expect(report.prunedFeeds).toBeGreaterThan(0)
       expect(report.unresolvedPaths.length).toBeGreaterThan(0)
-      expect(Array.isArray(report.invalidExcludedRefs)).toBe(true)
+      expect(report.invalidExcludedRefs).toContainEqual({ path: STRAY_PATH, sha: strayFeedSha })
 
       // 스키마가 **같은 커밋에서** 따라왔는가 — `additionalProperties:false` 라 안 따라오면 산출물이
       //   자기 스키마를 어긴다(P4 AR8 과 같은 형태).
       const schema = JSON.parse(readFileSync(REPORT_SCHEMA, 'utf8'))
-      expect(Object.keys(schema.properties).toSorted()).toEqual(
-        expect.arrayContaining(DIAGNOSTIC_KEYS),
-      )
+      expect(Object.keys(schema.properties).toSorted()).toEqual(REPORT_PROPERTY_KEYS)
     },
   )
 })

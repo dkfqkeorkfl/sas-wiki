@@ -16,7 +16,7 @@
 //   PL14  🔴RED — `.prettierignore:5` 가 _"commit hashes are document ids"_ 라 적는다. D1 이 폐기했다
 //   PL17  🔴RED — `usage()` 가 `scripts/wiki/seed-example-vault.mjs` 를 안내한다(P5 이관 전 경로)
 //   PL16  pin   — 스캔 무해성. 지금도 green
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,6 +37,16 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..', '..')
 
 const read = (rel) => readFileSync(path.join(REPO_ROOT, rel), 'utf8')
+
+function precedingCommentBlock(lines, markerIndex) {
+  const comments = []
+  for (let index = markerIndex - 1; index >= 0; index -= 1) {
+    const line = lines[index].trim()
+    if (!line.startsWith('#')) break
+    comments.unshift(line.slice(1).trim())
+  }
+  return comments.join('\n')
+}
 
 /** ★ D1 이 폐기한 정체성 모델의 **영문 원문**. 리터럴이다(규범 A). */
 const FALSE_ID_CLAIM = 'commit hashes are document ids'
@@ -63,9 +73,11 @@ describe('배관 — `.prettierignore` 의 거짓 근거 (PL14 🔴RED · CX-6P)
     // ★ 무시 규칙 자체는 **여전히 옳다**(append-only 데이터를 포매터가 건드리면 되돌릴 수 없는 커밋이
     //   생긴다). 그래서 GREEN 은 규칙을 지우는 것이 아니라 **사유를 바로잡는 것**이다.
     const source = read('.prettierignore')
+    const lines = source.split('\n')
+    const wikiMarker = lines.findIndex((line) => line.trim() === 'wiki')
 
     // 앵커 ①: 무시 규칙이 살아 있다 — 주석을 지우며 규칙까지 날리는 GREEN 을 배제한다.
-    expect(source.split('\n').map((line) => line.trim())).toContain('wiki')
+    expect(wikiMarker, '`wiki` 무시 규칙이 없다').toBeGreaterThanOrEqual(0)
 
     const offenders = source
       .split('\n')
@@ -73,8 +85,10 @@ describe('배관 — `.prettierignore` 의 거짓 근거 (PL14 🔴RED · CX-6P)
       .filter(Boolean)
     expect(offenders, `폐기된 정체성 모델("${FALSE_ID_CLAIM}")`).toEqual([])
 
-    // 앵커 ②: 교정 문언이 **실제 근거**를 담는다(문장을 통째로 지워 통과하는 길을 막는다).
-    expect(source, '무시 사유에 현행 정체성 모델을 적어라').toMatch(/frontmatter|UUIDv7/i)
+    // 앵커 ②: 교정 문언이 `wiki` 규칙에 **직접 결속된** 주석에서 실제 근거를 담는다.
+    const rationale = precedingCommentBlock(lines, wikiMarker)
+    expect(rationale, '`wiki` 무시 규칙 바로 위에 사유 주석이 없다').not.toBe('')
+    expect(rationale, '무시 사유에 현행 정체성 모델을 적어라').toMatch(/frontmatter|UUIDv7/i)
   })
 })
 
@@ -105,21 +119,23 @@ describe('배관 — 스캔은 워킹트리를 건드리지 않는다 (PL16 pin)
 })
 
 describe('배관 — `usage()` 는 현재형 지시다 (PL17 🔴RED)', () => {
-  it('PL17: `usage()` 가 안내하는 스크립트 경로가 실재한다', () => {
+  it('PL17: 실제 CLI `--help` 출력이 안내하는 스크립트 경로가 실재한다', () => {
     // 🔴 왜 지금 red 인가: 시더의 `usage()` 가 `node scripts/wiki/seed-example-vault.mjs …` 를 낸다.
     //   P5 가 그 스크립트를 `scripts/__tests__/helpers/` 로 옮겼으므로 **그 경로에는 아무것도 없다** —
     //   안내대로 복붙하면 `Cannot find module` 로 죽는다.
     // ★ 규범 I 의 안전한 축소판: 같은 파일의 `scripts/wiki/` 언급 중에도 *역사 서술*은 존치한다.
     //   결속하는 것은 **반환 문자열**(사용자가 그대로 실행하는 값)뿐이다.
     const rel = 'scripts/__tests__/helpers/seed-example-vault.mjs'
-    const source = read(rel)
+    const run = spawnSync(process.execPath, [path.join(REPO_ROOT, rel), '--help'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    })
+    expect(run.error).toBeUndefined()
+    expect(run.signal).toBeNull()
+    expect(run.status).toBe(1)
 
-    const usageBody = source.slice(source.indexOf('function usage()'))
-    const guided = usageBody.match(/node\s+(\S+\.mjs)/)
-
-    // 앵커: `usage()` 가 실재하고 실제로 경로를 안내한다(못 찾아서 통과하는 것을 배제).
-    expect(source, `${rel} 에 usage() 가 있다`).toContain('function usage()')
-    expect(guided, 'usage() 반환 문자열에서 `node <path>` 를 못 찾았다').not.toBeNull()
+    const guided = `${run.stdout ?? ''}\n${run.stderr ?? ''}`.match(/Usage:\s*node\s+(\S+\.mjs)/u)
+    expect(guided, 'CLI `--help` 출력에서 `node <path>` 를 못 찾았다').not.toBeNull()
 
     expect(
       existsSync(path.join(REPO_ROOT, guided[1])),

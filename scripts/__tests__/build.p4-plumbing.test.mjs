@@ -26,7 +26,7 @@ const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
 describe('P4 배관 — 발행 아티팩트 스키마', () => {
-  it('PL8: `producer`·`env` 가 required 이고 값 domain 이 선언돼 있다', () => {
+  it('PL8: 스키마가 strict 이고 `env` 가 required 이며 값 domain 이 선언돼 있다', () => {
     const schema = readJson(path.join(SCHEMA_DIR, 'summary.schema.json'))
 
     // 앵커 ①: 이 스키마는 strict 다. 그래서 키 추가가 **스키마 갱신을 강제**한다.
@@ -34,6 +34,7 @@ describe('P4 배관 — 발행 아티팩트 스키마', () => {
     expect(schema.additionalProperties).toBe(false)
 
     expect(schema.required).toContain('env')
+    expect(schema.properties.env.enum).toEqual(['dev', 'prod'])
 
     // 앵커 ②: 기존 6키를 밀어내지 않았다(strict 스키마라 누락은 산출물 전체를 죽인다).
     for (const key of ['schemaVersion', 'generatedAt', 'sourceCommit', 'docs', 'tree', 'tags']) {
