@@ -52,12 +52,21 @@ afterAll(() => {
 
 describe('R8 실 vault 빌드 — 폭 3종 동시 검증', () => {
   it('summary 6문서 id 가 전부 UUIDv7 이다', () => {
+    // 앵커: 검사할 문서가 실재한다. 빌드가 문서를 한 건도 담지 않으면 아래 "규격 위반 0건" 단언은
+    //   빈 배열끼리 비교하는 공허 통과가 된다 — 그 자리를 닫는다. 수는 세지 않는다(문서가 늘고 줄어도
+    //   이 앵커는 성립해야 하며, 정확한 개수를 박으면 vault 히스토리에 하드결합된다).
+    expect(ctx.result.summary.docs.length, '앵커: 검사할 문서 0건(공허 통과)').toBeGreaterThan(0)
+
     const nonUuidv7 = ctx.result.summary.docs.filter((doc) => !UUIDV7_RE.test(doc.id))
 
     expect(nonUuidv7.map((doc) => doc.id)).toEqual([])
   })
 
   it('feed item id 는 전부 12-hex 다(피드 정체성=커밋해시 · green-stay)', () => {
+    // 앵커: 검사할 feed item 이 실재한다. 문서 모집단과 feed 모집단은 서로 다른 축이라
+    //   한쪽이 차 있어도 다른 쪽이 빌 수 있다 — 이 케이스의 모집단을 따로 못박는다.
+    expect(ctx.result.feeds.items.length, '앵커: 검사할 feed item 이 없다').toBeGreaterThan(0)
+
     const bad = ctx.result.feeds.items.filter((item) => !HEX12_RE.test(item.id))
 
     expect(bad.map((item) => item.id)).toEqual([])
@@ -72,6 +81,11 @@ describe('R8 실 vault 빌드 — 폭 3종 동시 검증', () => {
 describe('R8 피드 전환 회귀 0 — DocRef 가 UUIDv7 문서를 가리킨다', () => {
   it('feed docRef.id 가 전부 UUIDv7 이다(피드→문서 포인터 전환)', () => {
     const refIds = ctx.result.feeds.items.flatMap((item) => item.docs.map((ref) => ref.id))
+
+    // 앵커: 해석할 docRef 가 실재한다. item 이 있어도 각 item 의 docs 가 전부 비면 refIds 는 0건이 되고,
+    //   그러면 "UUIDv7 아닌 것 0건"은 검사 대상 없이 통과한다 — 포인터 자체가 사라진 회귀를 통과로 읽는다.
+    expect(refIds.length, '앵커: feed item 에 docRef 가 하나도 달려 있지 않다').toBeGreaterThan(0)
+
     const bad = refIds.filter((id) => !UUIDV7_RE.test(id))
 
     expect(bad).toEqual([])
@@ -81,6 +95,13 @@ describe('R8 피드 전환 회귀 0 — DocRef 가 UUIDv7 문서를 가리킨다
     // 값 출처만 UUIDv7 로 바뀌어도 buildPathIndex 메커니즘은 불변 — 참조 무결성은 지금도·GREEN 후에도 유지.
     const docIds = new Set(ctx.result.summary.docs.map((doc) => doc.id))
     const refIds = ctx.result.feeds.items.flatMap((item) => item.docs.map((ref) => ref.id))
+
+    // 앵커 ①: 대조 기준이 실재한다. 문서 id 집합이 비면 이 케이스는 "모든 참조가 dangling" 이거나
+    //   "참조도 없다" 둘 중 하나인데, 후자면 아래 단언이 통과해 버린다 — 기준 부재를 무결성으로 오독한다.
+    expect(docIds.size, '앵커: 참조를 해석할 summary 문서 id 집합이 비었다').toBeGreaterThan(0)
+    // 앵커 ②: 해석할 참조가 실재한다. 참조가 0건이면 dangling 이 0건인 것은 무결성이 아니라 공백이다.
+    expect(refIds.length, '앵커: 해석할 docRef 0건(dangling 0 자동 성립)').toBeGreaterThan(0)
+
     const dangling = refIds.filter((id) => !docIds.has(id))
 
     expect(dangling).toEqual([])
