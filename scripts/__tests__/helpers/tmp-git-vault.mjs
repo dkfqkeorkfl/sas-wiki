@@ -6,8 +6,27 @@
 //
 // 결정성: git t/test-lib.sh test_tick 관례(고정 시각·identity). ~/.gitconfig 누출은 vitest.config.js 의
 //   GIT_CONFIG_GLOBAL=/dev/null 이 막지만, identity 는 여기서 명시 주입한다(CI 무-identity 환경 재현).
+//
+// ★ 이 "결정성"의 실제 범위 — `tick` 은 **이 모듈 인스턴스 하나가 공유하는 전역 상태**다(파일 맨
+//   아래 `let tick` 참조). 그래서 어떤 vault 가 받는 날짜는 "그 vault 자신의 내용"이 아니라 **같은
+//   모듈 인스턴스 안에서 이 vault 이전에 몇 번 커밋했는가**로 정해진다. 즉 이 파일이 보장하는 것은
+//   "같은 테스트 파일을 같은 케이스 순서·개수로 다시 돌리면 같은 히스토리가 나온다"(git 의
+//   test_tick 원 관례와 동일한 범위 — CI 재현성)이지, "내용이 같은 두 vault 는 항상 같은(또는 항상
+//   다른) SHA 를 받는다"가 **아니다**. 케이스를 추가·재배치하면 그 뒤에 만들어지는 vault 들의
+//   날짜·SHA 가 조용히 달라진다 — 이것은 버그가 아니라 이 파일의 실제 계약이다. 그래서 어떤 스펙도
+//   SHA·날짜를 **리터럴로 하드코딩하면 안 된다**(vault 히스토리 하드결합 금지 — 이미 이 리포의
+//   일반 원칙). 두 vault 의 SHA 가 **다르다**에 의존하는 단언이 있다면 그 다름은 이 tick 공유
+//   때문이 아니라 vault 자체의 실제 내용 차이(경로·메시지 등)에서 나와야 한다.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
@@ -16,6 +35,12 @@ const EMAIL = 'bot@sas.wiki'
 
 /** `type: company` 의 스키마 필수 `meta` 최소값. 리터럴이다 — 프로덕션 스키마에서 유도하지 않는다(규범 A). */
 const DEFAULT_COMPANY_META = { exchange: 'KRX', sector: '테스트', ticker: '000000' }
+// 모듈 전역 — 이 인스턴스 안의 **호출 순서**가 이후 만들어지는 모든 vault 의 날짜·SHA 에 영향을
+//   준다(파일 머리 "이 결정성의 실제 범위" 참조). vault 마다 리셋하지 않는다: 리셋하면 내용이 같은
+//   두 vault 가 같은 SHA 를 받게 되는데, 이 헬퍼를 한 파일에서 둘 이상 부르는 테스트가 그 SHA
+//   동일/상이 자체에 의존하는지(예: feedId 를 유일성 키로 쓰는 단언) 리포 전수를 실행해 확인하지
+//   않고는 안전을 장담할 수 없다 — 파급이 이 헬퍼의 importer 전체(약 60여 파일)로 번지기 때문이다.
+//   그래서 동작은 바꾸지 않고 이 주석으로 범위만 정확히 못박는다.
 let tick = 1_136_239_445
 
 export function git(cwd, args, extraEnv = {}) {
@@ -91,8 +116,39 @@ export function makeOut() {
   return mkdtempSync(path.join(tmpdir(), 'wiki-red-out-'))
 }
 
+/**
+ * `dir` 이 `os.tmpdir()` 아래인지 검증한다. 이 모듈이 만드는 모든 디렉토리는
+ * `mkdtempSync(path.join(tmpdir(), …))` 산출이라 **부모가 항상 `os.tmpdir()` 자신**이다 — 그래서 부모
+ * 하나만 realpath 하면 충분하다.
+ *
+ * - `dir` 자신은 realpath 하지 않는다: `cleanup()` 은 이미 지워진 경로도 받을 수 있고(호출부가
+ *   `finally` 에서 무조건 부르는 관례), 존재하지 않는 경로에서 `realpathSync` 는 던진다. 부모
+ *   (`os.tmpdir()`)는 프로세스 생애 동안 항상 존재하므로 안전하다.
+ * - macOS 처럼 `os.tmpdir()` 자체가 심링크(`/tmp` → `/private/tmp`)인 환경을 흡수하려고 부모와
+ *   기준 둘 다 같은 방식(`realpathSync`)으로 정규화한 뒤 비교한다.
+ * - 비교는 `path.resolve` 후 **구분자까지 포함**한 접두 비교다(`startsWith(base)` 만 쓰면
+ *   `<tmp>-evil` 같은 형제 디렉토리가 접두어 일치로 통과한다). `os.tmpdir()` 자기 자신(=하위가 아닌
+ *   경계값)도 통과시키지 않는다 — 이 모듈은 항상 그 아래 한 단계를 만든다.
+ */
+function assertWithinTmpRoot(dir) {
+  const resolved = path.resolve(dir)
+  const parent = path.dirname(resolved)
+  const base = realpathSync(tmpdir())
+  const realParent = existsSync(parent) ? realpathSync(parent) : parent
+  const normalized = path.join(realParent, path.basename(resolved))
+  if (!normalized.startsWith(`${base}${path.sep}`)) {
+    throw new Error(
+      `cleanup() 은 os.tmpdir()(${base}) 바깥 경로를 지우지 않는다 — 받은 경로: ${dir} (정규화: ${normalized})`,
+    )
+  }
+}
+
 export function cleanup(...dirs) {
-  for (const dir of dirs) if (dir) rmSync(dir, { force: true, recursive: true })
+  for (const dir of dirs) {
+    if (!dir) continue
+    assertWithinTmpRoot(dir)
+    rmSync(dir, { force: true, recursive: true })
+  }
 }
 
 /**

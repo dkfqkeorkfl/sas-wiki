@@ -16,7 +16,7 @@
 //
 // (vitest 기본 include 는 `*.test.mjs` 만 잡으므로 helpers/*.mjs 는 테스트로 수집되지 않는다 — 의도.)
 import { execFileSync } from 'node:child_process'
-import { readFileSync, statSync } from 'node:fs'
+import { lstatSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
 /**
@@ -37,20 +37,145 @@ function gitEnv(root) {
 }
 
 /**
- * 줄 수를 **보존하며** C 계열 주석을 걷어낸다(기존 LG1 의 `codeOnly` 계승 + 줄번호 보존 보강).
+ * 줄 수를 **보존하며** C 계열 주석을 걷어낸다 — 따옴표 상태를 추적하는 문자 스캐너다(정규식
+ * 치환이 아니다). 정규식 두 방(블록 먼저 → 줄 나중)을 순서대로 쏘면 두 맹점이 생긴다:
+ *   ① 문자열·템플릿 리터럴 안의 `//`·`/*` 쌍도 주석으로 오인해 그 뒤 실제 코드를 지운다.
+ *   ② 줄 주석 안에 우연히 `/*` 가 있으면(URL 등) 블록 주석 시작으로 오인해 다음 `*​/` 까지 실제
+ *      코드를 통째로 삼킨다 — 이 리포에서 같은 형태의 스캐너가 실제로 **16파일 773줄**을 이렇게
+ *      놓쳤다(선례: `feeds.env-leak.verify.test.mjs`·`docs-contract.test.mjs` 의 `codeOnly`/
+ *      `stripComments`, `helpers/static-import-graph.mjs` 의 `codeOnly`. 같은 규칙을 이 파일 안에
+ *      지역 구현한다 — 파편화된 스캐너를 한 모듈로 통합하는 것은 이 phase 범위가 아니다).
  *
- * 원본 `codeOnly` 는 블록 주석을 통째로 지워 **줄번호가 밀린다** — 진단 메시지가 `경로:줄` 을
- * 담아야 하는 이 phase 에서는 그 자체가 결함이다(H9). 그래서 블록 주석은 개행만 남기고 공백으로
- * 덮는다.
+ * 그래서 이 스캐너는 **줄 주석을 블록 주석보다 먼저 판정**하고, 홑따옴표·겹따옴표·백틱 문자열
+ * 안에서는 어떤 주석 판정도 하지 않는다(역슬래시 이스케이프 포함). 미종료 블록 주석은 EOF 까지
+ * 소거한다(자바스크립트의 실제 동작과 같다).
  *
- * ★ 알려진 오제거: 문자열 안의 `//`(URL 등)를 주석으로 볼 수 있다. **오제거는 안전 방향**이다 —
- *   스캔이 넓어지지 않고 좁아진다. 좁아진 만큼은 호출부의 `scannedLines` 하한(LS0)이 방어한다.
- *   `.md`·`.yml` 처럼 `//` 가 주석이 아닌 파일에서도 같은 방향으로만 틀린다.
+ * ★ 원본 정규식(`(^|[^:])\/\/.*$`)이 갖던 `://` 보호는 **그대로 승계**한다: 직전 문자가 `:` 면
+ * `//` 를 줄 주석 시작으로 보지 않는다. 문자열 안의 URL 은 이제 따옴표 추적 자체가 지키지만, 이
+ * 스캐너는 `.md`·`.yml` 처럼 문자열 개념이 없는 추적 파일에도 걸린다(`scanTierT` — Tier T 는
+ * `!isProductionSource` 필터만 걸어 확장자를 가리지 않는다) — 그런 파일의 산문에 박힌
+ * `https://…` 링크가 따옴표 밖에 있어도 이 보호가 계속 막아 준다.
+ *
+ * ★ 참고 구현(`static-import-graph.mjs` 의 `codeOnly` 등)과의 **의도적 차이 — 줄번호 보존**: 그
+ * 구현들은 블록 주석을 통째로 들어내 **줄번호가 밀린다.** 진단 메시지가 `경로:줄` 을 담아야 하는
+ * 이 파일에서는 그 자체가 결함이라(H9), 블록 주석은 개행만 남기고 나머지는 공백으로 덮는다 —
+ * 삭제가 아니라 **자리보전**이다.
+ *
+ * ★ 정규식 리터럴도 문자열처럼 다룬다(따옴표 아님) — 처음엔 안 다뤘다가 **자기 발등을 찍은 실측**으로
+ *   추가했다: 이 파일 자신이 속한 배치를 검수하며 이 스캐너로 `legacy-sweep.test.mjs` 를 스캔했더니,
+ *   그 파일의 `/\bmessage: '/` 같은 정규식 리터럴 안의 홑따옴표를 "문자열 시작"으로 오인해 상태가
+ *   어긋났고, 그 뒤로 등장하는 진짜 `//` 주석들이 더는 주석으로 인식되지 않아 주석 안의 레거시 접두사
+ *   언급이 **거짓 위반으로 노출**됐다(5건 — 실제로는 전부 역사 서술 주석). 그래서 나눗셈과 정규식
+ *   시작을 가르는 표준 휴리스틱(직전 유의미 토큰이 `(`·`,`·`=`·`return`·줄 시작 등 "값이 아직 안
+ *   끝난 자리"면 정규식, 식별자·닫는 괄호·리터럴 뒤면 나눗셈)을 쓴다 — 완전한 JS 파서는 아니라 오판할
+ *   수 있지만, 오판의 방향은 "정규식을 나눗셈으로 본다"(안전 — 그 뒤 문자를 평범하게 계속 스캔할
+ *   뿐 상태가 깨지지 않는다)이지 그 반대가 아니다.
+ * ★ 남는 한계(정직하게 적어 둔다): 위 휴리스틱은 완전한 렉서가 아니다 — 세미콜론 없는 코드에서
+ *   `a\n/re/.test(x)` 처럼 실제로는 나눗셈인데 줄 시작이라 정규식으로 오판할 수 있는 드문 ASI
+ *   경우가 있다(이 리포의 관례상 매우 드물다고 전제한다). 중첩 템플릿 리터럴(`` `a${`b`}c` `` 형태로
+ *   같은 따옴표 문자가 보간식 안에서 다시 열리는 경우)도 완전한 렉서 없이는 구분할 수 없는 별도
+ *   한계다. 둘 다 오제거(스캔이 좁아지는 방향)이지 넓어지는 방향은 아니다 — 좁아진 만큼은 호출부의
+ *   `scannedLines` 하한(LS0)이 방어한다.
  */
 function stripCStyleComments(source) {
-  return source
-    .replaceAll(/\/\*[\s\S]*?\*\//g, (block) => block.replaceAll(/[^\n]/g, ' '))
-    .replaceAll(/(^|[^:])\/\/.*$/gm, '$1')
+  let out = ''
+  let quote = null
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]
+    if (quote) {
+      out += char
+      if (char === '\\') {
+        out += source[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    if (char === '/' && source[index + 1] === '/' && source[index - 1] !== ':') {
+      while (index < source.length && source[index] !== '\n') index += 1
+      index -= 1 // for 루프의 index+=1 과 합쳐 개행 문자 자체는 다음 반복에서 그대로 통과시킨다
+      continue
+    }
+    if (char === '/' && source[index + 1] === '*') {
+      const close = source.indexOf('*/', index + 2)
+      const end = close === -1 ? source.length : close + 2
+      for (let inner = index; inner < end; inner += 1) out += source[inner] === '\n' ? '\n' : ' '
+      index = end - 1 // for 루프의 index+=1 과 합쳐 다음 문자부터 재개한다
+      continue
+    }
+    if (char === '/' && precedesRegexLiteral(out)) {
+      const end = consumeRegexLiteral(source, index)
+      if (end !== null) {
+        out += source.slice(index, end)
+        index = end - 1
+        continue
+      }
+      // 닫는 '/' 를 같은 줄에서 못 찾았다 — 정규식이 아니라 나눗셈이었다. 안전한 기본 동작(아래
+      //   fallthrough)으로 이 '/' 한 글자만 평범하게 통과시킨다.
+    }
+    out += char
+  }
+  return out
+}
+
+/**
+ * 직전까지 방출된 코드(`out`)를 보고 다음 `/` 가 **정규식 리터럴의 시작일 가능성이 높은 자리**인지
+ * 가른다(나눗셈 연산자와의 표준 휴리스틱 구분 — 완전한 파서 없이 실용적으로 가른다). 직전 유의미
+ * 문자가 값을 "아직 안 끝낸" 토큰(여는 괄호·쉼표·대입·비교·논리 연산자 등)이거나 줄이 막 시작했거나
+ * `return`/`typeof`/`case` 같은 정규식-선행 키워드로 끝나면 정규식으로 본다. 식별자·숫자·문자열·
+ * `)`·`]`·`}` 뒤라면 나눗셈이다.
+ */
+const REGEX_PRECEDING_KEYWORD_RE =
+  /(^|[^\w$])(return|typeof|instanceof|delete|void|throw|case|yield|await|in|of|new|else|do)$/u
+function precedesRegexLiteral(out) {
+  const trimmed = out.replace(/[ \t]+$/u, '') // 같은 줄의 후행 공백만 없앤다 — 개행은 "줄 시작" 신호로 남긴다
+  if (trimmed === '') return true // 파일 시작
+  const last = trimmed.at(-1)
+  if (last === '\n') return true
+  if ('([{,;:=!&|?+-*%^~<>'.includes(last)) return true
+  return REGEX_PRECEDING_KEYWORD_RE.test(trimmed)
+}
+
+/**
+ * 여는 `/`(`start`)부터 정규식 리터럴을 소비한다. 문자 클래스(`[...]`) 안의 `/` 는 종료 신호가
+ * 아니고, 역슬래시 이스케이프는 다음 한 글자를 건너뛴다. 플래그(`gimsuy` 등)까지 소비한 뒤 인덱스를
+ * 돌려준다. **같은 줄 안에서 닫는 `/` 를 못 찾으면 `null`**(정규식 리터럴은 여러 줄에 걸칠 수
+ * 없다 — 이 경우 애초에 정규식이 아니었다는 뜻이므로 호출부가 나눗셈으로 되돌린다).
+ */
+function consumeRegexLiteral(source, start) {
+  let index = start + 1
+  let inClass = false
+  while (index < source.length) {
+    const char = source[index]
+    if (char === '\n') return null
+    if (char === '\\') {
+      index += 2
+      continue
+    }
+    if (char === '[') {
+      inClass = true
+      index += 1
+      continue
+    }
+    if (char === ']') {
+      inClass = false
+      index += 1
+      continue
+    }
+    if (char === '/' && !inClass) {
+      index += 1
+      while (index < source.length && /[a-zA-Z]/u.test(source[index])) index += 1
+      return index
+    }
+    index += 1
+  }
+  return null
 }
 
 /** `git ls-files` 한 번. 실패는 삼키지 않는다(H7). */
@@ -96,8 +221,18 @@ export function listTracked(repoRoot) {
   for (const rel of entries.sort()) {
     const full = path.join(root, rel)
     try {
+      // `statSync` 는 심링크를 **따라가서** 그 타깃을 본다 — vault 밖을 가리키는 심링크가 그 타깃이
+      //   마침 일반 파일이면 "일반 파일" 로 통과해 스캔에 들어오고, `skipped` 에는 남지 않는다.
+      //   호출부(LS8)의 "스킵됐다" 주장과 실제가 어긋나는 지점이라 `lstatSync` 로 **엔트리 자신**을
+      //   본다 — 심링크는 그 자체로 스킵 사유가 된다(타깃을 따라가 안전한지 판단하지 않는다. 상대적
+      //   심링크든 vault 밖 절대경로 심링크든 전부 같은 사유로 배제해야 조용히 벗어나는 경로가 없다).
+      const entryStat = lstatSync(full)
+      if (entryStat.isSymbolicLink()) {
+        skipped.push({ path: rel, why: 'symlink' })
+        continue
+      }
       // gitlink(서브모듈)는 인덱스에 1엔트리로 있지만 파일이 아니다 — 조용히 흘리지 않고 싣는다.
-      if (!statSync(full).isFile()) {
+      if (!entryStat.isFile()) {
         skipped.push({ path: rel, why: 'not-a-regular-file' })
         continue
       }

@@ -22,6 +22,21 @@ import { applyIgnoreFeeds, loadIgnoreFeeds } from '../../lib/ignore.mjs'
 const DEFAULT_FEED_LIMIT = 50
 
 /**
+ * ISO 8601 날짜-시각 리터럴 — `YYYY-MM-DDTHH:mm:ss[.sss](Z|±HH:MM)`.
+ *
+ * 이 파일이 실제로 받는 두 값이 전부 이 형태다: ① `from`/`to` 호출부 리터럴(예:
+ * `'2026-01-01T00:00:00Z'`) ② 커서의 `ts` — git `%aI`(strict ISO 8601, author-date)를 그대로 실은
+ * 값(offset 표기, 예: `'2026-01-01T00:00:00+09:00'`). `Date.parse` 는 `"0"`·`"2026"` 같은 비-ISO
+ * 문자열도 구현정의 폴백으로 파싱해 유효한 timestamp 를 돌려준다(실측: `Date.parse('0')` →
+ * 946652400000, `Date.parse('2026')` → 1767225600000) — 그래서 형태부터 확인한 뒤에만 파싱한다.
+ * 프로덕션 커서 형식(`lib/feed-cursor.mjs` 의 `isCursorFormat` — 12-hex 커밋 해시 축약)과는 **다른
+ * 축**이다: 그건 라이브 워크의 불투명 커서고, 이건 이 참조 구현이 쓰는 `{ts,feedId}` 객체 커서의
+ * `ts` 필드 — import 하지 않고 이 파일 안에 리터럴로 둔다(규범 A · 이 파일 자신이 이미 그렇게
+ * 설계돼 있다 — `writeDoc` 의 `wikiRoot` 리터럴 기본값과 같은 원칙).
+ */
+const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/u
+
+/**
  * @param {string} vault
  * @param {{ after?: object|string, count?: number, env?: 'dev'|'prod', from?: string,
  *           headState?: object, runGit?: Function, to?: string }} [options]
@@ -35,8 +50,23 @@ export function walkFeeds(vault, { after, count, env, from, headState, runGit, t
   return withMeta(paged.items, paged.nextCursor, collected.stats)
 }
 
+/**
+ * `limit` **미지정**(undefined/null)만 `DEFAULT_FEED_LIMIT` 로 조용히 채운다(기존 계약 — 호출부가
+ * count 를 안 줘도 되는 자리). 지정했는데 **양의 정수가 아니면 던진다**: 소수(`1.5`)는 `slice(0,
+ * limit+1)` 의 경계가 정수 아닌 값에서 뜻이 불분명해지고, `Infinity` 는 그 경계가 사실상 무제한이
+ * 되어 이 함수의 존재 이유(페이지 상한)를 무력화한다 — 둘 다 조용히 받아들이면 페이지 경계가
+ * 말없이 사라지거나 `TypeError` 로 엉뚱한 자리에서 터진다.
+ */
+function resolveLimit(limit) {
+  if (limit === undefined || limit === null) return DEFAULT_FEED_LIMIT
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error(`pageFeeds limit 은 양의 정수여야 한다: ${JSON.stringify(limit)}`)
+  }
+  return limit
+}
+
 export function pageFeeds(items, ignoreEntries, { after, from, limit, to } = {}) {
-  const resolvedLimit = typeof limit === 'number' && limit > 0 ? limit : DEFAULT_FEED_LIMIT
+  const resolvedLimit = resolveLimit(limit)
   const paged = pageItems(items, ignoreEntries, { after, from, limit: resolvedLimit, to })
   return {
     items: paged.slice(0, resolvedLimit),
@@ -60,18 +90,34 @@ function pageItems(items, ignoreEntries, { after, from, limit, to }) {
 
 /**
  * from/to 경계를 epoch(ms)로 1회 정규화. 미지정 → null. **문자열 비교 금지**(byRecencyThenId 와 동일
- * 사유). 파싱 불가(유효 ISO 아님) → throw: 잘못된 경계로 조용히 오필터(전량 통과/전량 배제)하느니
- * 시끄럽게 끊는다(fail-loud).
+ * 사유). **형태부터 ISO 8601 인지 확인한 뒤에만** 파싱한다 — `Date.parse` 단독으로는 `"0"`·`"2026"`
+ * 같은 오타 경계도 구현정의 폴백으로 "유효한" timestamp 를 내어 조용히 다른 필터가 된다(ISO_DATETIME_RE
+ * 도크 참조). 형태가 어긋나거나(비-ISO) 형태는 맞는데도 파싱 불가(예: `2026-13-45T00:00:00Z` 같은
+ * 존재하지 않는 날짜)면 둘 다 → throw: 잘못된 경계로 조용히 오필터(전량 통과/전량 배제)하느니
+ * 시끄럽게 끊는다(fail-loud, 이 파일의 기존 방향과 동일).
  */
 function parseBoundary(value, name) {
   if (value === undefined || value === null) return null
+  if (typeof value !== 'string' || !ISO_DATETIME_RE.test(value)) {
+    throw new Error(
+      `pageFeeds ${name} 경계가 유효한 ISO 8601 날짜-시각이 아니다: ${JSON.stringify(value)}`,
+    )
+  }
   const ms = Date.parse(value)
   if (Number.isNaN(ms)) {
-    throw new Error(`pageFeeds ${name} 경계가 유효한 ISO 날짜가 아니다: ${JSON.stringify(value)}`)
+    throw new Error(
+      `pageFeeds ${name} 경계가 유효한 ISO 8601 날짜-시각이 아니다: ${JSON.stringify(value)}`,
+    )
   }
   return ms
 }
 
+/**
+ * 커서를 `{ id, ts }` 로 정규화한다. `ts` 는 **형태를 확인**한다(ISO_DATETIME_RE) — 검증 없이 쓰면
+ * 오타 커서(`{ ts: '0', feedId: '…' }` 등)가 `byRecencyThenId` 의 `Date.parse` 비교까지 조용히
+ * 흘러들어가 페이지 경계가 말없이 어긋난다. `id` 는 형태를 강제하지 않는다(feedId 는 이 파일
+ * 밖(`git-walk.mjs`)이 낸 값이고, 이 파일의 책임은 페이지 경계지 id 형식 검증이 아니다).
+ */
 function normalizeCursor(after) {
   if (after === undefined || after === null || after === '') return null
   if (typeof after === 'string') {
@@ -79,8 +125,8 @@ function normalizeCursor(after) {
     return normalizeCursor(parsed)
   }
   const id = after.feedId ?? after.id
-  if (typeof after.ts !== 'string' || typeof id !== 'string') {
-    throw new Error('after cursor must contain ts and feedId')
+  if (typeof after.ts !== 'string' || !ISO_DATETIME_RE.test(after.ts) || typeof id !== 'string') {
+    throw new Error(`after 커서는 ISO 8601 ts 와 feedId 를 담아야 한다: ${JSON.stringify(after)}`)
   }
   return { id, ts: after.ts }
 }

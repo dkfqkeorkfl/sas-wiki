@@ -95,6 +95,67 @@ function parseFrontmatter(content) {
   return out
 }
 
+/**
+ * git 이 `-z` 없이 `--name-status` 를 낼 때 **제어문자·따옴표·역슬래시가 든 경로**를 C-quote
+ * (`"…"` + 이스케이프)로 감싼다(`quote.c` `quote_c_style` — git 문서 `git-config.adoc`
+ * `core.quotePath`: _"double-quotes, backslash and control characters are always escaped
+ * regardless of the setting"_). `gitRaw` 가 이미 켜 둔 `core.quotepath=false` 는 **8비트(비-ASCII)
+ * 바이트만** 면제한다(한글 경로가 quote 없이 그대로 나오는 이유) — 탭·개행·백슬래시·따옴표는
+ * **config 로 끌 수 없이 무조건** quote 된다. 이 경로를 그대로 쓰면 `path`/`newPath` 가 실제
+ * 파일명이 아니라 이 quote 문자열 그대로(`"wiki/tab\tfile.md"` 같은 리터럴) 남아 `isVaultDoc` 의
+ * `wiki/` 접두 매칭이 깨지고, 그 문서가 조용히 해석에서 빠진다.
+ *
+ * `-z`(NUL 구분자 — `tracked-scan.mjs` 의 `lsFiles` 가 쓰는 관례)를 여기도 쓸 수는 있다(실측: RECORD
+ * 경계 자체는 안 깨진다). 그러나 이 리포는 `readCommits` 가 **여러 커밋을 한 스트림에 묶는 커스텀
+ * RECORD/FIELD 포맷**을 쓰고, `-z` 를 켜면 그 포맷의 커밋 헤더 종료가 NUL 로 바뀌면서(실측:
+ * `%H`…필드 뒤에 NUL **과** 커밋/diff 사이 전통적 개행이 **함께** 남는다) `--name-status` 항목도
+ * NUL 구분(rename 은 `상태\0옛경로\0새경로\0`)으로 형태가 바뀐다 — `readCommits` **와**
+ * `parseCommitRecord` 양쪽을 다시 짜야 하는 더 넓은 변경이라, 이 G 항목의 국소 범위를 넘는다.
+ * 그래서 와이어 프레이밍은 그대로 두고 **quote 를 여기서 직접 해제**한다 — 결함의 원인(quote 를
+ * 안 푸는 것)을 정확히 닫으면서 변경을 이 함수 안에 가둔다.
+ */
+function unquoteGitPath(field) {
+  if (field === undefined || field.length < 2 || field[0] !== '"' || field.at(-1) !== '"')
+    return field
+  const inner = field.slice(1, -1)
+  // git quote.c 의 named escape 집합 — 전부 단일 바이트다.
+  const NAMED_ESCAPES = {
+    '"': 0x22,
+    '\\': 0x5c,
+    a: 0x07,
+    b: 0x08,
+    f: 0x0c,
+    n: 0x0a,
+    r: 0x0d,
+    t: 0x09,
+    v: 0x0b,
+  }
+  const bytes = []
+  for (let index = 0; index < inner.length; index += 1) {
+    const char = inner[index]
+    if (char !== '\\') {
+      bytes.push(...Buffer.from(char, 'utf8'))
+      continue
+    }
+    const next = inner[index + 1]
+    if (next !== undefined && next in NAMED_ESCAPES) {
+      bytes.push(NAMED_ESCAPES[next])
+      index += 1
+      continue
+    }
+    // `core.quotepath=false` 인 이 리포에서는 실전에 등장하지 않는 경로(비-ASCII 바이트는 quote 자체가
+    //   면제된다)지만, quote.c 는 8비트 바이트를 8진 3자리로도 이스케이프한다 — 방어적으로 지원한다.
+    const octal = inner.slice(index + 1, index + 4)
+    if (/^[0-7]{3}$/.test(octal)) {
+      bytes.push(Number.parseInt(octal, 8))
+      index += 3
+      continue
+    }
+    bytes.push(...Buffer.from(char, 'utf8')) // 알 수 없는 이스케이프 — 백슬래시 자신을 원문 그대로 보존
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
 /** `--name-status -M` 라인 파싱. `-M` 은 rename 검출을 명시한다(diff.renames 설정 의존 = 비결정 방지). */
 function parseNameStatus(tail) {
   return tail
@@ -104,8 +165,10 @@ function parseNameStatus(tail) {
     .map((line) => {
       const [status, first, second] = line.split('\t')
       const code = status.charAt(0) // R100 · C075 → R · C
-      if (code === 'R' || code === 'C') return { newPath: second, path: first, status: code }
-      return { path: first, status: code }
+      if (code === 'R' || code === 'C') {
+        return { newPath: unquoteGitPath(second), path: unquoteGitPath(first), status: code }
+      }
+      return { path: unquoteGitPath(first), status: code }
     })
 }
 
@@ -136,11 +199,26 @@ function readHeadVaultFiles(repoDir) {
     .toSorted()
 }
 
-/** 값이 없으면 git 이 exit 1 로 끝나는 조회(config --get 등) → '' 로 정규화. */
+/**
+ * git 이 **"값 없음"으로 정상 종료**하는 조회(`config --get` 등)만 `''` 로 정규화한다.
+ *
+ * `git-config` 문서(`git-config.adoc`): _"If the key does not exist, the command will exit with
+ * non-zero error code"_ — 그 코드는 **1** 이다(실측: `git config --get <없는키>` → exit 1, stderr
+ * 없음). 이 함수가 정규화하는 것은 정확히 이 경로뿐이다.
+ *
+ * 그 밖의 실패(리포 손상 · 권한 · git 부재 · 인자 오류 — git 의 `fatal:` 급 오류는 보통 exit 128)는
+ * "값이 없다"와 **다른 사건**이라 그대로 던진다. 두 실패를 같은 `''` 로 접으면 손상된 히스토리가
+ * "정상인데 이 조회만 값이 없다"로 위장된다 — 예: 빈 리포에서 `git log HEAD` 는 HEAD 가 아직 아무
+ * 커밋도 가리키지 않아 exit **128**(`fatal: ambiguous argument 'HEAD'`)로 죽는다(실측). 이 함수를 부르는
+ * `readCommits` 는 그 128 을 그대로 위로 던져야 한다 — `readVaultFacts` 가 `rootSha` 를 **필수**로
+ * 요구하는 것 자체가 "호출자는 이미 커밋이 있는 히스토리를 안다"는 전제이므로, 그 전제가 깨진
+ * 상태(히스토리가 아예 없거나 예상과 다르게 손상됨)를 `[]`(정상적인 "커밋 0건")로 위장하면 안 된다.
+ */
 function tryGit(repoDir, args) {
   try {
     return git(repoDir, args)
-  } catch {
-    return ''
+  } catch (error) {
+    if (error?.status === 1) return ''
+    throw error
   }
 }
