@@ -44,8 +44,10 @@
 //     · `<!-- contract:wiki-payload -->` … `<!-- /contract:wiki-payload -->`
 //         → `### wiki 반환값` 바로 다음 줄부터 절 끝(`---`) 직전까지.
 //           **최소**: ① active 문서 예시 블록(= 살아 있는 `headings[].anchor` 가 있는 곳).
-// [2] **값·키를 고친다.** ①②④⑤: 두 예시의 `schemaVersion` 1 → 3, summary 예시·표에 `producer`·
-//     `env` 추가, feeds 예시와 스키마 required 집합 일치.
+// [2] **값·키를 고친다.** ②⑤: summary 예시·표에 `env` 추가, feeds 예시와 스키마 required 집합
+//     일치. schemaVersion 은 이미 소스(`payloads.mjs` 의 `SCHEMA_VERSION`)와 같은 1 이다(D29
+//     리셋 반영 — 더 손댈 것 없다). `producer` 는 wire 계약에 없는 키다(요구 키는 `env` 뿐 —
+//     SP1 실측).
 // [3] **죽은 앵커를 지운다.** ⑥⑦⑧⑨: feeds 예시 `docs[]` 를 `[{ "id": … }]` 로, `docs[]` 표에서
 //     `anchor`·`anchorText` 두 행 삭제, 그 아래 앵커 3문단(README:476·478·480) 삭제, 매핑표
 //     (README:627)의 `docs[].anchor, docs[].anchorText` 행 삭제. **`headings[].anchor` 는 건드리지 않는다.**
@@ -178,9 +180,14 @@ function normalizeJsonc(text) {
       continue
     }
     if (char === '/' && text[index + 1] === '*') {
-      index += 2
-      while (index < text.length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
-      index += 1
+      // ★ 닫는 `*/` 가 없으면 EOF 까지 **silently** 주석 취급하지 않는다 — 닫지 않은 블록 주석은
+      //   예시가 실제로 깨졌다는 신호이고(예: 닫기를 빠뜨린 오타), 조용히 삼키면 그 오타가 어떤
+      //   신호도 없이 사라진다. 명시적으로 던져 `exampleObject` 의 catch 가 그 사실을 드러내게 한다.
+      const close = text.indexOf('*/', index + 2)
+      if (close === -1) {
+        throw new Error(`jsonc 예시에 미종결 블록 주석이 있다(\`/*\` 뒤에 \`*/\` 가 없다) — 문자 위치 ${index}`) // prettier-ignore
+      }
+      index = close + 1
       continue
     }
     if (char === ',') {
@@ -286,6 +293,18 @@ function hitsWithLines(pattern) {
 function schemaVersionFromSource() {
   return captures(readSource('scripts/lib/payloads.mjs'), /SCHEMA_VERSION = (\d+)/g)
 }
+
+describe('jsonc 정규화 — 미종결 블록 주석 (normalizeJsonc 계약)', () => {
+  it('종결된 블록 주석은 지워지고, 미종결 주석은 silently 정상 JSON 으로 정규화되지 않는다', () => {
+    // 회귀 없음 확인 — 정상 종결 주석은 그대로 지워진다.
+    expect(JSON.parse(normalizeJsonc('{ "a": 1 /* 종결됨 */ }'))).toEqual({ a: 1 })
+
+    // ★ 이 단언이 없으면: `/* ...` 뒤에 닫는 `*/` 를 빠뜨려도(예시 안 어디든) EOF 까지 조용히
+    //   주석 취급되어 남은 내용이 통째로 사라진 채 유효한 JSON 으로 정규화된다 — 예시가 실제로는
+    //   깨졌는데 어떤 신호도 없이 통과한다.
+    expect(() => normalizeJsonc('{ "a": 1 }\n/* 미종결')).toThrow(/미종결/)
+  })
+})
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // SP — summary 반환값 ↔ `summary.schema.json` (①②)
@@ -462,6 +481,23 @@ describe('죽은 앵커 어휘 (AN · 짝 = WP2)', () => {
   })
 })
 
+/**
+ * `return { ... }` 블록의 최상위 키 이름 — `key: value`(콜론) 뿐 아니라 shorthand(`key,`/`key\n}`)도
+ * 잡는다. 콜론 형태만 보면 리팩터가 `{ breadcrumb, headings, … }` 같은 shorthand 로 바뀌는 순간
+ * 키를 덜 세 `projection` 이 줄어든다 — 바로 아래 `toHaveLength(7)` 앵커가 있어 그 경우는 loud 하게
+ * 깨지지만(그래서 이 함수가 없어도 조용히 통과하지는 않는다), 그 실패는 **정당한 리팩터를 막는
+ * 오탐**이다. spread(`...x`)는 정적으로 개별 키를 셀 수 없으므로 명시 에러로 드러낸다(조용히
+ * 무시하지 않는다).
+ */
+function topLevelReturnKeys(returnBlock) {
+  if (/^ {4}\.\.\./m.test(returnBlock)) {
+    throw new Error('return 블록에 spread(`...`)가 있다 — 정적 텍스트 스캔으로는 키를 셀 수 없다. WP1 파서를 갱신하라.') // prettier-ignore
+  }
+  const colonForm = captures(returnBlock, /^ {4}([A-Za-z][A-Za-z0-9_]*):/gm)
+  const shorthandForm = captures(returnBlock, /^ {4}([A-Za-z][A-Za-z0-9_]*)\s*(?:,|\n\s*})/gm)
+  return sorted(unique([...colonForm, ...shorthandForm]))
+}
+
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // WP — wiki 반환값 ↔ `body.schema.json` + `single-doc.mjs` (드리프트 없음 — pin · AN1 의 짝)
 // ────────────────────────────────────────────────────────────────────────────────────────────
@@ -485,7 +521,7 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
 
     const source = readSource('scripts/lib/single-doc.mjs')
     const returnBlock = source.slice(source.lastIndexOf('  return {'))
-    const projection = sorted(unique(captures(returnBlock, /^ {4}([A-Za-z][A-Za-z0-9_]*):/gm)))
+    const projection = topLevelReturnKeys(returnBlock)
 
     // 앵커: 봉투가 본문 4키를 **전부** 싣고, 그 위에 정확히 3키를 더한다(리터럴 축 — 규범 A).
     expect(sorted(projection.filter((key) => !bodyKeys.includes(key)))).toEqual(['breadcrumb', 'path', 'status']) // prettier-ignore
@@ -637,7 +673,9 @@ describe('결속 — feeds 플래그표 ↔ CLI 옵션 (LZ8 · 🔴RED(flip) v3 
     // D15 — `--count` 는 필수다. 기본값 칸에 값이 남아 있으면 독자는 "생략 가능" 으로 읽는다.
     const count = rows.find((row) => row.flag === 'count')
     expect(count, '`--count` 행이 사라졌다 — 필수 인자는 표에 남아야 한다').toBeDefined()
-    expect(count.cells[0], `기본값 칸: ${count.cells[0]}`).not.toMatch(/\d/u)
+    // ★ "숫자가 없다" 만으로는 부족하다 — `많음`·`Infinity`·공백 같은 비숫자 값도 통과해 버린다.
+    //   이 칸이 실제로 "필수(기본값 없음)" 를 말하는지 **직접** 문다.
+    expect(count.cells[0], `기본값 칸: ${count.cells[0]}`).toMatch(/필수/)
 
     // D6 — 날짜 구간 소멸.
     expect(documented, '`--from` 행이 남아 있다').not.toContain('from')

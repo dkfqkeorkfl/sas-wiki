@@ -29,7 +29,9 @@
 // 계약이 뒤집힌다. **EN2 만 예외**다(`invariants.mjs:1` 헤더 주석은 코드가 아니라 문서다).
 //
 // ── RED/green 현황 (작성 시점 실측) ────────────────────────────────────────────────────────
-//   🔴RED  PT0(마커 부재) · PT1(경로가 env 분리 전) · PT2("5종" · 목록 없음) · PT3(producer 미기재)
+//   ★ PT3 은 이 목록에서 뺐다 — 케이스 자체가 파일에 없다(`grep -n "'PT3" 결과 0건). producer 는
+//     wire 계약에 없는 키다(요구 키는 `env` 뿐). 댕글링 참조를 남겨 두지 않는다.
+//   🔴RED  PT0(마커 부재) · PT1(경로가 env 분리 전) · PT2("5종" · 목록 없음)
 //          PT4(문서 `schemaVersion: 1` vs 코드 3) · PT5(옛 경로 7회 잔존)
 //          EN0(마커 5종 부재) · EN1(표 8행, 코드 7종) · EN2("8종" ×2) · EN4(미기재)
 //          EN5(Importance 3종 — `fix` 누락) · EN6(exit 2 미문서화) · LB1(팬텀 1 · 누락 3) · LB2
@@ -65,6 +67,46 @@ const readSource = (rel) => readFileSync(path.join(REPO_ROOT, rel), 'utf8')
 
 const unique = (values) => [...new Set(values)]
 const captures = (text, pattern) => [...text.matchAll(pattern)].map((match) => match[1])
+
+/**
+ * `//`·`/* … *\/` 주석을 **문자열 인식**으로 제거한다(순진한 치환은 메시지 문자열 안의 `//` 를
+ * 주석 시작으로 오인한다). 소스를 토큰 스캔할 때 주석·죽은 분기 속 언급까지 "코드가 낸다"로
+ * 잘못 세는 것을 막는다 — 예: `fail(...)` 호출을 `//` 로 죽여도 메시지 문자열은 그대로 남는데,
+ * 주석을 안 걷으면 "그 코드가 여전히 방출한다"로 오판한다.
+ */
+function stripComments(text) {
+  let out = ''
+  let quote = null
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      out += char
+      if (char === '\\') {
+        out += text[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    if (char === '/' && text[index + 1] === '/') {
+      while (index < text.length && text[index] !== '\n') index += 1
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const close = text.indexOf('*/', index + 2)
+      index = close === -1 ? text.length : close + 1
+      continue
+    }
+    out += char
+  }
+  return out
+}
 
 /**
  * 문서 쪽 결속면. 마커가 있으면 그 구간, 없으면 **어휘가 등장하는 줄만**(전이기 폴백 — 파일 헤더).
@@ -245,9 +287,15 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
 // ────────────────────────────────────────────────────────────────────────────────────────────
 const EN_MARKERS = ['invariants', 'reason-codes', 'feed-ref-reasons', 'importance', 'exit-codes']
 
-/** `invariants.mjs` 가 **실제로 방출하는** 불변식 번호(소스 텍스트에서 — import 아님). */
+/**
+ * `invariants.mjs` 가 **실제로 방출하는** 불변식 번호(소스 텍스트에서 — import 아님).
+ *
+ * ★ 주석·죽은 분기를 먼저 걷어낸다(`stripComments`) — 안 그러면 `fail('불변식 N: …')` 호출을
+ *   `//` 로 죽여도(코드는 더 이상 그 번호를 방출하지 않는다) 메시지 문자열이 주석 속에 그대로
+ *   남아 있는 한 "여전히 방출한다"로 조용히 오판한다.
+ */
 function emittedInvariantNumbers() {
-  return unique(captures(readSource('scripts/lib/invariants.mjs'), /불변식 (\d+):/g))
+  return unique(captures(stripComments(readSource('scripts/lib/invariants.mjs')), /불변식 (\d+):/g))
     .map(Number)
     .sort((a, b) => a - b)
 }
@@ -412,8 +460,18 @@ describe('결속 — 열거형 (EN · D-D 유형 2 · 양방향 + 순서)', () =
     expect(envRow, 'README 공통 계약 표에 `--env` 행이 있다').toBeDefined()
     expect(unique(captures(envRow, /`(dev|prod)`/g)).toSorted()).toEqual(['dev', 'prod'])
 
-    expect(README).toMatch(/fail-closed/)
-    expect(README).toMatch(/생략하면 `prod`|미지정 시 prod|미지정.*prod/)
+    // ★ `--env` 가 fail-closed 라는 서술은 **`### 공통 계약` 절 안**에서 찾는다 — README 전문
+    //   검색은 무관한 절의 우연한 재사용(예: `draft-excluded` 사유표의 "fail-closed 가 우선")만으로도
+    //   채워져, `--env` 자신의 설명이 지워져도 조용히 통과한다.
+    const start = README_LINES.findIndex((line) => line.trim() === '### 공통 계약')
+    expect(start, 'README `### 공통 계약` 절 제목을 찾지 못했다').toBeGreaterThanOrEqual(0)
+    const rest = README_LINES.slice(start + 1)
+    const end = rest.findIndex((line) => /^#{1,6}\s/.test(line))
+    const scope = (end === -1 ? rest : rest.slice(0, end)).join('\n')
+    expect(scope.trim().length, '`### 공통 계약` 절 본문이 비었다').toBeGreaterThan(0)
+
+    expect(scope).toMatch(/fail-closed/)
+    expect(scope).toMatch(/생략하면 `prod`|미지정 시 prod|미지정.*prod/)
   })
 })
 
@@ -460,6 +518,10 @@ describe('결속 — 경고 라벨 어휘 (LB · D-D 유형 3)', () => {
     expect(fromSource).toEqual(EXPECTED_LABELS)
 
     const scope = docScope('warning-labels', ['[wiki]   '])
+    // ★ PT0·EN0 은 각각 자기 마커의 부재를 명시적으로 문다(부재 → red). 이 마커(`warning-labels`)는
+    //   그 짝이 없었다 — `docScope` 의 폴백이 실제 라벨 줄을 그대로 찾아내므로, 마커를 통째로
+    //   지워도 아래 라벨 비교는 폴백으로 조용히 계속 통과한다. `via` 를 직접 문다.
+    expect(scope.via, '`<!-- contract:warning-labels -->` 마커가 없다 — 폴백으로 조용히 넘어가는 중이다').toBe('marker') // prettier-ignore
     expect(labelsIn(scopeText(scope)), `문서 결속면(${scope.via})`).toEqual(EXPECTED_LABELS)
   })
 

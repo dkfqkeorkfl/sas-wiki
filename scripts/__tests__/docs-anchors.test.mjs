@@ -56,6 +56,11 @@ const readReadme = () => anchors().readMarkdown(README_PATH)
  * `expected: null` = **`TODO: 사용자 확인`**. 그 문자의 GitHub 처리를 우리가 검증하지 못했고
  * (현재 링크 대상이 아니다) 추측으로 기대를 채우지 않는다 — 소유는 **P4 H6-1**(GitHub 실렌더 육안)
  * 이다. 값을 단언하지 않되 **코퍼스에는 남긴다**: 언젠가 그 문자가 링크 대상이 되면 여기가 출발점이다.
+ *
+ * ★ `expected: null` 항목도 `pin` 은 갖는다 — **오늘 `githubSlug()` 가 실제로 내는 값**의 회귀
+ * 방지용이다(GitHub 이 진짜 그 값으로 렌더한다는 보증은 아니다). 이 pin 이 없으면 이 세 항목은
+ * `githubSlug(text) === githubSlug(text)` 라는 자기비교만 남아 — 슬러거가 이 문자들에서 깨져도
+ * (예: 빈 문자열·예외·다른 문자로 치환) 조용히 통과한다.
  */
 const SLUG_CORPUS = [
   { expected: 'dev--prod', note: '★ README 에 실재하는 링크 `#dev--prod`(2건)가 이 값을 검증한다', text: 'dev / prod' }, // prettier-ignore
@@ -63,9 +68,9 @@ const SLUG_CORPUS = [
   { expected: 'feeds', note: '구두점 없는 단일 토큰', text: 'feeds' },
   { expected: '게이트는-언제-도는가', note: '공백 1자 → 하이픈 1개', text: '게이트는 언제 도는가' },
   { expected: 'sas-wiki', note: '하이픈은 **보존**된다(축약 금지)', text: 'sas-wiki' },
-  { expected: null, note: 'TODO: 사용자 확인 — U+2014 em dash. 현재 링크 대상 아님(P4 H6-1)', text: '문서 — 위키의 단위' }, // prettier-ignore
-  { expected: null, note: 'TODO: 사용자 확인 — U+003D. 현재 링크 대상 아님(P4 H6-1)', text: '각주 = 출처' }, // prettier-ignore
-  { expected: null, note: 'TODO: 사용자 확인 — U+2192. GitHub 정규식 범위 미확인(P4 H6-1)', text: 'feed 커밋 메시지 → 피드 필드' }, // prettier-ignore
+  { expected: null, note: 'TODO: 사용자 확인 — U+2014 em dash. 현재 링크 대상 아님(P4 H6-1)', pin: '문서--위키의-단위', text: '문서 — 위키의 단위' }, // prettier-ignore
+  { expected: null, note: 'TODO: 사용자 확인 — U+003D. 현재 링크 대상 아님(P4 H6-1)', pin: '각주--출처', text: '각주 = 출처' }, // prettier-ignore
+  { expected: null, note: 'TODO: 사용자 확인 — U+2192. GitHub 정규식 범위 미확인(P4 H6-1)', pin: 'feed-커밋-메시지--피드-필드', text: 'feed 커밋 메시지 → 피드 필드' }, // prettier-ignore
 ]
 
 /** ★ AC6 의 allowlist — 현 README heading 에 실제로 등장하는 구두점 **전수**(실측 5종). */
@@ -121,9 +126,11 @@ describe('슬러거 감도 — 리터럴 코퍼스 (AC2 · H8)', () => {
       expect(githubSlug(entry.text), `${entry.text} — ${entry.note}`).toBe(entry.expected)
     }
 
-    // `TODO: 사용자 확인` 항목: 값을 단언하지 않는다. **결정적으로 동작하기만** 하면 된다.
+    // `TODO: 사용자 확인` 항목: GitHub 실렌더 값은 단언하지 않는다(그 판정은 P4 H6-1 소유). 대신
+    //   **오늘의 근사 출력을 pin** 한다 — `githubSlug(text) === githubSlug(text)` 같은 자기비교는
+    //   슬러거가 이 문자에서 깨져도(예외·빈 문자열·다른 치환) 조용히 통과한다.
     for (const entry of SLUG_CORPUS.filter((item) => item.expected === null)) {
-      expect(githubSlug(entry.text), entry.note).toBe(githubSlug(entry.text))
+      expect(githubSlug(entry.text), entry.note).toBe(entry.pin)
       expect(entry.note).toMatch(/TODO: 사용자 확인/)
     }
   })
@@ -137,7 +144,12 @@ describe('슬러거 오용 배제 — 프로덕션 슬러거는 답이 다르다
     //   가드가 거짓말을 하는 상태다. 그때 사람이 고르는 것은 대개 "가드를 끈다" 이다.
     const { extractHeadings, githubSlug } = anchors()
 
-    expect(slugifyHeading('dev / prod')).toBe('dev-prod')
+    // ★ `slugifyHeading` 의 **정확한 출력값**은 여기서 pin 하지 않는다 — 그 함수는 우리가 소유하지
+    //   않는 프로덕션 위키링크 슬러거다. 값을 pin 하면 그 함수가 (이 파일과 무관한 이유로) 개선되는
+    //   순간 이 케이스가 역방향으로 깨진다(역방향 결합). 대신 **우리가 소유한 `githubSlug` 의 값**과
+    //   **둘이 다르다는 사실**만 문다 — 그것이 "프로덕션 슬러거를 앵커 검사에 쓰지 마라"는 AC3 의
+    //   실제 계약이다. 두 슬러거가 언젠가 이 입력에서 일치하게 되면(즉 `slugifyHeading` 이 GitHub 과
+    //   같은 결과를 내도록 고쳐지면) 이 단언이 **의도대로** red 가 되어 그 사실을 알린다.
     expect(githubSlug('dev / prod')).toBe('dev--prod')
     expect(slugifyHeading('dev / prod')).not.toBe(githubSlug('dev / prod'))
 

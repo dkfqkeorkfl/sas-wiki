@@ -112,6 +112,45 @@ const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 const idsOf = (page) => page.items.map((item) => item.id)
 const titlesOf = (page) => page.items.map((item) => item.title)
 
+/**
+ * `//`·`/* … *\/` 주석을 **문자열 인식**으로 제거한다 — FC5 의 소유권 토큰 카운트가 주석 속 언급
+ * 만으로 채워지는 것을 막는다(실측: `feed-cursor.mjs` 의 `rev-list` 11건 중 10건이 주석, 코드는
+ * 1건뿐 — 주석을 안 걷으면 그 코드 토큰을 지워도 카운트가 그대로 10으로 남아 여전히 통과한다).
+ */
+function stripComments(text) {
+  let out = ''
+  let quote = null
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]
+    if (quote) {
+      out += char
+      if (char === '\\') {
+        out += text[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      quote = char
+      out += char
+      continue
+    }
+    if (char === '/' && text[index + 1] === '/') {
+      while (index < text.length && text[index] !== '\n') index += 1
+      continue
+    }
+    if (char === '/' && text[index + 1] === '*') {
+      const close = text.indexOf('*/', index + 2)
+      index = close === -1 ? text.length : close + 1
+      continue
+    }
+    out += char
+  }
+  return out
+}
+
 describe('feeds 는 async 다 (FC2 · 🔴RED 오늘 동기)', () => {
   it('FC2: `feeds` 가 함수이고 호출 결과가 **Promise** 다', async () => {
     // 이후 케이스 전부의 전제이자 규범 C10 의 seam 가드다. 신선도 확보(생성기 재사용)가 async 이므로
@@ -131,7 +170,7 @@ describe('두 경로가 같은 item 을 낸다 (FC3 · D48 등가의 item 층)',
     // ★ 규범 A 함정 ② 회피형이다: `feeds() == pageFeeds(...)` 로 쓰면 같은 함수를 두 번 부르는 것이라
     //   아무것도 증명하지 못한다. 여기서는 **파일에서 읽은** item 과 대조한다 — feeds 가 하는 일은
     //   고르는 것뿐이고, 만드는 것은 생성기다(D-A: 판정 권위는 하나).
-    const { vault } = await seedTwoFeedsWithArtifacts()
+    const { newFeedId, oldFeedId, vault } = await seedTwoFeedsWithArtifacts()
     const page = await feedsFn()(vault, 'dev', {})
 
     expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
@@ -143,6 +182,19 @@ describe('두 경로가 같은 item 을 낸다 (FC3 · D48 등가의 item 층)',
     expect(page.items.length).toBeGreaterThan(0)
 
     for (const item of page.items) expect(item).toEqual(byId.get(item.id))
+
+    // ★ parity 만으로는 부족하다 — 두 경로(생성기의 `collectFeedItems` · 라이브의
+    //   `makeFeedItemResolver`)는 커밋 → item 해석을 **같은 함수**(`git-walk.mjs` 의
+    //   `resolveFeedItems`)에 위임한다. 그 함수가 공유 결함으로 두 경로 모두에 똑같이 틀린 값을
+    //   내면 위 deep-equal 비교는 **양쪽이 똑같이 틀려서** 여전히 통과한다. 그래서 여기서는 seed
+    //   시점에 이미 알고 있는 **리터럴 값**(TITLE_NEW·TITLE_OLD)과 독립적으로 대조한다 — 아티팩트
+    //   파일을 거치지 않는 축이라 공유 결함을 비켜 가지 못한다.
+    const newItem = page.items.find((item) => item.id === newFeedId)
+    const oldItem = page.items.find((item) => item.id === oldFeedId)
+    expect(newItem, 'newFeedId 로 찾은 item 이 없다').toBeDefined()
+    expect(oldItem, 'oldFeedId 로 찾은 item 이 없다').toBeDefined()
+    expect(newItem.title).toBe(TITLE_NEW)
+    expect(oldItem.title).toBe(TITLE_OLD)
   })
 })
 
@@ -171,19 +223,24 @@ describe('재구현 금지 트립와이어 (FC5 · 🔴RED 소스 형태 · CX-E
     const source = readFileSync(FEEDS_SOURCE, 'utf8')
     const owner = readFileSync(FEED_CURSOR_SOURCE, 'utf8')
     const count = (text, token) => text.split(token).length - 1
+    // ★ 주석을 걷어낸 텍스트만 센다 — `feed-cursor.mjs` 는 git 문서 인용·설계 근거 주석에서
+    //   `rev-list`·`--skip=1` 을 반복 언급한다(원시 카운트로는 11건 중 10건이 주석). 주석을 안
+    //   걷으면 실제 코드가 그 토큰을 더는 안 써도(재구현·삭제) 카운트가 조용히 그대로 남는다.
+    const ownerCode = stripComments(owner)
+    const sourceCode = stripComments(source)
 
-    // 앵커: 그 토큰들은 **소유자 쪽에 실제로 있다**(어디에도 없어서 0 인 것을 배제).
+    // 앵커: 그 토큰들은 **소유자 쪽 코드에 실제로 있다**(어디에도 없어서 0 인 것을 배제).
     for (const token of ['applyIgnoreFeeds', 'rev-list', '--skip=1']) {
-      expect(count(owner, token)).toBeGreaterThan(0)
-      expect(count(source, token)).toBe(0)
+      expect(count(ownerCode, token)).toBeGreaterThan(0)
+      expect(count(sourceCode, token)).toBe(0)
     }
     // 페이지 슬라이스는 `slice(0, …)` 형태다 — `process.argv.slice(2)`(CLI 배관)와 구분해서 센다.
-    expect([...source.matchAll(/\.slice\(\s*0/gu)]).toHaveLength(0)
+    expect([...sourceCode.matchAll(/\.slice\(\s*0/gu)]).toHaveLength(0)
     // 전환의 소스 측 증거 — 정적 결합이 사라진다(짝: FC1·TR3). `pageFeeds` 는 개념째 사라졌다.
-    expect(count(source, 'buildWirePayload')).toBe(0)
-    expect(count(source, 'parse-vault.mjs')).toBe(0)
-    expect(count(source, 'pageFeeds')).toBe(0)
-    expect(count(source, 'walkCursorPage')).toBeGreaterThan(0)
+    expect(count(sourceCode, 'buildWirePayload')).toBe(0)
+    expect(count(sourceCode, 'parse-vault.mjs')).toBe(0)
+    expect(count(sourceCode, 'pageFeeds')).toBe(0)
+    expect(count(sourceCode, 'walkCursorPage')).toBeGreaterThan(0)
   })
 })
 
