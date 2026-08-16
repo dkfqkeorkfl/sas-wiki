@@ -368,6 +368,35 @@ describe('`--out` / stdout 계약 (OT1~OT4 · 🔴RED(flip) 미구현)', () => {
   })
 })
 
+describe('`--out=값` 의 값에 `=` 이 더 있어도 절단되지 않는다(v3 P5 · 이전엔 조용한 절단)', () => {
+  it('`--out=/tmp/.../a=b.json` 이 정확히 그 경로에 쓴다(현행은 `a` 까지만 쓴다)', () => {
+    // ★ 결함 재현: `arg.split('=', 2)` 의 `limit` 은 "잘라 버릴 개수"라 `--out=a=b.json` 의 뒤쪽
+    //   `=b.json` 이 조용히 사라진다 — 값을 쓰는 위치 자체가 절단돼, 파일이 엉뚱한(짧은) 경로에
+    //   생긴다.
+    const vault = freshClean()
+    const dir = mkdtempSync(path.join(tmpdir(), 'wiki-eq-'))
+    tmps.push(dir)
+    const truncatedPath = path.join(dir, 'a') // 절단되면 여기 생긴다
+    const fullPath = path.join(dir, 'a=b.json') // 절단이 없으면 여기 생긴다
+
+    const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev', `--out=${fullPath}`])
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(existsSync(fullPath), '`=` 뒤가 절단되지 않아야 정확히 이 경로에 쓴다').toBe(true)
+    expect(existsSync(truncatedPath), '절단된 짧은 경로에는 쓰지 않아야 한다').toBe(false)
+  })
+
+  it('`=` 이 없는 `--out <경로>`(공백 구분)는 계속 동작한다(회귀 방지)', () => {
+    const vault = freshClean()
+    const out = freshOut('no-equals.json')
+
+    const result = runCli(SUMMARY, ['--vault', vault, '--env', 'dev', '--out', out])
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(existsSync(out)).toBe(true)
+  })
+})
+
 describe('`--out` 이 승계하는 위험 실재 앵커 (OT5·OT6)', () => {
   it('OT5: 성공한 `--out` 실행은 파일을 만들고, 전역 실패는 만들지 않는다 (XC3 앵커 승계)', () => {
     // ★ XC3 의 위험 실재 앵커였던 _"성공하면 캐시를 만든다"_ 가 D2 이후 **거짓**이 된다 — 기본 실행이

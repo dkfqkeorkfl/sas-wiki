@@ -154,6 +154,57 @@ describe('validateItem — additionalProperties 회귀 가드', () => {
   })
 })
 
+describe('validateItem — required·properties 는 own-property 만 인정한다(상속 프로퍼티 우회 봉쇄)', () => {
+  // `in` 연산자는 프로토타입 체인의 상속 프로퍼티에도 true 를 반환한다(MDN `in` 연산자). 이 스위트가
+  // 부재를 확인하기 전까지(Task 0 재확인) 이 우회를 무는 케이스가 파일 전체에 0건이었다 — 아래는
+  // 기존 단언 강화가 아니라 **신규 추가**다.
+  const REQUIRE_A = { properties: { a: { type: 'number' } }, required: ['a'], type: 'object' }
+
+  it('required — 프로토타입에서만 보이는 프로퍼티는 필수 조건을 만족시키지 않는다(재현)', () => {
+    // `Object.create({a:1})` 는 `'a' in data` 가 true 지만 own-enumerable 프로퍼티가 없어
+    // `JSON.stringify(data)` 는 `{}` 다 — 검증은 통과했는데 실제 직렬화 산출물엔 필드가 없는
+    // 불일치가 생긴다.
+    const data = Object.create({ a: 1 })
+
+    const errors = validateItem(data, REQUIRE_A)
+
+    expect(errors.length).toBeGreaterThan(0)
+    expect(errors.join(' ')).toContain('a')
+  })
+
+  it('required — own property 로 존재하면 여전히 통과한다(회귀 방지)', () => {
+    expect(validateItem({ a: 1 }, REQUIRE_A)).toEqual([])
+  })
+
+  it('properties — 상속된 값은 재귀 검증 대상이 아니다(own 아닌 값은 만지지 않는다, 재현)', () => {
+    const optionalA = { properties: { a: { type: 'string' } }, type: 'object' }
+    // 상속된 a 는 타입도 위반(number, string 아님)이지만 own 이 아니므로 애초에 대상이 아니다.
+    const data = Object.create({ a: 12345 })
+
+    expect(validateItem(data, optionalA)).toEqual([])
+  })
+
+  it('properties — own property 는 계속 재귀 검증된다(회귀 방지)', () => {
+    const optionalA = { properties: { a: { type: 'string' } }, type: 'object' }
+
+    expect(validateItem({ a: 123 }, optionalA).length).toBeGreaterThan(0)
+  })
+})
+
+describe('validateItem — 미지원 type·boolean false 스키마는 fail-open 하지 않는다', () => {
+  it('선언되지 않은(미지원) type 문자열은 통과시키지 않는다', () => {
+    expect(validateItem('x', { type: 'unsupported-type' }).length).toBeGreaterThan(0)
+  })
+
+  it('boolean false 스키마는 어떤 값도 통과시키지 않는다(JSON Schema 2020-12 §4.3.2)', () => {
+    expect(validateItem({ any: 'value' }, false).length).toBeGreaterThan(0)
+  })
+
+  it('기존 지원 타입(string)엔 영향이 없다(회귀 방지)', () => {
+    expect(validateItem('ok', { type: 'string' })).toEqual([])
+  })
+})
+
 describe('validateItem — 판별 유니온의 포괄 실패(discriminator)', () => {
   // 회귀: if/then 만 있고 else 가 없으면, 어느 조건에도 안 걸리는 값은 strict 하위 스키마(10키/4키)가
   // **하나도 적용되지 않아** 임의의 잉여 필드까지 조용히 통과했다 — "제거된 필드가 있으면 fail 한다"는

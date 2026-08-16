@@ -435,9 +435,12 @@ describe('리포트 소유권 이사 (RP1~RP5)', () => {
     expect(report.summary.excluded).toBe(2)
   })
 
-  it('RP4: 리포트를 못 써도 **게이트 판정 자체는 살아 있다**', () => {
-    // ★ D-F "관측 실패를 산출물 실패로 승격하지 않는다" 의 게이트 판(版). 로그를 못 썼다고 검증
-    //   결과를 버리는 것은 우선순위가 뒤집힌 것이다.
+  it('RP4: 리포트를 못 써도 **게이트 계산·요약 출력은 끝까지 실행된다**(종료코드는 아래 별도 항목)', () => {
+    // ★ D-F "관측 실패를 산출물 실패로 승격하지 않는다" 의 게이트 판(版) — **판정 로직**은 그대로
+    //   유지한다: 리포트를 못 써도 게이트는 끝까지 계산되고 stdout 요약이 나온다(반쪽 결과를 버리지
+    //   않는다). ★ v3 P5 — 다만 **종료코드**는 더 이상 조용히 0 이 아니다. 그 계약은 아래
+    //   "리포트 쓰기 실패는 종료코드로 전파된다" 절이 별도로 문다(관심사 분리 — 이 케이스는 판정
+    //   로직의 생존만, 저 케이스는 종료코드 전파만).
     const blocker = path.join(ctx.tmp, 'report-blocker')
     writeFileSync(blocker, 'not a directory')
 
@@ -447,9 +450,26 @@ describe('리포트 소유권 이사 (RP1~RP5)', () => {
     const control = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', freshReportDir()])
     expect(control.status, control.stderr).toBe(0)
 
-    // 판정은 그대로 0 이고, **무엇이 왜** 실패했는지는 stderr 가 말한다.
-    expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
+    // 게이트 요약(총계·제외 등)은 쓰기 실패와 무관하게 여전히 나온다 — "무엇이 왜" 실패했는지도 함께.
+    expect(`${result.stderr}${result.stdout}`).toMatch(/total=\d+ included=\d+ excluded=\d+/)
     expect(`${result.stderr}${result.stdout}`).toMatch(/report|리포트/i)
+  })
+
+  it('RP4b: 리포트 쓰기 실패는 종료코드로 전파된다(v3 P5 · 이전엔 조용히 exit 0)', () => {
+    // ★ 결함 재현: `main()` 이 `buildContent` 반환값에서 `report`(쓰기 성공/실패)를 버려 게이트가
+    //   통과하면 리포트가 안 써져도 항상 exit 0 이었다 — 자동화가 "--out 이 실제로 먹혔는가"를 구분할
+    //   수 없었다. 게이트-먼저-리포트 순서(`buildContent` 내부의 "게이트보다 먼저" 계약)는 그대로 두고,
+    //   `main()` 이 반환된 뒤 쓰기 실패를 종료코드로 전파하는 것만 추가한다.
+    const blocker = path.join(ctx.tmp, 'report-blocker-exit')
+    writeFileSync(blocker, 'not a directory')
+
+    const failed = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', blocker])
+    // 앵커(회귀 방지): 같은 vault·정상 `--out` 은 계속 exit 0 이다(쓰기 실패와 무관한 사유로
+    //   비-0 이 되는 과잉 구현을 배제한다).
+    const ok = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', freshReportDir()])
+
+    expect(ok.status, ok.stderr).toBe(0)
+    expect(failed.status, `${failed.stderr}${failed.stdout}`).not.toBe(0)
   })
 
   it('RP5: 생성된 report.json 이 `report.schema.json` 을 통과한다', async () => {
@@ -529,9 +549,9 @@ describe('결론 요약 stdout (SM1~SM4)', () => {
 
     // 앵커 ①: 같은 blocker 로 **게이트를 통과하는** vault 를 돌리면 통지가 나온다(RP4 와 같은 축).
     //   즉 blocker 는 쓰기를 확실히 실패시키고, 통지 문구도 실재한다 — 아래 단언이 "원래 안 나오는
-    //   문구를 찾는" 공허가 되지 않는다.
+    //   문구를 찾는" 공허가 되지 않는다. ★ v3 P5 — 쓰기 실패는 이제 종료코드로도 전파된다(RP4b).
     const control = runCli(['--vault', ctx.vault, '--env', 'dev', '--out', blocker])
-    expect(control.status, `${control.stderr}${control.stdout}`).toBe(0)
+    expect(control.status, `${control.stderr}${control.stdout}`).not.toBe(0)
     expect(`${control.stderr}${control.stdout}`).toContain('report error')
 
     const result = runCli(['--vault', ctx.unresolvedVault, '--env', 'dev', '--out', blocker])

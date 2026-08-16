@@ -211,3 +211,31 @@ describe('검증 순서는 `--env` 먼저다 (SUM-4 · 🟢앵커(오늘도 gree
     expect(result.stderr).not.toContain('--summary')
   })
 })
+
+describe('알 수 없는 인자도 호출 계약 위반이다(v3 P5 · 이전엔 exit 1)', () => {
+  it('알 수 없는 플래그 `--bogus-flag` → exit 2(현행 `parseArgs` throw 는 exit 1 로 뭉갠다)', () => {
+    // ★ 결함 재현: `node:util` `parseArgs` 는 알 수 없는 인자에 throw 하고, 그 throw 를 그대로
+    //   흘리면 파일 하단의 `main().catch` 가 **런타임 실패와 똑같이** exit 1 로 만든다. `--summary`
+    //   미지정(SUM-1)은 이미 exit 2 인데, 인자 파서 자체가 잡는 오류(예: 오타 플래그)만 다른 코드로
+    //   새는 비대칭이었다.
+    const result = runCli(WIKI, ['--vault', VAULT, '--env', 'dev', '--bogus-flag'])
+
+    expect(result.status).toBe(EXIT_ARG_CONTRACT)
+    expect(result.stdout).toBe('')
+  })
+
+  it('런타임 실패(부재 아티팩트)는 여전히 exit 1 이다(회귀 방지 — 위 수정이 과잉 적용되지 않는다)', () => {
+    const result = runCli(WIKI, [
+      '--vault',
+      VAULT,
+      '--env',
+      'dev',
+      '--path',
+      ACTIVE_REF,
+      '--summary',
+      path.join(VAULT, 'cache', '없는-아티팩트.json'),
+    ])
+
+    expect(result.status).toBe(EXIT_RUNTIME)
+  })
+})

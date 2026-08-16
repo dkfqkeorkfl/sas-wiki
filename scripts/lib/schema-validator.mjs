@@ -21,6 +21,20 @@ function isPlainObject(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/**
+ * 프로토타입 체인이 아니라 **자신의** 프로퍼티인지 확인한다.
+ *
+ * `in` 연산자는 상속 프로퍼티에도 `true` 를 반환한다(MDN `in` 연산자: "in 연산자는 지정한 프로퍼티가
+ * 명시된 객체에 존재하면 true 를 반환합니다 — 상속된 프로퍼티를 포함해서요"). `required`/`properties`
+ * 판정에 `in` 을 쓰면 `Object.create({...})` 로 만든 입력이 own-enumerable 프로퍼티 없이(즉
+ * `JSON.stringify(data)` 가 `{}` 를 낸다) 검증을 통과한다 — 검증은 통과했는데 실제 직렬화 산출물엔
+ * 그 필드가 없는 불일치가 생긴다(재현됨·보안). ES2022 의 `Object.hasOwn(obj, prop)` 이 이 판정의
+ * 표준 대체제다(MDN `Object.hasOwn()`: "상속된 프로퍼티에 대해서는 false 를 반환합니다").
+ */
+function hasOwnField(data, key) {
+  return Object.hasOwn(data, key)
+}
+
 function matchesCondition(data, condition) {
   if (!isPlainObject(data)) return false
   if (condition.required) {
@@ -67,10 +81,21 @@ function typeMatches(value, type) {
   if (type === 'boolean') return typeof value === 'boolean'
   if (type === 'array') return Array.isArray(value)
   if (type === 'object') return isPlainObject(value)
-  return true
+  // 위 7종(JSON Schema 2020-12 의 원시 타입 전부)에 없는 type 문자열은 **지원하지 않는다** — 미지원
+  // 타입을 조건 없이 통과시키면(과거: `return true`) 오타·미지원 타입 선언이 검증 없이 새어나간다
+  // (fail-open). 선언된 서브셋 밖은 항상 불일치로 처리한다(fail-closed).
+  return false
 }
 
 function validateAgainstSchema(data, rawSchema, errors, fieldPath = '$', root = rawSchema) {
+  // JSON Schema 2020-12 §4.3.2 boolean 스키마: `true` 는 이 위치의 모든 값이 유효하다는 뜻이고(아래
+  // 검사들이 boolean 값엔 없는 프로퍼티를 조회해 자연히 통과한다), `false` 는 **어떤 값도 유효하지
+  // 않다**는 뜻이다. 이 검증기는 객체 형태 스키마만 순회하므로 `false` 를 여기서 막지 않으면
+  // (fail-open) 그 자리는 무조건 조용히 통과한다.
+  if (rawSchema === false) {
+    errors.push(`${fieldPath}: 스키마가 false — 이 위치는 어떤 값도 허용하지 않는다`)
+    return
+  }
   const schema = resolveRef(rawSchema, root)
 
   if (schema.type) checkType(data, schema.type, errors, fieldPath)
@@ -81,6 +106,16 @@ function validateAgainstSchema(data, rawSchema, errors, fieldPath = '$', root = 
   }
   if (schema.pattern && typeof data === 'string' && !new RegExp(schema.pattern, 'u').test(data)) {
     errors.push(`${fieldPath}: pattern 위반("${schema.pattern}")`)
+  }
+  // `format` 은 `date-time` **한 값만** 지원한다(범용 포맷 검증기가 아니다 — 다른 format 값은
+  // 무시한다). RFC 3339 §5.6 은 date-time 을 `full-date "T" full-time` 문법으로 정의하는데, 이
+  // 검증기의 `pattern` 은 자릿수·구분자 같은 **형태**만 보고 각 자리의 **값 범위**(월 01-12·시
+  // 00-23 등)는 보지 않는다 — "2026-99-99T00:00:00Z" 처럼 자릿수는 맞지만 의미가 없는 값이 pattern
+  // 만으로는 통과한다(재현됨). `Date.parse` 는 ISO 8601 date-time 문자열의 연·월·일·시·분·초를 실제
+  // 범위로 검사해 그 값을 걸러낸다(윤달 등 월별 최대 일수까지 보정하지는 않는 한계는 있다 — 이
+  // 항목이 재현한 결함 범위 밖이다).
+  if (schema.format === 'date-time' && typeof data === 'string' && Number.isNaN(Date.parse(data))) {
+    errors.push(`${fieldPath}: format 위반(date-time 아님: "${data}")`)
   }
   if (schema.minimum !== undefined && typeof data === 'number' && data < schema.minimum) {
     errors.push(`${fieldPath}: minimum 위반(>= ${schema.minimum} 필요)`)
@@ -101,14 +136,14 @@ function validateAgainstSchema(data, rawSchema, errors, fieldPath = '$', root = 
   if (isPlainObject(data)) {
     if (schema.required) {
       for (const req of schema.required) {
-        if (!(req in data) || data[req] === undefined)
+        if (!hasOwnField(data, req) || data[req] === undefined)
           errors.push(`${fieldPath}: 필수 필드 누락 "${req}"`)
       }
     }
 
     if (schema.properties) {
       for (const [key, propSchema] of Object.entries(schema.properties)) {
-        if (!(key in data) || data[key] === undefined) continue
+        if (!hasOwnField(data, key) || data[key] === undefined) continue
         validateAgainstSchema(data[key], propSchema, errors, `${fieldPath}.${key}`, root)
       }
     }

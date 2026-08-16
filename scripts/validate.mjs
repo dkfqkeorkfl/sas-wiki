@@ -50,10 +50,10 @@ const PAYLOAD_FILES = {
  * 쓰기가 실패한 채로 게이트까지 막히면 반환이 일어나지 않아 그 통지가 통째로 사라졌다(SM4 가 무는
  * 실측 결함). 관측이 가장 필요한 순간에 관측이 사라지는 형태였다.
  *
- * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod',
+ * @param {{ deadlinks?: 'ignore'|'warn'|'error', env?: 'dev'|'prod', maxExcluded?: number,
  *           onReport?: (payload: object, write: object) => void, reportDir?: string,
  *           schema?: string, vault: string }} options
- * @returns {{ body: object, feeds: object, stats: object, summary: object }}
+ * @returns {{ body: object, feeds: object, report: object, stats: object, summary: object }}
  */
 export function buildContent({
   deadlinks = 'warn',
@@ -146,8 +146,18 @@ export async function main(argv = process.argv.slice(2)) {
     return
   }
   // 쓰기 실패 통지는 `printReportSummary` 가 게이트 앞에서 이미 냈다(SM4) — 여기서 되풀이하지 않는다.
-  const { body, feeds, stats, summary } = buildContent({ ...options, onReport: printReportSummary })
+  const { body, feeds, report, stats, summary } = buildContent({
+    ...options,
+    onReport: printReportSummary,
+  })
   reportStats({ body, feeds, stats, summary })
+  // ★ v3 P5 — 게이트 판정 순서(리포트를 게이트보다 먼저 내는 계약, `buildContent` 상단 docblock)는
+  //   그대로 둔다. 여기서 하는 일은 그 순서 **이후**, 게이트가 통과해 정상 반환된 다음에 쓰기 실패를
+  //   종료코드로 전파하는 것뿐이다 — 예전엔 `report`(쓰기 성공/실패)를 반환값에서 버려서, 게이트가
+  //   통과하면 `--out` 쓰기가 실패해도 항상 exit 0 이었다(자동화가 성공/실패를 구분할 수 없었다).
+  if (report.error) {
+    throw new Error(`리포트 쓰기 실패로 종료코드를 실패로 전파합니다: ${report.error}`)
+  }
 }
 
 /**

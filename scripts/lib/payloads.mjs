@@ -35,7 +35,13 @@ const DISABLE_STUB_KEYS = ['breadcrumb', 'id', 'status', 'title']
 
 /** `wiki_body.json` — 봉투에 **`generatedAt` 이 없다**(schema/body.schema.json). 키는 active 문서의 path. */
 export function buildBody({ docs, sourceCommit }) {
-  const projected = {}
+  // ★ `Object.create(null)` 방어 심층화(defense-in-depth) — `record.breadcrumb.join('/')` 가
+  //   문자열 `"__proto__"` 를 낳으면 일반 `{}` 리터럴에서는 `projected["__proto__"] = value` 가
+  //   own 프로퍼티가 아니라 **프로토타입 세터**를 타 `projected` 자신의 프로토타입을 바꾼다(재현됨).
+  //   다운스트림 산출물 검증기는 `Object.hasOwn`/`Object.keys` 기반이라 이미 그 상태에 속지 않지만
+  //   (own-key 만 본다), 오염 가능한 대입 지점 자체를 없애 그 안전망에만 기대지 않는다.
+  //   `Object.create(null)` 은 `__proto__` 를 포함해 모든 키를 순수 own 데이터 프로퍼티로만 받는다.
+  const projected = Object.create(null)
   for (const record of docs) {
     if (record.status === 'disable') continue
     projected[record.breadcrumb.join('/')] = pick(record, BODY_DOC_KEYS)

@@ -52,7 +52,14 @@ function parseCliArgs(argv) {
   let artifactPathRaw
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    const [name, inlineValue] = arg.split('=', 2)
+    // `arg.split('=', 2)` 는 `String.prototype.split` 의 `limit` 인자를 쓴다 — limit 은 "몇 조각을
+    //   낼지"가 아니라 "결과 배열에서 몇 개를 **잘라 버릴지**"다(잘린 나머지는 유실, 재합류가 아니다).
+    //   그래서 `--out=a=b` 는 `['--out', 'a', 'b']` 중 앞 2개만 남아 `inlineValue` 가 `'a'` 가 되고
+    //   `=b` 가 조용히 사라진다(재현됨). 첫 `=` 의 인덱스만 찾아 그 **뒤 전부**를 값으로 삼으면(값
+    //   자체에 `=` 이 더 있어도) 절단이 없다.
+    const eqIndex = arg.indexOf('=')
+    const name = eqIndex === -1 ? arg : arg.slice(0, eqIndex)
+    const inlineValue = eqIndex === -1 ? undefined : arg.slice(eqIndex + 1)
     const readValue = () => {
       if (inlineValue !== undefined) return inlineValue
       const value = argv[i + 1]

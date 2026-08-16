@@ -60,18 +60,32 @@ export async function wiki(vault, env = 'prod', ref = '', summaryPath) {
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const { values } = parseArgs({
-    allowPositionals: false,
-    args: argv,
-    options: {
-      env: { default: 'prod', type: 'string' },
-      path: { type: 'string' },
-      // D27 — **기본값을 두지 않는다**(`summary --out`·`feeds --out`·`validate --out` 와 같은
-      //   "명시 출력/입력만 쓴다" 계약). 기본값을 주면 파생이 되살아나 D27 이 무의미해진다.
-      summary: { type: 'string' },
-      vault: { type: 'string' },
-    },
-  })
+  let values
+  try {
+    // `node:util` 의 `parseArgs`(strict 기본값)는 알 수 없는 인자·형식이 어긋난 인자에 대해
+    //   던진다. 그 throw 를 그대로 흘리면 이 파일 맨 아래의 최상위 `main().catch` 핸들러가
+    //   **무조건 exit 1** 로 만들어, 호출 계약 위반(인자 오류)과 런타임 실패(예: 아티팩트 부재)가
+    //   **같은 종료코드로 뭉개진다**. 리포 관례는 호출 계약 위반 = 2(`--summary` 미지정 검사가 이미
+    //   `process.exitCode = 2` 를 쓰는 것과 같은 계열) — 그래서 여기서만 잡아 2 로 가른다.
+    //   ★ 이 catch 는 `parseArgs` 호출 **자체**만 감싼다 — 아래 `wiki()` 호출 등 런타임 실패는
+    //   여전히 최상위 `main().catch` 의 exit 1 을 그대로 탄다.
+    ;({ values } = parseArgs({
+      allowPositionals: false,
+      args: argv,
+      options: {
+        env: { default: 'prod', type: 'string' },
+        path: { type: 'string' },
+        // D27 — **기본값을 두지 않는다**(`summary --out`·`feeds --out`·`validate --out` 와 같은
+        //   "명시 출력/입력만 쓴다" 계약). 기본값을 주면 파생이 되살아나 D27 이 무의미해진다.
+        summary: { type: 'string' },
+        vault: { type: 'string' },
+      },
+    }))
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 2
+    return
+  }
   // `--env` 열거 검증 — `util.parseArgs` 는 choices 를 지원하지 않아 파싱 뒤에 직접 본다.
   //   조용한 prod 폴백은 fail-closed 가 아니라 **silent misconfiguration** 이다: `--env Dev` 오타 하나로
   //   dev 예제를 본다고 믿는 사람이 상용 산출물을 받는다(반대 방향이면 미공개 데이터 누출이다).

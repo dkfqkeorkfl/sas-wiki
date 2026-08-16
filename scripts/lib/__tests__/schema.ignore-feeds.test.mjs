@@ -80,6 +80,16 @@ describe('ignore-feeds 스키마 — when RFC3339 거부', () => {
   it('날짜만(시각 없음)인 when 을 거부한다', () => {
     expect(errorsFor([{ id: ID_12HEX, when: '2026-07-23' }]).length).toBeGreaterThan(0)
   })
+
+  // Task 0 재확인: 이 describe 헤더까지는 **형태(pattern)** 만 검증한다 — 자릿수·구분자가 맞으면
+  // 통과한다. 아래는 **의미(값 범위)** 위반을 무는 신규 케이스다(기존 단언 강화가 아니라 신규 추가).
+  it('자릿수는 맞지만 의미가 없는 when(월 99·일 99)을 거부한다(재현)', () => {
+    expect(errorsFor([{ id: ID_12HEX, when: '2026-99-99T00:00:00Z' }]).length).toBeGreaterThan(0)
+  })
+
+  it('유효한 when 은 계속 수락한다(회귀 방지)', () => {
+    expect(errorsFor([{ id: ID_12HEX, when: WHEN }])).toEqual([])
+  })
 })
 
 describe('ignore-feeds 스키마 — additionalProperties:false', () => {
