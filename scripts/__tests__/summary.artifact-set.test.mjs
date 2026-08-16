@@ -95,35 +95,53 @@ async function generateFeeds(options) {
   return await generatorModule.runFeedsGenerator({ ...options, artifactPath, env })
 }
 
-function runCli(script, args) {
-  return spawnSync(process.execPath, [script, ...args], {
+/**
+ * 서브프로세스 상한 — `spawnSync` 는 완전히 동기라 vitest 의 it()-레벨 타임아웃(비동기 타이머)으로는
+ * 끊을 수 없다. 자식이 행(hang)하면 워커 전체가 무한정 멈추므로 `timeout` 옵션이 유일한 안전장치다.
+ * 이 리포의 기존 자식 spawn 상한(`helpers/runtime-load.mjs`·`helpers/cursor-vault.mjs` 의
+ * `timeoutMs = 120_000`)과 같은 값을 재사용한다(새 매직넘버를 만들지 않는다).
+ */
+const CLI_SPAWN_TIMEOUT_MS = 120_000
+
+/** @param {string} vault 이 spawn 이 실제로 향하는 vault — `safe.directory` 좁힘 대상. */
+function runCli(script, args, vault) {
+  const result = spawnSync(process.execPath, [script, ...args], {
     encoding: 'utf8',
     env: {
       ...process.env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'safe.directory',
-      GIT_CONFIG_VALUE_0: '*',
+      // ★ '*'(전 경로 허용)가 아니라 이 호출이 실제로 겨냥하는 vault 다 — 세 호출부
+      //   (publishSummary·publishFeeds·publishReport) 모두 tmp vault 다. tmp vault 는 mkdtemp 로
+      //   실행 유저 소유라 dubious-ownership 조건에 애초에 안 걸리므로 이 값이 정확해도 무해하다.
+      GIT_CONFIG_VALUE_0: vault,
       SOURCE_DATE_EPOCH: '1700000000',
     },
     maxBuffer: 64 * 1024 * 1024,
+    timeout: CLI_SPAWN_TIMEOUT_MS,
   })
+
+  // `timeout` 만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃으로 죽은 자식은 `status: null` 이
+  //   되어 그 뒤 `expect(result.status).toBe(0)` 류에 기대는 수밖에 없다. `error`/`signal` 은
+  //   spawnSync 가 비정상 종료(spawn 실패·타임아웃·시그널)일 때만 채워지므로 여기서 즉시 크게 실패시킨다.
+  if (result.error || result.signal) {
+    throw new Error(
+      `runCli 자식 프로세스 비정상 종료: script=${script} error=${result.error?.message ?? 'none'} signal=${result.signal ?? 'none'}`,
+    )
+  }
+  return result
 }
 
 const publishSummary = (vault, env = 'dev') =>
-  runCli(SUMMARY_CLI, ['--vault', vault, '--env', env, '--out', summaryFile(vault, env)])
+  runCli(SUMMARY_CLI, ['--vault', vault, '--env', env, '--out', summaryFile(vault, env)], vault)
 const publishFeeds = (vault, env = 'dev') =>
-  runCli(FEEDS_CLI, [
-    '--vault',
+  runCli(
+    FEEDS_CLI,
+    ['--vault', vault, '--env', env, '--count', '200', '--out', feedsFile(vault, env)],
     vault,
-    '--env',
-    env,
-    '--count',
-    '200',
-    '--out',
-    feedsFile(vault, env),
-  ])
+  )
 const publishReport = (vault, env = 'dev') =>
-  runCli(VALIDATE_CLI, ['--vault', vault, '--env', env, '--out', path.join(vault, 'logs')])
+  runCli(VALIDATE_CLI, ['--vault', vault, '--env', env, '--out', path.join(vault, 'logs')], vault)
 
 /** active 문서 2건 + 그중 하나를 가리키는 `feed:` 1건. feedId(12hex)를 함께 돌려준다. */
 function seedVault() {
@@ -170,6 +188,25 @@ describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds �
     { timeout: 300_000 },
     async () => {
       const { vault } = seedVault()
+
+      // ★ S1 — 이 블록이 CLI 를 summary→feeds→report 순으로 부르는 것 자체는 계약이 아니다. 그
+      //   순서를 스스로 정하고 "지켜졌다" 를 스스로 증명하면, 실제 빌드 체인의 순서가 바뀌어도 이
+      //   블록은 알아채지 못한다(자기충족적 검증) — 세 CLI 는 서로 독립된 프로세스라 호출 순서와
+      //   무관하게 exit code·`sourceCommit` 이 같아지기 때문이다. 순서 계약의 소유자는
+      //   `package.json` 의 빌드 체인(`build-dev`)이다(아래 `IW5` 와 같은 패턴 — 파일 로컬 재사용) —
+      //   그 소유자가 정한 상대 순서(summary 가 feeds 보다 앞선다)를 여기서 직접 읽어 대조한다.
+      const buildScripts = JSON.parse(
+        readFileSync(path.join(SCRIPTS_DIR, '..', 'package.json'), 'utf8'),
+      ).scripts
+      const chainOrder = ['summary.mjs', 'feeds.mjs'].map((step) =>
+        buildScripts['build-dev'].indexOf(step),
+      )
+      expect(chainOrder[0], 'build-dev 체인에 summary.mjs 가 없다').toBeGreaterThanOrEqual(0)
+      expect(chainOrder[1], 'build-dev 체인에 feeds.mjs 가 없다').toBeGreaterThanOrEqual(0)
+      expect(
+        chainOrder[0],
+        '체인 순서 회귀: build-dev 에서 summary.mjs 가 feeds.mjs 보다 뒤에 있다',
+      ).toBeLessThan(chainOrder[1])
 
       // 앵커: 실행 **전에는 셋 다 없다**(앞 케이스가 남긴 파일로 통과하는 것을 배제).
       expect(existsSync(summaryFile(vault, 'dev'))).toBe(false)

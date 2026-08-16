@@ -59,18 +59,46 @@ const ACTIVE_DOC_KEYS = [
  * `GIT_CONFIG_COUNT`/`_KEY_0`/`_VALUE_0` 주입 이유: vitest 가 `GIT_CONFIG_GLOBAL=/dev/null` 로 전역
  * safe.directory 예외를 지우므로, 9p/컨테이너에서 소유자 uid 가 다르면 자식 git 이 dubious-ownership
  * 로 죽는다 — **테스트가 겨냥한 실패가 아니다**(tdd §7.1).
+ *
+ * 서브프로세스 상한: `spawnSync` 는 완전히 동기라 vitest 의 it()-레벨 타임아웃(비동기 타이머)으로는
+ * 끊을 수 없다. 자식이 행(hang)하면 워커 전체가 무한정 멈추므로 `timeout` 옵션이 유일한 안전장치다.
+ * 이 리포의 기존 자식 spawn 상한(`helpers/runtime-load.mjs`·`helpers/cursor-vault.mjs` 의
+ * `timeoutMs = 120_000`)과 같은 값을 재사용한다(새 매직넘버를 만들지 않는다).
  */
+const CLI_SPAWN_TIMEOUT_MS = 120_000
+
 function runCli(script, args) {
-  return spawnSync(process.execPath, [script, ...args], {
+  // ★ 좁힘 대상 — `safe.directory` 값은 `'*'`(전 경로 허용)가 아니라 이 호출이 실제로 겨냥하는
+  //   vault 다. 이 파일의 모든 호출부가 `['--vault', vault, ...]` 형태로 args 를 넘기므로(전수
+  //   확인) vault 는 여기서 유도한다 — 새 호출부가 그 관례를 깨면 조용히 `'*'` 로 되돌아가지 않고
+  //   여기서 즉시 크게 실패한다.
+  const vaultIndex = args.indexOf('--vault')
+  if (vaultIndex === -1 || args[vaultIndex + 1] === undefined) {
+    throw new Error('runCli 호출에 --vault 가 없다 — safe.directory 좁힘 대상을 알 수 없다')
+  }
+  const result = spawnSync(process.execPath, [script, ...args], {
     encoding: 'utf8',
     env: {
       ...process.env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'safe.directory',
-      GIT_CONFIG_VALUE_0: '*',
+      GIT_CONFIG_VALUE_0: args[vaultIndex + 1],
       SOURCE_DATE_EPOCH: '1700000000',
     },
+    timeout: CLI_SPAWN_TIMEOUT_MS,
   })
+
+  // `timeout` 만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃으로 죽은 자식은 `status: null` 이
+  //   되어 그 뒤 `expect(result.status).toBe(N)` 류에 기대는 수밖에 없다. `error`/`signal` 은
+  //   spawnSync 가 비정상 종료(spawn 실패·타임아웃·시그널)일 때만 채워지므로(정상적인 비-0 종료와는
+  //   뚜렷이 구별된다 — 이 파일은 의도적으로 exit 1/2/3 을 검사하는 케이스가 많다) 여기서 즉시 크게
+  //   실패시킨다.
+  if (result.error || result.signal) {
+    throw new Error(
+      `runCli 자식 프로세스 비정상 종료: script=${script} error=${result.error?.message ?? 'none'} signal=${result.signal ?? 'none'}`,
+    )
+  }
+  return result
 }
 
 const tmps = []

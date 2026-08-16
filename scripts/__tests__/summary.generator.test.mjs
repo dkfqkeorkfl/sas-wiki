@@ -159,6 +159,35 @@ describe('runSummaryGenerator — 캐시 발행 (GN1~GN3 · 🔴RED 미구현)',
   })
 })
 
+describe('runSummaryGenerator — 주입한 runGit 이 실제로 쓰인다 (FR7)', () => {
+  it('FR7: `runGit` 을 주입하면 기본 `makeGitRunner(vault)` 대신 그 러너가 불린다', async () => {
+    // ★ 헤더(§ :13)가 "runGit 기본값 = makeGitRunner(vault) — 테스트가 주입해 호출을 계수한다" 고
+    //   주장하는데, 그 주장을 실행하는 케이스가 이 파일에 하나도 없었다. 주입 자리가 있어도 안
+    //   쓰이는(조용히 기본 러너로 되돌아가는) 구현을 잡으려면 **호출을 실제로 계수**해야 한다 —
+    //   `generate()` 가 실제로 산출물을 냈다는 앵커만으로는 어느 러너가 불렸는지 구분되지 않는다.
+    const vault = freshClean()
+    const calls = []
+    // `git()`(tmp-git-vault) 는 `(cwd, args)` 시그니처다 — `runGit` 계약(`(args) => stdout`)에 맞춰
+    //   vault 를 닫아 감싼다. 실제 git 실행은 위임하므로 생성기가 정상적으로 완주한다(스텁이 아니다).
+    const spyRunGit = (args) => {
+      calls.push(args)
+      return git(vault, args)
+    }
+
+    const result = await generate({ env: 'dev', runGit: spyRunGit, vault })
+
+    // 앵커: 주입된 러너로도 생성이 **실제로 끝났다**(러너가 무시되고 기본값이 대신 도는 것과, 계수만
+    //   되고 실행 자체가 실패하는 것을 함께 배제한다).
+    expect(result.payload.docs.length).toBeGreaterThan(0)
+    // 본체: 주입한 러너가 **실제로** 불렸다 — 계수하지 않으면 주입 자리만 있고 안 쓰이는 구현도 통과한다.
+    expect(calls.length, '주입한 runGit 이 한 번도 호출되지 않았다').toBeGreaterThan(0)
+    // 위험 실재 앵커: `runSummaryGenerator` 자신이 `sourceCommit` 을 얻으려 첫 줄에서 그 러너로
+    //   `rev-parse HEAD` 를 직접 부른다(`lib/generator.mjs`) — 계수가 다른 축(예: 로깅)이 아니라
+    //   실제 git 호출을 잡았음을 확인한다.
+    expect(calls.some((args) => args.includes('rev-parse'))).toBe(true)
+  })
+})
+
 describe('runSummaryGenerator — 부분 성공과 경로 (GN4·GN5 · 🔴RED 미구현)', () => {
   it('GN4: 오염 vault → status "partial" · excludedCount 2 · **캐시는 그래도 발행된다**', async () => {
     // ★ 부분 성공의 정의(D-D): 제외가 있어도 **나머지는 서빙 가능한 산출물**로 나간다. 앵커로 캐시
@@ -245,19 +274,24 @@ describe('runSummaryGenerator — 부작용 없는 조회 · 전역 실패 (GN7�
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
-  it('RG1: 2회차 실행이 산출물 mtime 을 **갱신한다** (FR2 의 계약 반전)', async () => {
+  it('RG1: 2회차 실행이 산출물을 **실제로 다시 쓴다** (FR2 의 계약 반전)', async () => {
     const vault = freshClean()
 
     const first = await generate({ env: 'dev', vault })
-    // 앵커 ①: 1회차가 **실제로 파일을 만들었다**(아무것도 안 만들고 mtime 비교가 무의미해지는 것 배제).
+    // 앵커 ①: 1회차가 **실제로 파일을 만들었다**(아무것도 안 만들고 비교가 무의미해지는 것 배제).
     expect(existsSync(artifactFile(vault))).toBe(true)
     // 앵커 ②: payload 가 비어 있지 않다(빈 산출물을 두 번 쓰는 것으로 통과하는 것 배제).
     expect(first.payload.docs.length).toBeGreaterThan(0)
-    const before = statSync(artifactFile(vault)).mtimeMs
+    // ★ `mtimeMs` 는 파일시스템 시계 해상도에 걸린다 — 두 실행이 같은 해상도 구간 안에서 끝나면
+    //   값이 같아 플레이크가 난다. `lib/atomic.mjs` 의 `writeFileAtomic` 은 임시 파일을 쓰고
+    //   `rename` 으로 덮어써 실행마다 디렉토리 엔트리가 **새 inode** 를 가리키게 된다 — 이 축은
+    //   시계 해상도와 무관하게 "실제로 다시 썼다" 를 구분한다. 대기(sleep)로 해상도를 피하는 방식은
+    //   스위트 시간만 늘리고 플레이크를 옮길 뿐이라 쓰지 않는다.
+    const before = statSync(artifactFile(vault)).ino
 
     await generate({ env: 'dev', vault })
 
-    expect(statSync(artifactFile(vault)).mtimeMs).not.toBe(before)
+    expect(statSync(artifactFile(vault)).ino).not.toBe(before)
   })
 
   it('RG2: 반환 객체에 옛 상태 플래그 키가 **없다** (항상 참인 플래그는 정보가 없다)', async () => {
@@ -297,10 +331,16 @@ describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
     // `generator.mjs:42-45` 가 이미 세운 규범 — 본문에서 안 쓰는 구조분해 인자를 남기면 "이 함수가
     //   임계를 강제한다" 는 **거짓 인상**만 준다. 스킵 블록이 사라지면 `force` 가 정확히 그 형태가 된다.
     const source = readFileSync(path.resolve(HERE, '..', 'lib', 'generator.mjs'), 'utf8')
-    const signature = source.slice(
-      source.indexOf('export async function runSummaryGenerator({'),
-      source.indexOf('}) {', source.indexOf('export async function runSummaryGenerator({')),
-    )
+    const startToken = 'export async function runSummaryGenerator({'
+    const startIndex = source.indexOf(startToken)
+    // ★ 시작 토큰을 못 찾으면 `slice(-1, …)` 이 우연히 빈 문자열을 낼 때가 많지만 그건 계약이
+    //   아니다 — 종료 토큰이 시작 자리보다 뒤에서 다른 함수에 우연히 걸리면 비어 있지 않은 엉뚱한
+    //   구간이 나올 수 있다(포맷 변경에 조용히 어긋난다). "못 찾았다" 자체를 여기서 즉시 red 로
+    //   만들어 원인을 지목한다(빈 결과가 통과가 되지 않게 한다).
+    expect(startIndex, `시그니처 시작 토큰을 찾지 못했다: ${startToken}`).not.toBe(-1)
+    const endIndex = source.indexOf('}) {', startIndex)
+    expect(endIndex, '시그니처 종료 토큰(}) {)을 찾지 못했다').not.toBe(-1)
+    const signature = source.slice(startIndex, endIndex)
 
     // 앵커: 시그니처 구간을 **실제로 찾았고** 살아남는 파라미터가 그 안에 있다(빈 문자열 통과 배제).
     expect(signature.length).toBeGreaterThan(0)

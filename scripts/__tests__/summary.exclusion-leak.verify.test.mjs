@@ -1,7 +1,8 @@
 // @vitest-environment node
 //
-// ⚠️ **hidden — RED 커밋에서 제외됨.** 이 파일은 GREEN 담당에게 **노출하지 않는다**. 메인 세션이 RED
-//   커밋에서 빼두었다가 GREEN 자기신고 이후 복원해 실행한다(P2 에서 같은 전략이 작동했다).
+// ⚠️ **hidden — RED 커밋에서 제외됐던 이력이 있다(과거형).** P2 에서 메인 세션이 RED 커밋에서 이
+//   파일을 빼 두었다가 GREEN 자기신고 이후 복원해 실행하는 전략을 썼고, 이 파일도 같은 절차로
+//   복원돼 지금은 다른 케이스들과 함께 추적되며 전 스위트에서 돈다 — 더 이상 숨어 있지 않다.
 //   리포에 이미 `*.verify.test.mjs` = "가드의 가드" 관례가 있다(`feeds.verify` · `fail-closed.verify` ·
 //   `immutability.verify` · `feeds.env-leak.verify`). 다른 케이스를 전부 통과시키면서도 OQ-P3-1 을
 //   **A 로 오독해 prod 를 여는** 구현을 여기서 잡는다.
@@ -122,9 +123,17 @@ function restoreEnv(name, value) {
  */
 const REAL_VAULT_WALK_TIMEOUT = 120_000
 
+/**
+ * dev 기대 건수 — **리터럴로 박지 않고 신원 목록에서 유도**한다(vault 히스토리 하드결합 금지).
+ * `feeds.env-leak.verify.test.mjs` 의 `EXPECTED_DEV_COUNT`(LK2)와 같은 처분이다 — shallow clone·
+ * 기능 브랜치에서 이 실 vault 의 커밋 개수 자체가 달라져도, 신원 목록(위 상수)이 바뀌지 않는 한
+ * 이 기대값은 함께 움직인다.
+ */
+const EXPECTED_DEV_COUNT = DRAFT_BACKED_TITLES.length + 1 // draft 유래 5 + 삭제 유래 1
+
 describe('제외 누출 가드 — 실 vault 신원 고정 (LX2·LX3 · pin)', () => {
   it(
-    'LX2: dev 6건 · prod **정확히 1건**이며 그 1건이 삭제 유래이고 docs 가 비어 있다',
+    'LX2: dev 는 신원 목록 전건 · prod 는 **정확히 1건**이며 그 1건이 삭제 유래이고 docs 가 비어 있다',
     { timeout: REAL_VAULT_WALK_TIMEOUT },
     () => {
       const { dev, prod } = withSafeDirectory(() => ({
@@ -132,12 +141,22 @@ describe('제외 누출 가드 — 실 vault 신원 고정 (LX2·LX3 · pin)', (
         prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
       }))
 
-      // ★ 앵커: dev 6건이 먼저다(실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
-      expect(dev).toHaveLength(6)
-      expect(titlesOf(dev)).toContain(DELETED_BACKED_TITLE)
+      // ★ 앵커: dev 가 신원 목록 전건이다(실 vault 가 비지 않았다). 그 다음에 prod 의 신원을 고정한다.
+      //   진단 메시지가 "예제 데이터가 바뀌었다" 와 "누출됐다" 를 가른다 — 실패 원인을 좁힌다.
+      expect(
+        dev,
+        `dev 건수가 신원 목록(${EXPECTED_DEV_COUNT}건)과 다르다 — 예제 vault 내용이 바뀌었을 수 있다`,
+      ).toHaveLength(EXPECTED_DEV_COUNT)
+      expect(
+        titlesOf(dev),
+        '삭제 유래 신원이 dev 에 없다 — 예제 vault 내용이 바뀌었을 수 있다',
+      ).toContain(DELETED_BACKED_TITLE)
 
-      expect(titlesOf(prod)).toEqual([DELETED_BACKED_TITLE])
-      expect(prod[0].docs).toEqual([]) // D9 — 삭제는 연결만 끊는다(그 문서는 draft 였던 적이 없다)
+      expect(
+        titlesOf(prod),
+        'prod 가 삭제 유래 1건 그대로가 아니다 — prod 로 누출됐을 수 있다',
+      ).toEqual([DELETED_BACKED_TITLE])
+      expect(prod[0].docs, 'D9 위반 — 삭제 유래 feed 가 문서 연결을 여전히 갖고 있다').toEqual([]) // D9 — 삭제는 연결만 끊는다(그 문서는 draft 였던 적이 없다)
     },
   )
 
@@ -145,15 +164,25 @@ describe('제외 누출 가드 — 실 vault 신원 고정 (LX2·LX3 · pin)', (
     'LX3: 실 vault prod 결과에 draft 유래 5건이 **전부 부재**하다',
     { timeout: REAL_VAULT_WALK_TIMEOUT },
     () => {
-      // ★ 오분류(사유를 `invalid-excluded`·`deleted` 로 뭉갬)면 prod 가 **6건**이 되어 예제 뉴스 5건이
-      //   상용으로 샌다. 앵커는 dev 6건이다 — 부재 단언 앞에 그 피드들이 실재함을 먼저 세운다.
+      // ★ 오분류(사유를 `invalid-excluded`·`deleted` 로 뭉갬)면 prod 가 신원 목록 전건이 되어 예제
+      //   뉴스 5건이 상용으로 샌다. 앵커는 dev 신원 목록 전건이다 — 부재 단언 앞에 그 피드들이
+      //   실재함을 먼저 세운다.
       const { dev, prod } = withSafeDirectory(() => ({
         dev: walkFeeds(REPO_ROOT, { count: 50, env: 'dev' }),
         prod: walkFeeds(REPO_ROOT, { count: 50, env: 'prod' }),
       }))
 
-      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(dev)).toContain(title)
-      for (const title of DRAFT_BACKED_TITLES) expect(titlesOf(prod)).not.toContain(title)
+      for (const title of DRAFT_BACKED_TITLES) {
+        expect(
+          titlesOf(dev),
+          `draft 유래 신원 "${title}" 이 dev 에 없다 — 예제 vault 내용이 바뀌었을 수 있다`,
+        ).toContain(title)
+      }
+      for (const title of DRAFT_BACKED_TITLES) {
+        expect(titlesOf(prod), `draft 유래 신원 "${title}" 이 prod 로 누출됐다`).not.toContain(
+          title,
+        )
+      }
     },
   )
 })

@@ -173,6 +173,29 @@ describe('정적 import 그래프 — 파서 자신의 비-공허성 (IG3~IG5 ·
     expect(graph().staticRelativeImports(source)).toEqual(['./side.mjs', './multi.mjs'])
   })
 
+  it('IG4c: `export { x } from "./y.mjs"` 형태의 정적 재export 도 검출한다 (금지 의존성 우회 방지)', () => {
+    // ★ re-export 는 겉보기엔 `import` 가 아니지만 상대경로 모듈을 폐쇄로 끌어들이는 것은 같다.
+    //   이 형태를 놓치면 IG1·IG6·FC1 이 지키는 "판정 경로가 렌더 툴체인을 물지 않는다" 계약을
+    //   `export … from` 한 줄로 우회할 수 있다(감사가 직접 프로브로 실증한 회피 입력이다).
+    const named = "export { render } from './lib/render.mjs'"
+    const star = "export * from './lib/render.mjs'"
+    const starAs = "export * as renderNs from './lib/render.mjs'"
+
+    expect(graph().staticRelativeImports(named)).toEqual(['./lib/render.mjs'])
+    expect(graph().staticRelativeImports(star)).toEqual(['./lib/render.mjs'])
+    expect(graph().staticRelativeImports(starAs)).toEqual(['./lib/render.mjs'])
+  })
+
+  it('IG4d: 재export 로 이어지는 사슬도 폐쇄가 실제로 따라간다 (tmp 2파일 사슬 · IG5b 의 재export 짝)', () => {
+    // 지정자 파싱(IG4c)과 **전이 폐쇄**는 다른 층이다(IG5b 와 같은 이유) — 재export 를 파싱은 해도
+    //   폐쇄가 그 파일까지 내려가지 않으면 IG1 은 "진입점만 보고" 통과할 수 있다.
+    const entry = writeProbe("export { leaf } from './leaf.mjs'\n")
+    const leaf = path.join(path.dirname(entry), 'leaf.mjs')
+    writeFileSync(leaf, "export const leaf = 'leaf'\n", 'utf8')
+
+    expect(graph().staticImportClosure(entry).files).toEqual([entry, leaf].sort())
+  })
+
   it('IG5: 패키지·내장 지정자는 **무시**한다 (상대경로만)', () => {
     // 패키지를 폐쇄에 넣으면 `node_modules` 로 새어 나가 단언이 무의미해진다.
     const source = [

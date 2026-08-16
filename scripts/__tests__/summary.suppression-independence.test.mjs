@@ -113,25 +113,54 @@ function readOrNull(file) {
 
 describe('summary 산출물은 억제와 무관하다 (SU6 · 🔴RED 오늘 바이트가 다르다)', () => {
   it(
-    'SU6: `ignore=[]` 와 `ignore=[전량]` 의 summary 아티팩트가 **완전 바이트 동일**',
+    'SU6: `ignore=[]` 와 `ignore=[전량]` 의 summary 아티팩트가 **완전 바이트 동일** — CLI 프로세스 관측',
     { timeout: 300_000 },
     async () => {
       // plan 비공허성 요구 ⑥ 을 속성으로 고정한다(B14). 완전 동일이어야 D-B 가 되돌려질 때 이
       //   케이스가 red 로 잡는다.
-      expect(independence.first.exitCode).toBe(0)
-      expect(independence.second.exitCode).toBe(0)
-      // 앵커: 두 실행 다 **실제로 파일을 냈다**.
-      expect(independence.withoutIgnore.summary).not.toBeNull()
-      expect(independence.withIgnore.summary).not.toBeNull()
+      // ★ 이 파일의 헤더(§ :7)는 "여기서는 CLI 프로세스만 관측한다" 고 선언한다 — 아래 IW2·SU8 은
+      //   이미 CLI spawn(`runGeneratorOnce`)으로 관측하는데 이 케이스만 in-process(`prebuildArtifacts`
+      //   경유 `buildStatus`)로 남아 있었다. CLI 배선이 깨져도(예: `summary.mjs` 가 `--out` 을
+      //   무시하게 되어도) in-process 경로만 보면 못 잡는다 — 관측 층을 헤더 주장과 맞춘다.
+      //   (공유 `beforeAll`/`independence`/`buildStatus` 는 그대로 둔다 — SU8 이 "in-process 조회
+      //   경로는 malformed 억제에도 관용적이다" 를 바로 그 in-process 층으로 검증해야 하고, 아래
+      //   IW2 의 짝 앵커도 그 값을 그대로 재사용한다.)
+      const { feedId, vault } = seedVault()
+      const out = summaryFile(vault, 'dev')
 
-      expect(independence.withIgnore.summary).toBe(independence.withoutIgnore.summary)
+      const before = runGeneratorOnce({
+        args: ['--env', 'dev', '--out', out],
+        script: 'summary.mjs',
+        vault,
+      })
+      expect(before.exitCode, before.stderr).toBe(0)
+      const withoutIgnore = readOrNull(out)
+      // 앵커: 실행이 **실제로 파일을 냈다**.
+      expect(withoutIgnore).not.toBeNull()
+
+      suppressAll(vault, feedId)
+      rmSync(out, { force: true })
+      const after = runGeneratorOnce({
+        args: ['--env', 'dev', '--out', out],
+        script: 'summary.mjs',
+        vault,
+      })
+      expect(after.exitCode, after.stderr).toBe(0)
+      const withIgnore = readOrNull(out)
+      expect(withIgnore).not.toBeNull()
+
+      expect(withIgnore).toBe(withoutIgnore)
 
       // 앵커: **문서를 고치면 바이트가 달라진다**(비교가 죽어서 늘 같은 것을 배제).
-      writeDoc(independence.vault, REL_B, { body: '## 정의\n\n또 고쳤다.\n', id: ID_B, title: '온디바이스 AI' }) // prettier-ignore
-      await buildStatus(independence.vault)
-      expect(readOrNull(summaryFile(independence.vault, 'dev'))).not.toBe(
-        independence.withoutIgnore.summary,
-      )
+      writeDoc(vault, REL_B, { body: '## 정의\n\n또 고쳤다.\n', id: ID_B, title: '온디바이스 AI' }) // prettier-ignore
+      rmSync(out, { force: true })
+      const changed = runGeneratorOnce({
+        args: ['--env', 'dev', '--out', out],
+        script: 'summary.mjs',
+        vault,
+      })
+      expect(changed.exitCode, changed.stderr).toBe(0)
+      expect(readOrNull(out)).not.toBe(withoutIgnore)
     },
   )
 })

@@ -35,6 +35,16 @@ const ctx = {
   vault: '',
 }
 
+/**
+ * 동기 자식 프로세스 상한 — `execFileSync`·`spawnSync` 는 완전히 동기라 vitest 의 it()-레벨
+ * 타임아웃(비동기 타이머)으로는 끊을 수 없다. 자식이 행(hang)하면 워커 전체가 무한정 멈추므로
+ * `timeout` 옵션이 유일한 안전장치다. 이 리포의 기존 자식 spawn 상한(`helpers/runtime-load.mjs`·
+ * `helpers/cursor-vault.mjs` 의 `timeoutMs = 120_000`)과 같은 값을 재사용한다(새 매직넘버를
+ * 만들지 않는다). `execFileSync` 는 타임아웃 초과 시 자식을 죽이고 **스스로 던진다**(별도 결과
+ * 판정이 필요 없다) — 조용한 쪽은 `spawnSync` 기반 `runCli` 뿐이라 그쪽만 결과를 명시 판정한다.
+ */
+const SYNC_SPAWN_TIMEOUT_MS = 120_000
+
 function commit(cwd, message) {
   const date = nextDate()
   git(cwd, ['add', '-A'])
@@ -57,6 +67,7 @@ function git(cwd, args, extraEnv = {}) {
       GIT_COMMITTER_NAME: NAME,
       ...extraEnv,
     },
+    timeout: SYNC_SPAWN_TIMEOUT_MS,
   }).trim()
 }
 
@@ -72,10 +83,22 @@ function nextDocId() {
 }
 
 function runCli(args) {
-  return spawnSync(process.execPath, [VALIDATE_SCRIPT, ...args], {
+  const result = spawnSync(process.execPath, [VALIDATE_SCRIPT, ...args], {
     encoding: 'utf8',
     env: { ...process.env, SOURCE_DATE_EPOCH: '1700000000' },
+    timeout: SYNC_SPAWN_TIMEOUT_MS,
   })
+
+  // `timeout` 만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃으로 죽은 자식은 `status: null` 이
+  //   되어 그 뒤 `expect(result.status).toBe(N)` 류에 기대는 수밖에 없다. `error`/`signal` 은
+  //   spawnSync 가 비정상 종료(spawn 실패·타임아웃·시그널)일 때만 채워지므로(이 파일이 의도적으로
+  //   검사하는 exit 0/1 과는 뚜렷이 구별된다) 여기서 즉시 크게 실패시킨다.
+  if (result.error || result.signal) {
+    throw new Error(
+      `runCli 자식 프로세스 비정상 종료: error=${result.error?.message ?? 'none'} signal=${result.signal ?? 'none'}`,
+    )
+  }
+  return result
 }
 
 function writeDoc(root, rel, title) {
@@ -283,8 +306,12 @@ describe('validate CLI — JSON 미생산 · vault 무오염', () => {
   })
 
   it('content.json·prototype.html 을 더 이상 만들지 않는다', () => {
-    runCli(['--vault', ctx.vault])
+    const result = runCli(['--vault', ctx.vault])
 
+    // ★ 앵커: CLI 가 **실제로 정상 종료**했다. 이 앵커가 없으면 완전히 깨진 CLI(즉시 크래시·exit
+    //   127 등)도 이 케이스를 통과시킨다 — 두 레거시 파일은 애초에 안 만들어지므로 "안 만든다" 가
+    //   CLI 가 정상 동작했는지와 무관하게 참이 되기 때문이다.
+    expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
     expect(existsSync(path.join(ctx.vault, 'content.json'))).toBe(false)
     expect(existsSync(path.join(ctx.vault, 'prototype.html'))).toBe(false)
   })
@@ -326,10 +353,11 @@ describe('validate CLI — 통계 stdout (조용한 유실 종료)', () => {
 // ────────────────────────────────────────────────────────────────────────────
 // RP(이사분) — 리포트 소유권이 생성기에서 **게이트로 되돌아온다** (v3 P1 Task 7 · D5·D24 · §4.3 ⑦)
 //
-// 이 다섯 케이스는 `summary.generator.test.mjs` 의 RP1~RP5 가 **검사하던 것을 그대로** 검사한다 —
-//   바뀌는 것은 **호출 대상**뿐이다(생성기 → `validate.mjs --out`). 삭제가 아니라 이사이므로,
-//   원본 RP1~RP5 의 제거는 **GREEN 원자 커밋의 몫**이다(규범 L: RED 커밋에 삭제 0건).
-//   ☞ 그때까지 두 벌이 공존하고, 그 공존 자체가 "옮겼다" 의 증거다.
+// 이 다섯 케이스는 `summary.generator.test.mjs` 에 있던 RP1~RP5 가 **검사하던 것을 그대로** 검사한다
+//   — 바뀐 것은 **호출 대상**뿐이다(생성기 → `validate.mjs --out`). 삭제가 아니라 이사였다.
+//   원본 RP1~RP5 는 이미 GREEN 원자 커밋에서 제거됐다(규범 L: RED 커밋에 삭제 0건 — 제거는 GREEN
+//   의 몫이었고 그 몫이 이미 수행됐다). ☞ 원본 자리(`summary.generator.test.mjs`)에는 이제 RP1~RP5
+//   가 **0건**이다(실측) — 이 다섯 케이스가 유일한 거처다. 공존 구간은 이미 끝났다.
 //
 // ★ RP2 는 **축 교체**다: 옛 케이스는 _"두 리포트가 캐시와 같은 상관 토큰을 담는다"_ 를 물었는데
 //   그 축이 사라진다. 같은 질문("이 리포트가 저 산출물의 것인가")을 `sourceCommit` 으로 다시 묻는다 —
