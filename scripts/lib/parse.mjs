@@ -168,7 +168,12 @@ export function parseMarkdownFile(filePath) {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/)
   if (!match) return null
   const [, yamlText, body] = match
-  const strippedBody = body.replace(/^\s+/, '')
+  // 프론트매터 뒤에 남는 **빈 줄만** 벗긴다 — `[ \t]*\r?\n` 한 덩이는 "공백/탭만 있다가 개행으로
+  // 끝나는 한 줄"만 매치하므로, 들여쓰기로 시작하는 실제 본문 줄(예: 4-space 들여쓰기 코드블록)의
+  // 앞쪽 공백은 건드리지 않는다. `\s` 하나로 뭉뚱그리면 개행과 들여쓰기 공백을 구분하지 못해 그
+  // 들여쓰기까지 먹어치운다(재현: body 가 빈 줄 하나 뒤 들여쓰기 코드로 시작하면 그 들여쓰기가
+  // 사라진다).
+  const strippedBody = body.replace(/^(?:[ \t]*\r?\n)+/, '')
   const bodyStartIndex = raw.length - body.length
   const frontmatterLineCount = raw.slice(0, bodyStartIndex).split('\n').length - 1
   const strippedLeadingLineCount =

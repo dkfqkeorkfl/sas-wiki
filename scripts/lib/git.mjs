@@ -68,13 +68,22 @@ export function checkGitAvailable(runGit) {
  * 히스토리 완전성 판정 — 얕은/부분 클론은 **조용히 틀린 데이터**를 만든다.
  *
  * shallow 면 생성 커밋이 잘려 문서 id 가 바뀌고 `feed:` 커밋이 사라진다. 에러 없이.
+ *
+ * partial clone 필터는 **promisor remote 의 이름으로** 찾는다 — `remote.origin.partialclonefilter`
+ * 하나만 보면 origin 이 아닌 다른 이름의 remote 를 promisor 로 쓰는 클론을 놓친다. git 의
+ * partial-clone 문서(Documentation/technical/partial-clone.txt)는 이렇게 규정한다:
+ * _"a partial clone [...] has 'extensions.partialClone' set to the name of its promisor remote"_
+ * — 즉 `extensions.partialClone` 이 **어느 remote 가 promisor 인지**를 담는 저장소 단위 플래그다.
+ * 미설정이면(보통의 origin 클론) 그 값이 비어 `origin` 으로 자연히 대체돼 예전과 같은 조회가 된다.
  */
 export function checkHistoryIntegrity(runGit) {
   const shallow = tryGit(runGit, ['rev-parse', '--is-shallow-repository']).trim() === 'true'
+  const promisorRemote = tryGit(runGit, ['config', '--get', 'extensions.partialClone']).trim()
+  const filterRemote = promisorRemote || 'origin'
   const partialFilter = tryGit(runGit, [
     'config',
     '--get',
-    'remote.origin.partialclonefilter',
+    `remote.${filterRemote}.partialclonefilter`,
   ]).trim()
   return { partialFilter, shallow }
 }

@@ -38,11 +38,22 @@ const GIT_SOURCE = new URL('../git.mjs', import.meta.url)
 
 const rec = (h, d, s, b) => `${h}\x00${d}\x00${s}\x00${b}\x00\n`
 
-/** `rev-parse --is-shallow-repository` · `config --get remote.origin.partialclonefilter` 에 답하는 stub. */
-function stubRunner({ filter = '', shallow = 'false' } = {}) {
+/**
+ * `rev-parse --is-shallow-repository` · `config --get extensions.partialClone` ·
+ * `config --get remote.<name>.partialclonefilter` 에 답하는 stub. `promisorRemote` 를 주면
+ * `extensions.partialClone` 이 그 이름을 낸다(미지정 = 미설정 → 조회는 `origin` 아래로 간다).
+ */
+function stubRunner({
+  filter = '',
+  promisorRemote = '',
+  shallow = 'false',
+  upstreamFilter = '',
+} = {}) {
   return (args) => {
     if (args.includes('--is-shallow-repository')) return shallow
+    if (args.includes('extensions.partialClone')) return promisorRemote
     if (args.includes('remote.origin.partialclonefilter')) return filter
+    if (args.includes('remote.upstream.partialclonefilter')) return upstreamFilter
     return ''
   }
 }
@@ -308,11 +319,20 @@ describe('checkHistoryIntegrity — shallow · partial clone 판정', () => {
     })
   })
 
-  it('partial clone(blob 필터)을 검출한다', () => {
+  it('partial clone(origin 의 blob 필터)을 검출한다', () => {
     expect(checkHistoryIntegrity(stubRunner({ filter: 'blob:none' }))).toEqual({
       partialFilter: 'blob:none',
       shallow: false,
     })
+  })
+
+  // `remote.origin.partialclonefilter` 는 필터를 **origin 이름 아래**에서만 찾는다. origin 이 아닌
+  // 이름의 remote 를 promisor 로 쓰면(예: `upstream`) 필터는 `remote.upstream.partialclonefilter`
+  // 에 있고, `extensions.partialClone` 이 그 remote 이름을 가리킨다 — 이 케이스가 그 사각을 겨냥한다.
+  it('origin 이 아닌 remote 를 promisor 로 쓰는 partial clone 도 검출한다', () => {
+    expect(
+      checkHistoryIntegrity(stubRunner({ promisorRemote: 'upstream', upstreamFilter: 'tree:0' })),
+    ).toEqual({ partialFilter: 'tree:0', shallow: false })
   })
 
   it('정상 full clone 은 둘 다 아니다', () => {

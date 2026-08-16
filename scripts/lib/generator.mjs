@@ -50,8 +50,10 @@ export async function runSummaryGenerator({
   const git = runGit ?? makeGitRunner(vaultDir)
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
 
-  // ★ 여기서 비로소 파싱·렌더 툴체인을 연다(위 헤더 주석 참조). 판정만 하고 끝나는 실행은 이 줄에
-  //   도달하지 않으므로 그 비용을 내지 않는다.
+  // ★ 여기서 비로소 파싱·렌더 툴체인을 연다(위 헤더 주석 참조). 이 함수 안에는 조기 반환 분기가
+  //   없다 — 일단 호출되면 예외 없이 이 지점까지 진행한다. 비용을 피하는 유일한 경로는 이 함수
+  //   자체를 호출하지 않는 것이다(정적 import 였다면 호출 여부와 무관하게 로드 시점에 항상 비용을
+  //   냈을 것이다).
   const { parseVault } = await import('./parse-vault.mjs')
   // P5 Task 9(D-I) — parseVault 는 이제 항상 깊은 티어다(얕은 티어 선택 스위치를 제거했다).
   const parsed = parseVault(vaultDir, env, SCHEMA_DIR, { runGit: git })

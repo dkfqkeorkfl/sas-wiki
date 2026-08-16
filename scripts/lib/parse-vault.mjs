@@ -80,9 +80,28 @@ export function parseVault(vaultDir, env, schemaDir, { runGit: injectedRunGit } 
  * 낸다(두 층 — FC7 소관). 여기서 items 를 다시 받지 않는다: 인자를 남긴 채 무시하면 다음 사람이
  * "빠뜨렸나" 하고 되돌린다.
  */
+// ECMA-262(Date 객체 절 · "Time Values and Time Range")가 규정한 표현 가능 범위 — 초과분에
+// `new Date(...).toISOString()` 을 걸면 무엇이 왜 잘못됐는지 말하지 않는 `RangeError: Invalid time
+// value` 만 남는다(값도 허용범위도 노출하지 않는 불투명 실패).
+const MAX_DATE_VALUE_MS = 8_640_000_000_000_000
+
 export function deriveGeneratedAt(docs) {
   const epoch = process.env.SOURCE_DATE_EPOCH
-  if (epoch && /^\d+$/.test(epoch)) return new Date(Number.parseInt(epoch, 10) * 1000).toISOString()
+  if (epoch) {
+    if (!/^\d+$/.test(epoch)) {
+      throw new Error(
+        `SOURCE_DATE_EPOCH 형식이 올바르지 않습니다(0 이상의 정수만 허용): "${epoch}"`,
+      )
+    }
+    const epochMs = Number.parseInt(epoch, 10) * 1000
+    if (!Number.isFinite(epochMs) || epochMs > MAX_DATE_VALUE_MS) {
+      throw new Error(
+        `SOURCE_DATE_EPOCH 값이 표현 가능한 날짜 범위를 벗어났습니다: "${epoch}"` +
+          `(허용: 0 ~ ${MAX_DATE_VALUE_MS / 1000}초)`,
+      )
+    }
+    return new Date(epochMs).toISOString()
+  }
   const timestamps = []
   for (const doc of docs) if (doc.updated) timestamps.push(new Date(doc.updated).toISOString())
   if (timestamps.length === 0) return '1970-01-01T00:00:00.000Z'

@@ -14,6 +14,7 @@
 //   import 해 입력이나 기대값을 만들지 않는다.
 import { describe, expect, it } from 'vitest'
 
+import { makeGitRunner } from '../git.mjs'
 import { checkFeedResolution } from '../invariants.mjs'
 import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import { seedStrayVault } from '../../__tests__/helpers/polluted-vault.mjs'
@@ -23,6 +24,8 @@ const ID_MOVED = '0192a000-0000-7000-8000-0000000000aa'
 const ID_REUSER = '0192b000-0000-7000-8000-0000000000bb'
 const ID_DISABLED = '0192c000-0000-7000-8000-0000000000cc'
 const ID_GONE = '0192d000-0000-7000-8000-0000000000dd'
+const ID_VICTIM = '0192e000-0000-7000-8000-0000000000e1'
+const ID_DELETED = '0192e000-0000-7000-8000-0000000000e2'
 const T1 = '2026-03-01T00:00:00Z'
 const T2 = '2026-03-02T00:00:00Z'
 
@@ -110,6 +113,66 @@ describe('walkFeeds — unresolved 진단의 형태와 게이트 (RX3)', () => {
       ])
       expect(items.stats.unresolvedPaths[0].sha).toMatch(/^[0-9a-f]{40}$/)
       expect(() => checkFeedResolution(items.stats)).toThrow(/wiki\/concept\/메모장\.md/)
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+// RX4·RX5 — `git-walk.mjs` `readBlobId`(`resolveDocRef` 의 blob 조회 계층)가 "이 참조는 정말로
+//   없다"(benign)와 "조회 자체가 실패했다"(권한·I/O·타임아웃 등)를 가르는지 겨냥한 적대적 프로브다.
+//   개선 전에는 `git show` 의 **어떤** 실패든 조용히 "id 없음"으로 삼켜 그 status 가 이유 없이
+//   `unresolved`/`deleted` 로 접혔다 — vault 가 실제로 신뢰할 수 없는 상태(권한 상실 등)여도 관측되지
+//   않았다. RX4 는 그 결함을 겨냥하고(실 커밋 존재 참조에 실패를 주입), RX5 는 **정말로** 존재하지
+//   않는 참조(삭제된 문서)가 여전히 조용히 넘어가는지 확인한다(과잉 rethrow 로 정상 흐름을 깨지 않았는가).
+describe('walkFeeds — blob 조회 실패는 "id 없음"으로 삼켜지지 않는다 (RX4)', () => {
+  it('RX4: 실제로 존재하는 참조에서 git show 가 비-benign 실패를 내면 조용히 넘어가지 않고 throw 한다', () => {
+    const vault = initVault()
+    try {
+      // 생성 커밋과 feed 커밋을 **분리**한다 — 같은 sha 로 합치면 `readIdAtCreation`(head-state 구성)의
+      //   조회와 실패 주입 대상이 겹쳐 어느 쪽이 죽였는지 구분되지 않는다.
+      writeDoc(vault, 'concept/피해자', { id: ID_VICTIM, wikiRoot: 'wiki' })
+      commit(vault, 'chore: 피해자 생성')
+      writeDoc(vault, 'concept/피해자', { body: '## 정의\n\n갱신 본문.\n', id: ID_VICTIM, wikiRoot: 'wiki' }) // prettier-ignore
+      const feedSha = feedCommit(vault, { date: T1, subject: '피해자 소식' })
+      const failingRef = `${feedSha}:wiki/concept/피해자.md`
+      const failingArgs = ['-c', 'core.quotepath=false', 'show', failingRef].join(',')
+
+      const real = makeGitRunner(vault)
+      const hostileRunGit = (args) => {
+        if (args.join(',') === failingArgs) {
+          const error = new Error(`Command failed: git show ${failingRef}`)
+          // 실 git 이 정상 부재에 쓰는 어휘(`does not exist in`·`invalid object name` 등)를 **일부러
+          //   피한다** — 이 실패가 "정말로 없다"가 아니라 "조회할 수 없었다"임을 못박는다.
+          error.stderr = 'fatal: unable to read sha1 file(권한/I·O 실패 시뮬레이션)\n'
+          error.status = 128
+          throw error
+        }
+        return real(args)
+      }
+
+      expect(
+        () => walkFeeds(vault, { count: 50, env: 'dev', runGit: hostileRunGit }),
+        '실제로 존재하는 blob 의 조회 실패는 "id 없음"으로 삼켜지지 않고 전파돼야 한다',
+      ).toThrow(/피해자|시뮬레이션/u)
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('walkFeeds — 정말로 존재하지 않는 참조는 계속 조용히 넘어간다 (RX5 · 회귀 방지)', () => {
+  it('RX5: 삭제된 문서를 가리키는 feed 는 throw 없이 계속 해석된다(delete 는 benign 부재다)', () => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'concept/사라짐', { id: ID_DELETED, wikiRoot: 'wiki' })
+      commit(vault, 'chore: 사라짐 생성')
+      git(vault, ['rm', '-q', 'wiki/concept/사라짐.md'])
+      feedCommit(vault, { date: T1, subject: '삭제 소식' })
+
+      // 앵커: 이 vault 가 실제로 feed 를 만들었다(픽스처가 비어서 무조건 통과하는 것을 배제).
+      const items = walkFeeds(vault, { count: 50, env: 'dev' })
+      expect(items.map((item) => item.title)).toContain('삭제 소식')
     } finally {
       cleanup(vault)
     }

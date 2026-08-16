@@ -212,9 +212,14 @@ function resolveFeedItems(vaultDir, runGit, commits, context) {
  * feed 커밋이 건드린 문서 → 현재 doc-id (하이브리드 resolve · build.mjs 와 동치가 목표).
  *   ① 고속경로(post-D1): `<sha>:<당시경로>` blob frontmatter id 를 읽어 summary(headIds)에 있으면 채택.
  *   ② 폴백(pre-D1: 그 시점 blob 에 id 부재 → readBlobId null): `buildPathIndex`(경로→현재 id · rename
- *      추적, build.mjs 가 쓰는 그 함수)로 resolve. 실 vault 는 피드가 id 부여(P1 마이그레이션)보다
- *      먼저라 ①이 전부 null → 이 폴백이 없으면 피드가 통째로 prune 돼 feeds 가 빈다.
- *   어느 쪽도 headIds 에 없으면(문서 삭제됨) null → prune. 폴백은 resolve 실패 지점에만 얹는다.
+ *      추적, build.mjs 가 쓰는 그 함수)로 resolve.
+ *   어느 쪽도 headIds 에 없으면(문서 삭제됨) null → prune. 폴백은 ①이 풀리지 않을 때만 얹는다 —
+ *   `resolvePathIndex`/`resolveInvalidPathIndex` 는 지연·메모(호출자 쪽 `??=`)이므로, ①이 매 status
+ *   마다 전부 풀리는 vault(피드 id 부여 이후로만 이뤄진 히스토리)에서는 이 폴백이 **한 번도** 구성
+ *   비용(`buildPathIndex` 의 문서별 `git log --follow`)을 내지 않는다.
+ *   ★ 오늘의 실 vault 는 정반대다 — 피드가 id 부여(P1 마이그레이션)보다 먼저라 ①이 매번 null 이고,
+ *   그래서 ②가 어차피 매 status 마다 필요해 이 순서 교환의 성능 이득은 **오늘은 0**이다(①을 먼저
+ *   시도하는 비용만 추가된다). 이득은 피드 id 부여 이후에 생긴 커밋이 실제로 쌓여야 나타난다.
  */
 function resolveDocRef(
   status,
@@ -231,6 +236,15 @@ function resolveDocRef(
     strayDocPaths,
   },
 ) {
+  for (const ref of refsForStatus(sha, status)) {
+    const id = readBlobId(runGit, ref, status.path)
+    if (id && headIds.has(id)) return { id, reason: null }
+    if (id && invalidIds.has(id)) {
+      stats.invalidExcludedRefs.push({ path: status.path, sha })
+      return { id: null, reason: 'invalid-excluded' }
+    }
+    if (id && allHeadIds.has(id)) return { id: null, reason: 'draft-excluded' }
+  }
   const pathIndex = resolvePathIndex()
   const invalidPathIndex = resolveInvalidPathIndex()
   for (const key of [`${sha}:${status.path}`, status.oldPath ? `${sha}:${status.oldPath}` : null]) {
@@ -245,15 +259,6 @@ function resolveDocRef(
       if (id && allHeadIds.has(id)) return { id: null, reason: 'draft-excluded' }
     }
   }
-  for (const ref of refsForStatus(sha, status)) {
-    const id = readBlobId(runGit, ref, status.path)
-    if (id && headIds.has(id)) return { id, reason: null }
-    if (id && invalidIds.has(id)) {
-      stats.invalidExcludedRefs.push({ path: status.path, sha })
-      return { id: null, reason: 'invalid-excluded' }
-    }
-    if (id && allHeadIds.has(id)) return { id: null, reason: 'draft-excluded' }
-  }
   if (strayDocPaths.has(status.path) || (status.oldPath && strayDocPaths.has(status.oldPath))) {
     stats.invalidExcludedRefs.push({ path: status.path, sha })
     stats.unresolvedPaths.push({ path: status.path, sha })
@@ -266,12 +271,33 @@ function resolveDocRef(
   return { id: null, reason: 'unresolved' }
 }
 
+/**
+ * `git show <ref>` 이 없다고 답하는 것과 **읽을 수 없어서 죽는 것**은 다른 사건이다 — 전자는 이
+ * status(추가·삭제·rename)에서 정말로 존재하지 않는 참조를 시도했을 뿐인 정상 흐름이고
+ * (`refsForStatus` 가 만드는 `${sha}^:<oldPath>` 는 sha 가 루트 커밋이면 항상 이 형태로 실패한다),
+ * 후자는 권한·I/O·타임아웃처럼 **이 vault 를 더 신뢰할 수 없다는 신호**다. 실측(git 2.51.1):
+ * 경로 부재는 `"...does not exist in..."`/`"exists on disk, but not in..."`, 존재하지 않는 객체
+ * (예: 부모 없는 커밋의 `^`)는 `"invalid object name..."` 로 답한다 — 전부 `fatal:` 접두의 정상 종료
+ * 메시지다. 이 셋 밖은 흡수하지 않는다.
+ */
+function isMissingBlobRef(error) {
+  const text = `${error?.message ?? ''}\n${typeof error?.stderr === 'string' ? error.stderr : ''}`
+  return /does not exist in|exists on disk, but not in|invalid object name/iu.test(text)
+}
+
 function readBlobId(runGit, ref, filePath) {
   let blob
   try {
     blob = runGit(['-c', 'core.quotepath=false', 'show', ref])
-  } catch {
-    return null
+  } catch (error) {
+    if (isMissingBlobRef(error)) return null
+    // 정상 부재가 아닌 실패(권한·I/O·타임아웃 등)를 "id 없음"으로 삼키면 그 status 가 조용히
+    //   `unresolved`/`deleted` 로 접혀 피드가 이유 없이 사라진다 — 멈춘다(git.mjs `tryGit` 과 같은 규칙).
+    const message = error instanceof Error ? error.message : String(error)
+    const stderr = typeof error?.stderr === 'string' && error.stderr ? `\n${error.stderr}` : ''
+    throw new Error(`feed 문서 blob 을 읽지 못했습니다(${ref}): ${message}${stderr}`, {
+      cause: error,
+    })
   }
   const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
   if (!match) return null

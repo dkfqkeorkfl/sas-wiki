@@ -136,6 +136,49 @@ describe('결정성 seam — SOURCE_DATE_EPOCH 가 이긴다 (GA3 · 🟢pin)', 
   })
 })
 
+describe('SOURCE_DATE_EPOCH 과도값 — 불투명 RangeError 대신 값·허용범위를 밝힌다', () => {
+  it('Date 표현 범위를 넘는 값은 원인이 드러나는 에러를 던진다(불투명 RangeError 아님)', () => {
+    const before = process.env.SOURCE_DATE_EPOCH
+    try {
+      // 자릿수만으로는 형태 검증(`/^\d+$/`)을 통과하지만 *1000 후 Date 표현 범위(±8.64e15ms)를
+      //   넘는 값 — 개선 전에는 `new Date(...).toISOString()` 이 값·범위를 말하지 않는
+      //   `RangeError: Invalid time value` 를 던진다(불투명).
+      process.env.SOURCE_DATE_EPOCH = '99999999999999999'
+
+      expect(() => deriveGeneratedAt([])).toThrowError(/99999999999999999/u)
+      expect(() => deriveGeneratedAt([])).toThrowError(/허용/u)
+    } finally {
+      if (before === undefined) delete process.env.SOURCE_DATE_EPOCH
+      else process.env.SOURCE_DATE_EPOCH = before
+    }
+  })
+
+  it('숫자가 아닌 값도 원인이 드러나는 에러를 던진다(형태 위반)', () => {
+    const before = process.env.SOURCE_DATE_EPOCH
+    try {
+      process.env.SOURCE_DATE_EPOCH = '1e30'
+
+      expect(() => deriveGeneratedAt([])).toThrowError(/1e30/u)
+    } finally {
+      if (before === undefined) delete process.env.SOURCE_DATE_EPOCH
+      else process.env.SOURCE_DATE_EPOCH = before
+    }
+  })
+
+  it('범위 안의 정상값은 여전히 조용히 통과한다(회귀 방지 — GA3 와 같은 seam)', () => {
+    const before = process.env.SOURCE_DATE_EPOCH
+    try {
+      process.env.SOURCE_DATE_EPOCH = '1700000000'
+
+      expect(() => deriveGeneratedAt([])).not.toThrow()
+      expect(deriveGeneratedAt([])).toBe(new Date(1_700_000_000_000).toISOString())
+    } finally {
+      if (before === undefined) delete process.env.SOURCE_DATE_EPOCH
+      else process.env.SOURCE_DATE_EPOCH = before
+    }
+  })
+})
+
 describe('빈 집합 경계값 (GA4 · 🔴RED 시그니처 미축소)', () => {
   it('GA4: `deriveGeneratedAt([])` === epoch 0', () => {
     const before = process.env.SOURCE_DATE_EPOCH
