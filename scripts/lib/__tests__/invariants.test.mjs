@@ -30,9 +30,11 @@ import {
 // 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
 // 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
 // coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
-const { checkInvariants } = await import(new URL('../invariants.mjs', import.meta.url).href)
-// D26: checkCommitConventions 도 같은 모듈에서 가져온다(ESM 캐시 — 같은 인스턴스). 위 줄은 손대지 않는다.
-const { checkCommitConventions } = await import(new URL('../invariants.mjs', import.meta.url).href)
+// D26: checkCommitConventions 도 같은 모듈에서 가져온다 — 별도 import 문으로 쪼갤 이유가 없다
+//   (ESM 캐시가 같은 인스턴스를 준다).
+const { checkCommitConventions, checkInvariants } = await import(
+  new URL('../invariants.mjs', import.meta.url).href
+)
 
 /** 정상 세계에 한 가지 변형만 가한다(DAMP — 무엇이 틀렸는지 본문에 보인다). */
 function worldWith(mutate) {
@@ -189,11 +191,11 @@ describe('불변식 8 — summary.docs[].id 가 유일 (문서 id 유일성의 �
 
 // ── D26 · checkCommitConventions — 접두어 없는 커밋도 vault A+D 동시 발생을 잡는다 ──────────────
 //
-// 현행: 접두어(cwiki|uwiki|feed) 없는 subject 는 `if (!match) continue` 로 통째로 검사 스킵된다.
-// D26: 접두어 없는 커밋도 검사해, 한 커밋 안에서 vault 문서 A(추가)+D(삭제)가 동시 발생하면 fail.
+// D26(적용됨): 접두어 유무와 무관하게 모든 커밋의 vault A(추가)+D(삭제) 동시 발생을 검사해 fail 한다
+//   (`checkCommitConventions` 가 `commits` 전체에 대해 `getCommitDocStatuses` 를 부른다 — subject
+//   접두어로 분기하는 per-kind 규칙 자체가 이제 없다).
 //   근거 — getCommitDocStatuses 는 `--find-renames` 를 쓰므로 정당한 이동은 R 로 흡수된다. 그 뒤에도
 //   남는 A+D = git 이 rename 으로 못 붙인 이동 = 문서 id 연결을 잃는 시그니처다.
-//   접두어가 있으면 per-kind 규칙(cwiki 1-add / uwiki·feed no-add)을 그대로 둔다.
 //
 // stub 계약(git.test.mjs 의 getCommitDocStatuses stub 패턴 재사용): checkCommitConventions 는 커밋마다
 //   getCommitDocStatuses(runGit, hash, wikiPrefix) 를 부르고, 그 함수는

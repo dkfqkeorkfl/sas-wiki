@@ -94,7 +94,6 @@ export function aFeedItem() {
   return builder(DEFAULT_FEED_ITEM, { refs: (value, docs) => ({ ...value, docs }) })
 }
 
-/** wiki_feeds.json 봉투 — 정확히 4키다. */
 /** feeds 페이지 봉투 — v3 P2 부터 **6키**다(`env` · `nextCursor` 가산 · D22·D48). */
 export function aFeeds() {
   return builder(

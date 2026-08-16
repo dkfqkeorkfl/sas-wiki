@@ -17,6 +17,8 @@
 //   getFileCommitDates(runGit, relPath)  → { created, hash, updated }  (getFileHistory 위의 얇은 래퍼)
 //   buildPathIndex(docs, runGit)         → Map<`${sha}:${당시경로}`, docId>   docs: [{ filePath, id }]
 //   checkHistoryIntegrity(runGit)        → { partialFilter, shallow }
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -31,6 +33,8 @@ import {
   makeGitRunner,
   underWikiPrefix,
 } from '../git.mjs'
+
+const GIT_SOURCE = new URL('../git.mjs', import.meta.url)
 
 const rec = (h, d, s, b) => `${h}\x00${d}\x00${s}\x00${b}\x00\n`
 
@@ -77,6 +81,21 @@ const REBORN_LOG = [
 describe('makeGitRunner', () => {
   it('cwd 를 받아 호출 가능한 러너를 반환한다', () => {
     expect(typeof makeGitRunner('/tmp')).toBe('function')
+  })
+
+  it('execFileSync 를 shell 없이 호출한다(인자 배열이 셸 문자열로 합쳐지지 않는다 — 인젝션 방지)', () => {
+    // `shell: true` 는 Node 문서(child_process)가 명시하는 대로 command+args 를 한 셸 문자열로
+    //   합쳐 실행한다 — git 인자에 셸 메타문자가 섞이면 그 순간 명령 인젝션 표면이 열린다.
+    //   `typeof === 'function'` 단언만으로는 이 회귀를 잡지 못한다(함수라는 사실은 그대로다).
+    const source = readFileSync(GIT_SOURCE, 'utf8')
+    const start = source.indexOf('export function makeGitRunner')
+    const end = source.indexOf('\nexport function', start + 1)
+    const body = source.slice(start, end === -1 ? undefined : end)
+
+    // 앵커: 함수 본문을 실제로 찾았고 여전히 execFileSync 로 git 을 부른다(부재 단언이 공허해지지 않게).
+    expect(start).toBeGreaterThan(-1)
+    expect(body).toContain("execFileSync('git', args,")
+    expect(body).not.toMatch(/shell\s*:\s*true/u)
   })
 })
 
@@ -140,6 +159,28 @@ describe('getFileHistory (신설 — 당시 경로)', () => {
 
   it('빈 로그는 빈 배열이다', () => {
     expect(getFileHistory(() => '', HBM_NOW)).toEqual([])
+  })
+
+  it('copy(C100)는 새 문서의 생성 커밋이다 — 원본 문서의 이전 히스토리를 물려받지 않는다(문서 정체성)', () => {
+    // copy 원본은 지금도 살아 있는 **다른 문서**다(git.mjs:47-48). 원본을 자신의 과거로 이어 붙이면
+    //   복사본 문서가 원본의 커밋까지 자기 히스토리로 흡수해 문서 정체성이 섞인다.
+    const TEMPLATE = 'wiki/company/템플릿.md'
+    const COPY_NEW = 'wiki/company/신규.md'
+    const COPY_LOG = [
+      'sha20\t2026-01-20T00:00:00Z',
+      '',
+      `C100\t${TEMPLATE}\t${COPY_NEW}`,
+      'sha01\t2026-01-01T00:00:00Z',
+      '',
+      `A\t${TEMPLATE}`,
+    ].join('\n')
+
+    const history = getFileHistory(() => COPY_LOG, COPY_NEW)
+
+    // copy 커밋 하나로 끊긴다 — 원본의 생성 커밋(sha01)은 이 문서의 히스토리가 아니다.
+    expect(history).toEqual([
+      { oldPath: TEMPLATE, pathAtCommit: COPY_NEW, sha: 'sha20', status: 'C', ts: '2026-01-20T00:00:00Z' }, // prettier-ignore
+    ])
   })
 })
 

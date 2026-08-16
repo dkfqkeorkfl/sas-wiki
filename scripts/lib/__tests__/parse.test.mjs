@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// P1 3-A · scripts/wiki/lib/parse.mjs (순수 파싱 함수) RED
+// P1 3-A · scripts/wiki/lib/parse.mjs (순수 파싱 함수)
 // 대상: parseFrontmatterYaml · slugifyHeading
 // RED 사유: scripts/wiki/lib/parse.mjs 미구현(모듈 부재) → import 실패.
 // 무변경 포팅 회귀 고정: 알고리즘 개선이 아니라 docs/sas-wiki-package/scripts/build.mjs

@@ -4,11 +4,11 @@
 // RED 사유: `lib/payloads.mjs` 미구현(모듈 부재) → import 실패.
 //
 // 계약(GREEN 이 구현할 seam):
-//   buildSummary({ docs, tree, tags, sourceCommit, generatedAt }) → §5.1 봉투
+//   buildSummary({ docs, tree, tags, sourceCommit, generatedAt, env }) → §5.1 봉투
 //     docs: derive 의 summary 레코드. **잉여 키가 섞여 들어와도 봉투에는 계약 키만 싣는다**
 //           (active 10키 / disable 4키) — payloads 가 wire 경계이므로 투영은 여기서 강제한다.
-//   buildFeeds({ items, sourceCommit, generatedAt })  → §5.2 봉투 (정렬은 feed.mjs 소관)
-//   buildBody({ docs, sourceCommit })                 → §5.3 봉투. **generatedAt 없음**
+//   buildFeeds({ items, sourceCommit, generatedAt, env })  → §5.2 봉투 (정렬은 feed.mjs 소관)
+//   buildBody({ docs, sourceCommit })                 → §5.3 봉투. **generatedAt·env 없음**
 //     docs: 본문 레코드 배열 `{ breadcrumb, status, html, headings, meta, sources }`.
 //           active 만, `breadcrumb.join('/')` 키로, 값은 4키(html·headings·meta·sources).
 //
@@ -16,6 +16,7 @@
 //   (SOURCE_DATE_EPOCH 계산은 build.mjs 의 몫). 여기서 Date.now() 를 부르면 재빌드가 흔들린다.
 import { describe, expect, it } from 'vitest'
 
+import { buildBody, buildFeeds, buildSummary } from '../payloads.mjs'
 import {
   aDisableStub,
   aDoc,
@@ -26,14 +27,6 @@ import {
   GENERATED_AT,
   SOURCE_COMMIT,
 } from './helpers/payload-builders.mjs'
-
-// RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
-// 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
-// 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
-// coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
-const { buildBody, buildFeeds, buildSummary } = await import(
-  new URL('../payloads.mjs', import.meta.url).href
-)
 
 const TREE = [{ children: [], docs: [DOC_A.id], path: 'company' }]
 const TAGS = { 반도체: [DOC_A.id] }
@@ -156,6 +149,15 @@ describe('buildFeeds', () => {
     expect(feeds.items).toEqual([item])
     // 🔴 v3 P1 · D29 — 3 페이로드 **공용** 상수라 feeds 도 함께 1 이 된다(쪼개지 않는다 · AR7 이 pin).
     expect(feeds.schemaVersion).toBe(1)
+  })
+
+  it('`env` 스탬프가 실제 값을 싣는다(하드코딩 배제 — buildSummary 와 같은 이중 확인)', () => {
+    // 위 케이스는 입력이 'dev' 하나뿐이라, 구현이 입력을 무시하고 `env: 'dev'` 를 그대로 박아도
+    //   우연히 통과한다. 값이 다른 두 번째 입력으로 실제 인자를 실었는지를 확인한다.
+    const base = { generatedAt: GENERATED_AT, items: [], sourceCommit: SOURCE_COMMIT }
+
+    expect(buildFeeds({ ...base, env: 'dev' }).env).toBe('dev')
+    expect(buildFeeds({ ...base, env: 'prod' }).env).toBe('prod')
   })
 })
 
