@@ -1,3 +1,6 @@
 node_modules
 logs
 cache
+# 도구가 남기는 잔해(예: 서브프로세스 stderr 리다이렉트) — 계정 식별자·엔드포인트 문자열이
+# 그대로 실릴 수 있어 추적 대상에서 제외한다.
+error.log

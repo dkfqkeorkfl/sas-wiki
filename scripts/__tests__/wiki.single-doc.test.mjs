@@ -210,7 +210,12 @@ describe('위키링크 해석 동치 (WK5·WK6 · 🟢계약 보존 pin · CX-O)
     await prebuildArtifacts(vault, 'dev')
     const html = (await askWiki(vault, 'dev', REL_MAIN)).html
 
-    expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
+    // `anchorOf` 는 라벨을 못 찾으면 빈 문자열을 돌려주고, 빈 문자열은 어떤 class 도 `toContain`
+    //   하지 않는다 — 그래서 대상 링크 자체가 사라져도(예: 렌더가 깨져 `<a>` 를 아예 안 낸다) 아래
+    //   `not.toContain` 만으로는 green 이 유지된다. 앵커로 `<a>` 자체가 실재함을 먼저 확인한다.
+    const uniqueAnchor = anchorOf(html, '유일문서')
+    expect(uniqueAnchor, '앵커: 유일문서 링크의 <a> 자체가 없다(공허 통과 방지)').not.toBe('')
+    expect(uniqueAnchor).not.toContain(DEAD_CLASS)
     expect(anchorOf(html, '없는문서')).toContain(DEAD_CLASS)
   })
 

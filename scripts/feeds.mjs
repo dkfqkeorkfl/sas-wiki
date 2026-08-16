@@ -34,21 +34,59 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const EPOCH = '1970-01-01T00:00:00.000Z'
 
 /**
+ * 문서 해석 계층(`resolveGit`)의 **백스톱** spawn 타임아웃(ms) — 완전 hang 만 잡는다.
+ *
+ * `walkGit` 의 `LIVE_WALK_TIMEOUT_MS`(5000ms)를 그대로 물리지 않는 이유는 두 계층의 비용 분포가
+ * 자릿수로 다르기 때문이다: `resolveGit` 은 HEAD 문서 상태·삭제 이력·경로 역인덱스를 훑어 부하
+ * 상태에서 초 단위(같은 일을 하는 CLI 가 이 리포에서 실측 25~31초)가 정상이다. 5000ms 를 그대로
+ * 쓰면 정상 부하가 타임아웃으로 오탐된다.
+ *
+ * 그렇다고 상한을 아예 없애면 완전 hang(자격증명 프롬프트 대기 · 막힌 네트워크 fetch 등 비용
+ * 분포와 무관한 별개 실패)을 영영 못 끝낸다. 그래서 정상 실측 상한(31초)의 **약 20배** —
+ * `walkGit` 값과 뚜렷이 다른 자릿수이면서 어떤 정상 가변비용도 침범하지 않는 값을 고른다.
+ * 완전 hang 을 이 값으로 실측(인위적으로 git 을 멈춰) 관측하지는 않는다 — 그러려면 테스트 전용
+ * hang 주입 지점을 코드에 새로 심어야 하는데, 그 자체가 실사용 동기 없는 새 표면이다. 이 값은
+ * "정상 케이스를 절대 건드리지 않는다"는 코드 대조로만 판정한다.
+ */
+const RESOLVE_BACKSTOP_TIMEOUT_MS = 600_000
+
+/**
  * feeds 엔드포인트 — 커서 위치에서 한 페이지를 **git 워크로 계산**한다.
+ *
+ * ★ CLI(`main`)를 거치지 않는 **모듈 직접 호출자**도 있다(테스트·서빙 코드가 이 함수를 바로 부른다).
+ * `main` 의 인자 검증(`envEnumError`·`countValueError`)은 CLI 층에서만 돌기 때문에, 이 함수 자신도
+ * `env`·`window.count` 를 검증한다 — 그러지 않으면 `count: 0` 이 vault 상태에 따라 갈리는 방식으로
+ * 새 나간다: 커밋이 있는 vault 는 `walkCursorPage`(`lib/feed-cursor.mjs`)가 빈 `items` 위에서 마지막
+ * 항목에 접근해 TypeError 로 죽고, 0-커밋 vault 는 아무 사유도 없이 빈 페이지를 조용히 낸다 — 어느
+ * 쪽도 "count 인자가 잘못됐다"는 사유를 호출자에게 말하지 않는다.
  *
  * @param {string} vault git vault repository root
  * @param {'dev'|'prod'} env
  * @param {{ after?: string, count?: number, ignore?: string }} [window]
  *   `after` 는 12-hex 커서(미지정 = HEAD 부터) · `count` 는 페이지 크기(**미지정 = 상한 없음**;
- *   CLI 층은 D15 로 필수다) · `ignore` 는 억제 목록 파일 경로(미지정 = 억제 없음 · D20).
+ *   지정 시 1 이상의 안전정수여야 한다 · CLI 층은 D15 로 필수다) · `ignore` 는 억제 목록 파일 경로
+ *   (미지정 = 억제 없음 · D20).
  */
 export async function feeds(vault, env = 'prod', window = {}) {
+  const envError = envEnumError(env)
+  if (envError !== null) throw new Error(envError)
+  if (window.count !== undefined && !(Number.isSafeInteger(window.count) && window.count >= 1)) {
+    throw new Error(
+      `feeds() 의 count 는 1 이상의 안전정수여야 합니다: ${JSON.stringify(window.count)}`,
+    )
+  }
   const vaultDir = path.resolve(vault)
   // 러너가 둘인 것이 계약이다(`lib/feed-cursor.mjs` 의 `LIVE_WALK_TIMEOUT_MS` 「적용 범위」 참조):
   //   · `walkGit`    — 워크 자신의 호출(가용성 확인·커서 검증·배치 워크). D23 spawn 타임아웃이 붙는다.
-  //   · `resolveGit` — 문서 해석 계층. 비용 분포가 자릿수로 달라 개별 호출 상한을 걸지 않는다.
+  //   · `resolveGit` — 문서 해석 계층. 비용 분포가 자릿수로 달라 `walkGit` 과 **같은 값의** 촘촘한
+  //     상한은 걸지 않는다 — 그 계층은 HEAD 문서 상태·삭제 이력·경로 역인덱스를 훑어 정상 범위에서도
+  //     초 단위로 걸리고(부하 상태의 실측이 초 단위대 — 아래 주석), `walkGit` 값을 그대로 물리면 정상
+  //     가변비용이 타임아웃으로 오탐된다. 그러나 "촘촘한 상한을 안 건다"가 "상한이 없어도 된다"는
+  //     아니다 — git 프로세스가 완전히 멈추는 것(예: 자격증명 프롬프트 대기·막힌 네트워크 fetch)은
+  //     비용 분포와 무관한 별개 위험이다. 그래서 **백스톱**만 건다: 정상 가변비용에는 절대 걸리지
+  //     않을 만큼 넉넉하되(아래), 완전 hang 은 결국 끝낸다.
   const walkGit = makeGitRunner(vaultDir, { timeoutMs: LIVE_WALK_TIMEOUT_MS })
-  const resolveGit = makeGitRunner(vaultDir)
+  const resolveGit = makeGitRunner(vaultDir, { timeoutMs: RESOLVE_BACKSTOP_TIMEOUT_MS })
   // git 자체의 가용성은 워크보다 **먼저** 가른다 — 여기서 끊지 않으면 러너 실패가 커서 해석 실패
   //   (= 빈 페이지)로 접혀 「피드 끝」으로 오독된다. spawn 타임아웃(D23)도 이 지점에서 드러난다.
   checkGitAvailable(walkGit)
@@ -160,7 +198,16 @@ function fail(message) {
 }
 
 /**
- * D15·D16 — `--count` 는 **필수**이고 값은 **1 이상 정수**다. 위반이면 사유 문구, 정상이면 `null`.
+ * `--count` 상한 — 이 값을 넘기면 거절한다(DoS 방지: 임의로 큰 값이 그대로 git 워크의 배치 상한
+ * 으로 전달되는 것을 막는다). `package.json` 의 `build`·`build-dev` 가 이미 `--count 200` 을 쓰므로
+ * **200 미만으로 내리면 그 두 빌드가 즉시 깨진다** — 실사용치보다 뚜렷이 큰 값을 고르되 임의의 큰
+ * 정수(예: 10^9)와는 확실히 구분되는 자릿수로 둔다.
+ */
+const MAX_COUNT = 10_000
+
+/**
+ * D15·D16 — `--count` 는 **필수**이고 값은 **1 이상 `MAX_COUNT` 이하의 정수**다. 위반이면 사유 문구,
+ * 정상이면 `null`.
  *
  * ★ `Number.isFinite(n) && n > 0` 만으로는 부족하다(실측): `parseInt('1.9')=1` · `parseInt('5e2')=5`
  *   (500 이 아니다) · `parseInt(' 7')=7` · `parseInt('0x10')=0`. 앞의 셋은 **조용히 다른 수**가 되어
@@ -174,6 +221,9 @@ function countValueError(raw) {
   const parsed = Number.parseInt(raw, 10)
   if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== raw) {
     return `--count 값이 1 이상의 정수가 아닙니다: ${JSON.stringify(raw)}`
+  }
+  if (parsed > MAX_COUNT) {
+    return `--count 값이 상한(${MAX_COUNT})을 초과했습니다: ${JSON.stringify(raw)}`
   }
   return null
 }

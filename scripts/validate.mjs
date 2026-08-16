@@ -199,10 +199,18 @@ export function parseArgs(argv) {
     }
     if (arg === '--max-excluded') {
       const value = argv[i + 1]
-      if (!value || !/^\d+$/u.test(value)) {
-        throw new Error('--max-excluded 에는 0 이상의 정수가 필요합니다')
+      // `/^\d+$/u` 는 자릿수를 제한하지 않는다 — "숫자로만 구성된 문자열"이면 임의로 길어도
+      //   통과한다. `Number.parseInt` 로 만든 수가 `Number.MAX_SAFE_INTEGER`(2^53-1) 를 넘으면
+      //   정밀도를 잃은 부정확한 값이 되고, 그 값이 그대로 문턱(`gateExcluded` 의 상한)으로 들어가면
+      //   어떤 실제 vault 의 제외 건수도 그 문턱을 넘지 못해 게이트가 사실상 죽는다(개수와 무관하게
+      //   항상 통과). 그래서 형태(자릿수 패턴)뿐 아니라 **값**(안전정수 범위)도 함께 검증한다.
+      const parsed = value === undefined ? Number.NaN : Number.parseInt(value, 10)
+      if (!value || !/^\d+$/u.test(value) || !Number.isSafeInteger(parsed)) {
+        throw new Error(
+          '--max-excluded 에는 0 이상의 안전정수(Number.MAX_SAFE_INTEGER 이하)가 필요합니다',
+        )
       }
-      options.maxExcluded = Number.parseInt(value, 10)
+      options.maxExcluded = parsed
       i += 1
       continue
     }

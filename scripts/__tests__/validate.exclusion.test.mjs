@@ -109,6 +109,20 @@ describe('validate — 인자 파싱 (VD4 · 🔴RED 미구현)', () => {
     expect(parseArgs([]).maxExcluded).toBe(0)
     expect(() => parseArgs(['--max-excluded', 'x'])).toThrow()
   })
+
+  it('VD4-오버플로: 안전정수 범위를 넘는 숫자 문자열은 게이트를 무력화하지 않고 fail-loud 한다', () => {
+    // `/^\d+$/u` 는 자릿수 제한이 없어 "숫자로만 구성된 문자열"이면 전부 통과했다. `Number.parseInt`
+    //   로 그 문자열을 수로 만들면 `Number.MAX_SAFE_INTEGER`(2^53-1) 를 넘는 순간 정밀도를 잃는다
+    //   (예: 이 값은 파싱되어 `Number.isSafeInteger` 가 거짓인 부정확한 큰 수가 된다) — 그 부정확한
+    //   값이 `maxExcluded` 로 그대로 들어가면 어떤 실제 vault 의 제외 건수도 그 문턱을 넘지 못해
+    //   `gateExcluded` 가 사실상 죽는다(개수와 무관하게 항상 통과). 안전정수 상한을 넘는 숫자
+    //   문자열은 형태(자릿수)가 아니라 **값**으로도 거절해야 한다.
+    expect(() => parseArgs(['--max-excluded', '99999999999999999999'])).toThrow()
+    // 짝(회귀 방지 앵커): 안전정수 범위 안의 큰 값은 계속 통과한다 — 자릿수만으로 거절하지 않는다.
+    expect(parseArgs(['--max-excluded', String(Number.MAX_SAFE_INTEGER)]).maxExcluded).toBe(
+      Number.MAX_SAFE_INTEGER,
+    )
+  })
 })
 
 describe('validate — 종료코드는 1 이다 (VD5 · 🔴RED 미구현)', () => {
