@@ -47,11 +47,20 @@ export function judgeDocs(parsedDocs, ctx) {
     if (typeof id !== 'string' || group.length < 2) continue
     const idLooksValid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(id)
-    for (const [index, doc] of group.entries()) {
-      if (!idLooksValid && index === 0 && issues.get(doc)?.reasonCode === 'SCHEMA_VIOLATION') {
-        continue
-      }
-      if (issues.get(doc)?.reasonCode === 'MISSING_TYPE') continue
+    // 무효 id 를 공유하는 그룹은 대표 하나만 SCHEMA_VIOLATION 을 유지하고 나머지를 DUPLICATE_ID 로
+    // 낮춘다. 대표는 **입력 배열 위치가 아니라 docPath 정렬**로 고른다 — `index === 0` 이면 같은
+    // 문서 집합을 순서만 바꿔 넣었을 때 어떤 문서가 대표가 되는지도 뒤바뀐다(순서 의존, 재현됨).
+    const representative = idLooksValid
+      ? null
+      : group.toSorted((a, b) =>
+          docPath(a, wikiPrefix).localeCompare(docPath(b, wikiPrefix), 'ko'),
+        )[0]
+    for (const doc of group) {
+      if (doc === representative) continue
+      // MISSING_TYPE·DUPLICATE_PATH 는 사유 우선순위 표(DG9·DG8)에서 DUPLICATE_ID 보다 상위다 —
+      // 대표가 아닌 문서라도 이미 그 상위 사유를 갖고 있으면 덮지 않는다(하위 사유가 상위를 이기면 안 된다).
+      const priorReason = issues.get(doc)?.reasonCode
+      if (priorReason === 'MISSING_TYPE' || priorReason === 'DUPLICATE_PATH') continue
       setIssue(issues, doc, 'DUPLICATE_ID', `중복 id 발견: ${id}`, { force: true })
     }
   }

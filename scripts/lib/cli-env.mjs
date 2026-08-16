@@ -19,14 +19,17 @@ const ALLOWED = ['dev', 'prod']
 /**
  * 열거에 없는 값이면 **표준 문구**를, 유효하면 `null` 을 돌려준다.
  *
- * 미지정(`undefined`)까지 여기서 막지 않는다 — 미지정은 fail-closed(prod)로 흡수하는 것이 계약이고
- * (`cli.env-enum.test.mjs` EV6), 이 함수가 거절하는 것은 **오타뿐**이다. 다만 빈 문자열은 오타다
- * (`--env=` 는 값을 준 것이다) — 호출부가 미지정과 섞지 않도록 여기서 걸러 낸다(EV7).
+ * ★ 이 함수 **자신**은 `undefined` 도 거절한다(`ALLOWED.includes(undefined)` 는 false 다) — "미지정은
+ * fail-closed(prod)로 흡수한다"(`cli.env-enum.test.mjs` EV6)는 계약은 **이 함수가 아니라 호출부의
+ * 기본값**이 진다. 네 CLI 모두 `parseArgs` 의 `default` 로 `env` 를 먼저 채운 뒤에야 이 함수를 부르므로,
+ * 실제로는 `undefined` 가 여기 도달할 일이 없다(그래서 EV6 는 green 이면서 이 함수를 직접 `undefined`
+ * 로 부르면 거절 문구가 난다 — CLI 기본값이 그 차이를 가린다). 빈 문자열은 오타다(`--env=` 는 값을
+ * 준 것이다) — 미지정과 섞이지 않도록 여기서 걸러 낸다(EV7).
  *
  * @param {unknown} value `--env` 로 실제로 들어온 값
  * @returns {string|null} 거절 사유 문구 · 유효하면 null
  */
 export function envEnumError(value) {
   if (ALLOWED.includes(value)) return null
-  return `알 수 없는 --env 값: "${value}" — ${ALLOWED.join('|')} 만 허용합니다`
+  return `알 수 없는 --env 값: ${JSON.stringify(value)} — ${ALLOWED.join('|')} 만 허용합니다`
 }

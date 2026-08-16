@@ -1,6 +1,9 @@
 // @vitest-environment node
 //
-// P2 RED-9 · scripts/wiki/schema/{summary,feeds,body}.schema.json (strict 계약) — tdd §6.9
+// P2 RED-9 · scripts/schema/{summary,feeds,body}.schema.json (strict 계약) — tdd §6.9
+//   ★ P5 FIX-NOW 정정 — 경로 `scripts/wiki/schema/` 는 P3 이관(`scripts/wiki` 빌드 파이프라인을
+//   sas-wiki 로 이관) 이전의 잔재다. 이관 후 이 리포 안에서는 스키마가 `scripts/schema/` 에 있다
+//   (아래 `SCHEMA_DIR` 이 그 실제 경로를 유도한다) — `scripts/wiki/schema/` 는 오늘 존재하지 않는다.
 // RED 사유: 스키마 3종 미작성 → loadSchema 의 readFileSync 실패(파일 전체 RED).
 //
 // **이 스키마의 존재 이유는 "제거된 필드가 산출물에 있으면 fail" 이다.**

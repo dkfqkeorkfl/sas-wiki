@@ -265,6 +265,24 @@ describe('judgeDocs — 중복·결정성·우선순위 (DG6~DG10 · 🔴RED 미
     expect(byPath['wiki/concept/짝B.md']).toBe('DUPLICATE_ID')
     expect(result.visible).toEqual([])
   })
+
+  it('DG10-역순: 같은 무효id 쌍을 역순으로 넣어도 reasonCode 매핑이 동일하다 (순서 무관)', () => {
+    // ★ P5 FIX-NOW(doc-gate.mjs:50) — DG10 제목은 "1-pass" 를 결정적이라 부르지만 정순 입력만
+    //   확인했다. 대표(SCHEMA_VIOLATION 을 유지할 문서) 선정이 배열 **index** 에 의존하면, 같은
+    //   문서 두 개를 순서만 바꿔 넣었을 때 A/B 의 reasonCode 가 뒤바뀐다 — DG7 이 DUPLICATE_PATH
+    //   축에서 이미 요구한 "역순 불변" 을 이 축(무효 id 공유 + DUPLICATE_ID)에도 그대로 요구한다.
+    const byPath = (result) =>
+      Object.fromEntries(result.excluded.map((entry) => [entry.path, entry.reasonCode]))
+
+    const forward = judge([doc('concept/무효A', fm(BAD_ID)), doc('concept/짝B', fm(BAD_ID))], ctx()) // prettier-ignore
+    const reversed = judge([doc('concept/짝B', fm(BAD_ID)), doc('concept/무효A', fm(BAD_ID))], ctx()) // prettier-ignore
+
+    expect(byPath(reversed)).toEqual(byPath(forward))
+    expect(byPath(forward)).toEqual({
+      'wiki/concept/무효A.md': 'SCHEMA_VIOLATION',
+      'wiki/concept/짝B.md': 'DUPLICATE_ID',
+    })
+  })
 })
 
 // ────────────────────────────────────────────────────────────────────────────

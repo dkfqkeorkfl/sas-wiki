@@ -2,10 +2,12 @@
 //
 // P2 dev/prod 분리 · Task 1 — wiki-doc 스키마 `draft` 필드 계약 RED (tdd §3 Task 1 · plan §Task 1)
 //
-// RED 사유(유효 RED): 현행 wiki-doc.schema.json 은 `additionalProperties: true`(실측 :63)라
-//   `draft` 가 properties 에 없어 **어떤 타입이든 통과**한다 → `draft: "yes"`(비-boolean)가 위반 0건이다.
-//   GREEN(Task 1)이 properties 에 `draft: {type:"boolean", default:false}` 를 추가하면 `draft:"yes"` 는
-//   타입 불일치로 걸리고(RED→green), boolean/미지정은 계속 통과한다.
+// RED 이력(P5 FIX-NOW 정정 — 예전 서술은 "지금도 additionalProperties:true 라 통과한다" 로 읽혀
+//   거짓이었다): 착수 시점엔 wiki-doc.schema.json 에 `additionalProperties: true` 뿐이고 `draft` 가
+//   properties 에 없어 **어떤 타입이든 통과**했다(`draft: "yes"` 가 위반 0건). GREEN(Task 1)이
+//   properties 에 `draft: {type:"boolean", default:false}` 를 추가해 **지금은** `draft` 자신이
+//   boolean 타입으로 고정돼 있다 — `draft:"yes"` 는 (`additionalProperties` 가 아니라) 이 타입
+//   선언 때문에 거부되고, boolean/미지정은 계속 통과한다.
 //
 // 결과 계약: boolean 수락 · 비-boolean 거부 · optional(required 아님 → Layer A fail-open: 미지정=유효=공개).
 // spec-gaming 가드: 스키마를 `additionalProperties:false` 로 뒤집어 통과시키지 말 것(무관 필드 대량 회귀).
@@ -31,7 +33,7 @@ function validFrontmatter(overrides = {}) {
 }
 
 describe('wiki-doc.schema — draft 필드 계약(boolean 핀)', () => {
-  it('draft: "yes"(비-boolean)는 위반이다 (RED — 현행 additionalProperties:true 라 통과)', () => {
+  it('draft: "yes"(비-boolean)는 위반이다 (draft 가 boolean 으로 타입 고정돼 있어 거부된다)', () => {
     const errors = validateItem(validFrontmatter({ draft: 'yes' }), wikiDocSchema)
 
     expect(errors.length).toBeGreaterThan(0)

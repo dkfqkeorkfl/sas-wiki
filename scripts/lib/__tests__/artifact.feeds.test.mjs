@@ -63,4 +63,19 @@ describe('feeds 아티팩트 경로 — summary 와 다른 슬롯 (FA1 · 🔴RE
     expect(dev).not.toBe(path.join('/v', 'cache', 'summary.dev.json'))
     expect(prod).not.toBe(path.join('/v', 'cache', 'summary.prod.json'))
   })
+
+  it('FA1b: env 에 traversal-like 값을 주면 cache/ 밖으로 벗어나지 않는다 (거부, P5 FIX-NOW artifact.mjs:33 재현됨)', () => {
+    // ★ 수정 전 재현: `feeds.${env}.json` 은 path.join 이 **한 세그먼트**로 받는 문자열이라, env 에
+    //   `..` 를 여러 겹 채우면 결합 경로의 정규화가 실제로 cache/ 밖으로 나간다(실측:
+    //   `feedsArtifactPath('/v', '../../../../../../etc/passwd')` → `/etc/passwd.json`). triage 는
+    //   "현재 호출자는 안전/없음" 을 명시해 이 함수 자체는 G 지만, 이 테스트는 호출자를 우회해
+    //   함수를 직접 겨냥하므로 방어가 없으면 조용히 통과한다 — 그래서 방어(artifact.mjs:33)가 이
+    //   테스트보다 **먼저** 같은 커밋에 있어야 한다(페어4).
+    expect(() => feedsArtifactPath('/v', '../../../../../../etc/passwd')).toThrow()
+  })
+
+  it('FA1c: 평범한 env 값은 여전히 정상 경로를 낸다 (회귀 방지 — 과잉 거부가 아니다)', () => {
+    expect(posix(feedsArtifactPath('/v', 'dev'))).toBe('/v/cache/feeds.dev.json')
+    expect(posix(feedsArtifactPath('/v', 'prod'))).toBe('/v/cache/feeds.prod.json')
+  })
 })

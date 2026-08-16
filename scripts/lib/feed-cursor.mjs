@@ -146,13 +146,16 @@ export function isCursorFormat(value) {
  * - **거부는 `null` 이지 throw 가 아니다.** 세 단계가 **같은 거부 경로**를 공유해야 호출부가 사유를
  *   한 자리에서 문구로 만든다(層을 섞지 않는다).
  * - **`cursor === undefined` 는 거부가 아니라 `HEAD` 해석이다**(`prd.md:498` _"미지정이면 HEAD 부터"_).
+ *   ★ 이 갈래(HEAD 해석)만 실패 원인을 가른다(`revParseCommit` 의 `narrowCatch` 참조) — **빈 저장소가
+ *   아닌** 실패(권한·손상 등)를 `walkCursorPage` 가 "커밋 0건" 으로 오번역하지 않기 위해서다. 커서
+ *   갈래(`cursor` 가 값을 가짐)는 「비0 종료는 전부 거부」 계약을 그대로 유지한다(CR2b~CR6).
  *
  * @param {string|undefined} cursor 12-hex 커서. `undefined` 면 HEAD.
  * @param {{ runGit: (args: string[]) => string }} deps vault 를 cwd 로 고정한 러너(주입 seam)
  * @returns {string|null} 전체 객체명(40 또는 64 hex). 거부·미해석은 `null`.
  */
 export function resolveCursorCommit(cursor, { runGit } = {}) {
-  if (cursor === undefined) return revParseCommit(runGit, 'HEAD')
+  if (cursor === undefined) return revParseCommit(runGit, 'HEAD', { narrowCatch: true })
   if (!isCursorFormat(cursor)) return null
   const objectName = revParseCommit(runGit, cursor)
   if (objectName === null) return null
@@ -190,6 +193,10 @@ export function resolveCursorCommit(cursor, { runGit } = {}) {
  *   ★ **`count` 미지정 = 상한 없음**(= 커서 위치부터 히스토리 끝까지 1회 워크). 「조용한 기본값」이
  *   아니다 — 기본 개수를 몰래 채워 넣으면 그것이 D16 이 없앤 침묵 폴백이다. CLI 층은 `--count` 를
  *   **필수**로 강제하므로(D15) 상한 없는 호출은 모듈 호출자(생성기·테스트)에서만 성립한다.
+ *   **지정하면 1 이상의 안전정수여야 한다** — `count: 0` 을 그대로 흘리면 배치가 슬라이스 없이
+ *   비고, 그 빈 배열 위에서 `nextCursorFor` 가 마지막 항목에 접근해 `TypeError` 로 죽는다(P5
+ *   FIX-NOW 재현됨). 이 함수는 CLI 를 거치지 않는 모듈 직접 호출자(`generator.mjs` 등)도 있어
+ *   호출부마다 검증을 반복하는 대신 여기서 한 번 막는다.
  * @returns {{ items: object[], nextCursor: string|null }}
  *   `nextCursor` 는 **12-hex 문자열**이고 히스토리 끝에서만 `null` 이다(D45 · C12).
  */
@@ -197,6 +204,11 @@ export function walkCursorPage(
   vaultDir,
   { after, count, ignoreEntries = [], resolveItems, runGit, timeoutMs } = {},
 ) {
+  if (count !== undefined && !(Number.isSafeInteger(count) && count >= 1)) {
+    throw new Error(
+      `walkCursorPage() 의 count 는 1 이상의 안전정수이거나 미지정(상한 없음)이어야 합니다: ${JSON.stringify(count)}`,
+    )
+  }
   const resolvedRunGit =
     runGit ?? makeGitRunner(vaultDir, { timeoutMs: timeoutMs ?? LIVE_WALK_TIMEOUT_MS })
   const start = resolveCursorCommit(after, { runGit: resolvedRunGit })
@@ -302,12 +314,20 @@ function revListBatch(runGit, { maxCount, skipStart, start }) {
  * `^{commit}` 만으로는 부족하다: `^{<type>}` 는 _"dereference the object at `<rev>` recursively
  * until an object of type `<type>` is found"_ 라 **결과 객체 타입 단언**이지 입력 구문 제약이
  * 아니다 — `<rev>` 로 유효한 모든 표기(브랜치·태그·`HEAD~1`)가 exit 0 으로 통과한다.
+ *
+ * `narrowCatch`(기본 false) — 켜면 `isEmptyHistory` 가 아닌 실패(권한·손상 등)를 **전파**한다.
+ * `revListBatch`(위)가 이미 쓰는 것과 같은 패턴을 그대로 복제한 것이다 — 새 판정 기계를 만들지
+ * 않는다(P5 FIX-NOW `feed-cursor.mjs:306` D-8 PARTIAL). **기본값은 그대로 blanket catch** —
+ * 커서 문자열 검증 갈래(`resolveCursorCommit` 의 `cursor` 분기, CR2b~CR6)는 "비0 종료는 전부
+ * 거부"가 여전히 계약이라 좁히지 않는다. 좁히는 것은 `HEAD` 해석 갈래(빈 저장소 허용, 그 밖의
+ * 실패는 "커밋 0건" 으로 오번역하면 안 된다) 하나뿐이다.
  */
-function revParseCommit(runGit, rev) {
+function revParseCommit(runGit, rev, { narrowCatch = false } = {}) {
   let raw
   try {
     raw = runGit(['rev-parse', '--verify', '--quiet', '--end-of-options', `${rev}^{commit}`])
-  } catch {
+  } catch (error) {
+    if (narrowCatch && !isEmptyHistory(error)) throw error
     return null
   }
   const objectName = String(raw).trim()

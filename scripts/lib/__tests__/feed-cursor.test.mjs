@@ -208,6 +208,96 @@ describe('커서 3단 검증 (CR1~CR6 · 🔴RED 모듈 부재)', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
+// CX — count 방어 (P5 FIX-NOW `feed-cursor.mjs:196` · S-prod · walkCursorPage 모듈 직접 호출)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// ★ `feeds()`(`scripts/feeds.mjs`)는 이미 count 를 검증하지만, 그 검증은 **CLI/모듈 진입점 하나만**
+//   지킨다 — `walkCursorPage` 자신은 생성기(`generator.mjs`)를 포함해 여러 호출자가 직접 부르는
+//   export 다. 이 describe 는 그 진입점을 우회해 함수를 **직접** 호출한다(CLI 검증이 없다고 가정).
+//   feed 생존 판정은 이 축과 무관하므로 `resolveItems` 는 sha 를 그대로 되돌리는 최소 stub 을 쓴다.
+
+/** count 축만 겨냥한 최소 resolveItems — sha 를 feed item 으로 그대로 접는다(생존 판정 무관). */
+const echoResolver = (shas) => shas.map((sha) => ({ id: sha.slice(0, 12) }))
+
+describe('walkCursorPage — count 방어 (CX · walkCursorPage 모듈 직접 호출)', () => {
+  it('CX1: count:0 을 커밋 있는 vault 에서 직접 주면 TypeError 대신 명확한 오류로 거부한다', () => {
+    // ★ 수정 전 재현: maxCount 가 1로 하한되어 배치가 최소 1건을 모으지만, 마지막에
+    //   `collected.slice(0, 0)` 로 items 를 비운 뒤 `nextCursorFor` 가 `items.at(-1).id` 에
+    //   접근해 TypeError 로 죽는다 — 호출자에게 "count 가 잘못됐다"는 사유를 전혀 말하지 않는다.
+    const { vault } = seedFeedVault({ feedCount: 2 })
+    tmps.push(vault)
+    const { walkCursorPage } = seam()
+
+    expect(() =>
+      walkCursorPage(vault, {
+        count: 0,
+        resolveItems: echoResolver,
+        runGit: makeRealGitRunner(vault),
+      }),
+    ).toThrow(/count/u)
+  })
+
+  it('CX2: count 가 1 이상이면 계속 정상 동작한다 (회귀 방지 — 과잉 거부가 아니다)', () => {
+    const { vault } = seedFeedVault({ feedCount: 2 })
+    tmps.push(vault)
+    const { walkCursorPage } = seam()
+
+    const { items, nextCursor } = walkCursorPage(vault, {
+      count: 1,
+      resolveItems: echoResolver,
+      runGit: makeRealGitRunner(vault),
+    })
+
+    expect(items.length).toBeGreaterThan(0)
+    expect(typeof nextCursor === 'string' || nextCursor === null).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// CY — HEAD 해석 실패 전파 (P5 FIX-NOW `feed-cursor.mjs:306` · D-8 PARTIAL → S-prod)
+// ────────────────────────────────────────────────────────────────────────────
+//
+// ★ 좁힌 대안(plan.md D-8 · tdd §3.5·§4.7) — 감사 원안(신규 fail-closed 기계장치)이 아니라 같은
+//   파일의 `revListBatch`(위)가 이미 쓰는 `isEmptyHistory` 패턴을 `revParseCommit` 의 HEAD 해석
+//   갈래에도 그대로 복제했다. **`resolveCursorCommit` 의 커서 검증 갈래(CR2b~CR6)는 손대지 않는다**
+//   — "비0 종료는 전부 거부" 계약은 그대로다. 좁히는 것은 `after` 가 없어 HEAD 를 구할 때뿐이다.
+
+/** `isEmptyHistory` 매치 여부를 자유로이 고르는 실패 러너 — stderr 로 매치를 통제한다. */
+function stderrFailingRunner(stderr) {
+  return () => {
+    // execFileSync 실측 형태를 흉내낸다 — stderr 가 있으면 message 에도 그대로 실린다
+    // ("Command failed: <cmd>\n<stderr>", 위 파일 CY 절 실측).
+    const error = new Error(`Command failed: git rev-parse\n${stderr}`)
+    error.status = 128
+    error.stderr = stderr
+    throw error
+  }
+}
+
+describe('walkCursorPage — HEAD 해석 실패 전파 (CY · walkCursorPage 모듈 직접 호출)', () => {
+  it('CY1: 빈 저장소가 아닌 실패(권한 등)로 HEAD 해석이 죽으면 조용한 빈 페이지로 접지 않고 전파한다', () => {
+    // ★ 수정 전 재현: revParseCommit 의 blanket catch 가 이 실패도 null 로 접어, walkCursorPage 가
+    //   after 미지정 경로("커밋 0건 vault" 로 간주)를 타 조용히 { items: [], nextCursor: null } 을
+    //   낸다 — 권한 오류가 "정상적으로 비어 있는 저장소" 로 오번역된다.
+    const runGit = stderrFailingRunner("fatal: unable to access '.git': Permission denied")
+    const { walkCursorPage } = seam()
+
+    expect(() => walkCursorPage('/hermetic/무관', { resolveItems: echoResolver, runGit })).toThrow(
+      /Permission denied/u,
+    )
+  })
+
+  it('CY2: 진짜 빈 저장소(커밋 0건)는 여전히 조용한 빈 페이지다 (회귀 방지 — 과잉 전파가 아니다)', () => {
+    const runGit = stderrFailingRunner('fatal: your current branch does not have any commits yet')
+    const { walkCursorPage } = seam()
+
+    const result = walkCursorPage('/hermetic/무관', { resolveItems: echoResolver, runGit })
+
+    expect(result).toEqual({ items: [], nextCursor: null })
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
 // WA — 커서 기반 배치 워크의 **argv·프로세스 관측** (tdd §3.2)
 //   조회 CLI 를 자식으로 띄우고 git 이 실제로 받은 argv 를 센다(runtime-load 의 PATH shim).
 // ────────────────────────────────────────────────────────────────────────────

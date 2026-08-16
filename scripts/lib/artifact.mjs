@@ -15,6 +15,30 @@ import { SCHEMA_VERSION } from './payloads.mjs'
 
 export { SCHEMA_VERSION }
 
+/**
+ * `target` 이 `boundary` **안쪽**(자기 자신 포함)인지 확인한다 — 아니면 throw.
+ *
+ * 문자열 `startsWith` 만 쓰면 `…/cache-evil` 이 `…/cache` 를 통과한다(접두어 일치는 형제 디렉터리를
+ * 못 가린다) — `path.sep` 를 경계에 덧붙여야 진짜 하위 경로만 통과한다. P5 FIX-NOW `artifact.mjs:33`
+ * — `env`/`ext` 가 `feeds.${env}.json` 처럼 **한 세그먼트 문자열에 보간**되므로, `../../etc/passwd`
+ * 같은 값을 주면 `path.join` 의 정규화가 실제로 `cache/`·`logs/` 밖으로 나간다(재현됨). triage 는
+ * "현재 호출자는 안전/없음" 을 명시했으므로 결함을 반증하는 red 관측은 요구되지 않는다(G) — 그러나
+ * 신규 적대적 테스트(`artifact.feeds.test.mjs`)는 호출자를 우회해 이 함수를 직접 겨냥하므로 그
+ * 테스트의 red→green 관측이 이 가드의 존재에 의존한다.
+ *
+ * @param {string} target `path.resolve`/`path.join` 을 거친 후보 절대경로
+ * @param {string} boundary 허용 루트(`path.resolve`/`path.join` 을 거친 절대경로)
+ * @param {string} label 오류 메시지에 실을 인자 이름
+ * @param {unknown} value 오류 메시지에 실을 원본 값(진단용 — 신뢰 데이터가 아니므로 `JSON.stringify`)
+ */
+function assertWithinBoundary(target, boundary, label, value) {
+  if (target !== boundary && !target.startsWith(`${boundary}${path.sep}`)) {
+    throw new Error(
+      `${label} 값이 허용 경로(${boundary}) 밖으로 벗어납니다: ${label}=${JSON.stringify(value)}`,
+    )
+  }
+}
+
 // ★ v3 P4 · D27 — `artifactPath(vaultDir, env)` 는 **여기서 사라졌다**. summary 아티팩트 경로를
 //   파생하던 유일한 프로덕션 호출자는 `wiki.mjs:39`·`:44` 였고, 그 자리는 이제 **호출자가 명시하는
 //   `--summary` 인자**가 소유한다(나머지 3 CLI 가 전부 `--out` 인 것과 같은 형태). 발행 측은 인자로
@@ -31,7 +55,10 @@ export { SCHEMA_VERSION }
  * @returns {string} 절대 경로
  */
 export function feedsArtifactPath(vaultDir, env) {
-  return path.join(path.resolve(vaultDir), 'cache', `feeds.${env}.json`)
+  const cacheDir = path.join(path.resolve(vaultDir), 'cache')
+  const target = path.join(cacheDir, `feeds.${env}.json`)
+  assertWithinBoundary(target, cacheDir, 'env', env)
+  return target
 }
 
 /**
@@ -44,7 +71,10 @@ export function feedsArtifactPath(vaultDir, env) {
  * @returns {string} 절대 경로
  */
 export function reportPath(vaultDir, env, ext) {
-  return path.join(path.resolve(vaultDir), 'logs', `summary.report.${env}.${ext}`)
+  const logsDir = path.join(path.resolve(vaultDir), 'logs')
+  const target = path.join(logsDir, `summary.report.${env}.${ext}`)
+  assertWithinBoundary(target, logsDir, 'env/ext', `${env}/${ext}`)
+  return target
 }
 
 /**
