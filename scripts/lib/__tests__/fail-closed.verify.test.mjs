@@ -1,17 +1,19 @@
 // @vitest-environment node
 //
-// 감사 후속 — **"검증이 조용히 건너뛰어진다"** 계열 4건의 fail-closed 회귀 가드.
+// 감사 후속 — **"조용히 안전이 깨진다"** 계열 5건의 fail-closed 회귀 가드. 층이 둘로 갈린다:
 //
-// 네 결함은 형태가 같다: 예외·오탈자·경계 입력이 들어오면 게이트가 *막는* 대신 *통과*시킨다.
-// 이 제품은 "모든 변경이 기록·추적된다"가 신뢰의 근거이므로, 판단이 서지 않을 때의 기본값은
-// **숨김·중단**이어야 한다(숨김은 눈에 띄고 되돌릴 수 있지만, 누출·오판은 조용하고 되돌릴 수 없다).
+// 서빙(가용성) 층 — H3·H4 는 "검증"이 아니라 **누가 보이는가**의 판정이다. 판단이 서지 않으면
+//   throw 하지 않고 조용히 숨긴다(숨김은 눈에 띄고 되돌릴 수 있다). 검증(게이트) 층 — H5·H6·H7 은
+//   buildContent 의 게이트다. 판단이 서지 않으면 조용히 넘기지 않고 throw 로 멈춘다(누출·오판은
+//   조용하고 되돌릴 수 없기 때문이다).
 //
 //   H3 walkFeeds  — `env === 'prod'` 로 draft 를 걸러 non-dev 오타값이 draft 를 노출(PRD D2 위반).
 //   H4 isDraft    — `draft: yes` 처럼 불리언이 아닌 값이 "공개"로 해석.
 //   H5 parseVault — frontmatter 없는 .md 를 에러 없이 목록에서 누락.
 //   H6 readIdAtCreation — 생성 blob 조회가 실패하면 null(=pre-id) 로 간주해 불변 게이트를 건너뜀.
+//   H7 삭제된 문서의 id 재사용 — 과거 피드가 무관한 새 문서로 오귀속된다(정당한 rename 은 면제).
 //
-// 판정 방향(전 항목 공통): **알 수 없으면 숨기거나 멈춘다.**
+// 판정 방향(전 항목 공통): **알 수 없으면 숨기거나 멈춘다** — 서빙 층은 숨김, 게이트 층은 중단.
 import { describe, expect, it } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -19,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 import { buildContent } from '../../validate.mjs'
 import { isDraft } from '../draft.mjs'
-import { makeGitRunner, readIdAtCreation } from '../git.mjs'
+import { anyMarkdown, collectDeletedDocEvents, makeGitRunner, readIdAtCreation } from '../git.mjs'
 import { parseVault } from '../parse-vault.mjs'
 import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import {
@@ -233,11 +235,15 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
     }
   })
 
-  // rename 계보 면제는 `buildPathIndex` 로 판정하는데, 그 Map 의 키는 `${sha}:${경로}` 다.
-  //   삭제 경로(`wiki/…md`)를 그대로 `has()` 에 넣으면 **절대 맞지 않아** 면제가 죽은 분기가 된다.
-  //   git 기본 rename 감지가 켜져 있으면 이동이 R 로 잡혀 D 목록에 안 들어와 증상이 가려지므로,
-  //   `diff.renames=false`(사용자가 설정 가능)로 감지를 끄고 그 아래를 드러낸다.
-  it('rename 감지가 꺼져 있어도 정당한 문서 이동은 통과한다 (계보 면제가 실제로 동작한다)', () => {
+  // ★ rename 계보 면제의 실제 메커니즘은 `buildPathIndex` 가 아니다(그것은 git-walk.mjs 의 feed 경로
+  //   역인덱스 전용이다) — H7 이 실제로 쓰는 `collectDeletedDocEvents` 는 명령줄에 **`--find-renames`
+  //   를 못박아 둔다**(git.mjs 의 "커맨드라인 플래그가 config 를 이기므로" 주석). 그래서 아래
+  //   `diff.renames=false` config 는 이 게이트의 rename 감지를 **끄지 못한다** — 로컬 config 로 감지가
+  //   꺼져도(사용자 환경차) 이 게이트가 흔들리지 않음을 보이려는 의도로 남겨 둔다. 이전에는 이 사실이
+  //   `buildContent(...).not.toThrow()` 라는 결과만으로 확인됐는데, 그 결과는 "게이트가 애초에 전혀
+  //   발동하지 않는" 경우와 구별되지 않는다(SILENT_PASS) — 그래서 메커니즘 자체를 직접 확인하는
+  //   앵커(collectDeletedDocEvents 가 이 커밋을 삭제 이벤트로 잡지 않는다)를 결과 단언과 짝짓는다.
+  it('rename 감지는 config 가 아니라 명령줄 플래그가 결정한다 — 정당한 문서 이동은 통과한다', () => {
     const vault = initVault()
     try {
       git(vault, ['config', 'diff.renames', 'false'])
@@ -245,6 +251,11 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
       commit(vault, 'chore: 문서 생성')
       git(vault, ['mv', 'wiki/company/구경로.md', 'wiki/company/새경로.md'])
       commit(vault, 'chore: 문서 이동')
+
+      // 양성 앵커(메커니즘): config 가 꺼져 있어도 이 이동은 삭제 이벤트로 잡히지 않는다 — R 로
+      //   흡수된다는 뜻이다. 이 확인이 없으면 "게이트가 그냥 아무것도 안 잡는다" 로도 통과한다.
+      const events = collectDeletedDocEvents(makeGitRunner(vault), { isDocPath: anyMarkdown })
+      expect(events, 'rename 이 삭제 이벤트로 새어 나왔다').toEqual([])
 
       expect(() => buildContent({ env: 'prod', vault })).not.toThrow()
     } finally {

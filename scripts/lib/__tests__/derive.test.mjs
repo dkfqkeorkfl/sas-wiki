@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// P2 RED-4 · scripts/wiki/lib/derive.mjs (summary 파생 · excerpt · tree · tags) — tdd §6.4
+// P2 RED-4 · scripts/lib/derive.mjs (summary 파생 · excerpt · tree · tags) — tdd §6.4
 //
 // RED 사유(재작성): 현행 derive 는 구 계약이다 —
 //   docs 에 `md`·`html`·`backlinks`·`links`·`footnotes`·`path` 를 싣고(신 계약은 10키),

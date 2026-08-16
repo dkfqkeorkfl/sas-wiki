@@ -70,7 +70,7 @@ function tmpTarget(name) {
   return path.join(dir, name)
 }
 
-describe('busy-wait 근치 — 소스 트립와이어 (AG1 · 🔴RED · CX-Q)', () => {
+describe('busy-wait 근치 — 소스 트립와이어 (AG1 · 🟢GREEN 회귀 고정 · CX-Q)', () => {
   it('AG1: `atomic.mjs` 에 busy-wait 루프가 없고 `Atomics.wait` 를 쓰며 **의존성이 늘지 않았다**', () => {
     const source = readFileSync(ATOMIC_SOURCE, 'utf8')
 
@@ -135,6 +135,19 @@ describe('재시도 경로는 여전히 작동한다 (AG2 · 🟩pair)', () => {
     // 앵커: 재시도가 실제로 일어났다(1회차 실패 · 2회차 성공).
     expect(calls).toBe(2)
     expect(waitSpy.mock.calls.length).toBeGreaterThan(0)
+
+    // ★ 호출 여부만으로는 "항상 0ms 로 부른다"(사실상 즉시 재시도 스핀) 도 통과한다 — 값을 문다.
+    //   `Atomics.wait(view, index, value, ms)` 의 4번째 인자가 실제 대기 시간(ms)이다.
+    const waitedMs = waitSpy.mock.calls[0][3]
+    expect(waitedMs, `대기 ms 가 0 이하다: ${JSON.stringify(waitSpy.mock.calls[0])}`).toBeGreaterThan(0) // prettier-ignore
+
+    // ★ 순서도 문다 — 대기가 실패한 rename 과 성공한 rename **사이**에서 일어나야 한다("재시도 사이"
+    //   라는 이름의 뜻 그대로). 대기가 맨 처음이나 맨 끝에 와도(순서 무관 스텁) 위 두 단언은
+    //   동일하게 통과하므로 `invocationCallOrder` 로 상대 순서를 직접 비교한다.
+    const [firstRename, secondRename] = fs.renameSync.mock.invocationCallOrder
+    const waitOrder = waitSpy.mock.invocationCallOrder[0]
+    expect(waitOrder, 'wait 가 1차 rename 전에 불렸다').toBeGreaterThan(firstRename)
+    expect(waitOrder, 'wait 가 2차 rename 후에 불렸다').toBeLessThan(secondRename)
   })
 })
 

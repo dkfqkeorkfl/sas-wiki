@@ -125,6 +125,21 @@ describe('커서 3단 검증 (CR1~CR6 · 🔴RED 모듈 부재)', () => {
     }
   })
 
+  it('CR2b: 형식 거부는 실제로 git 호출을 **차단**한다 (isCursorFormat 을 부르는 게 아니라 지키는지)', () => {
+    // ★ CR2 는 `isCursorFormat` 을 고립시켜 부른다 — `resolveCursorCommit` 이 그 반환값을 실제로
+    //   **소비**해 git 호출 앞에서 멈추는지는 CR2 로는 결코 관측되지 않는다(호출 자체가 없으므로).
+    //   그래서 resolveCursorCommit(불량 커서, …) 를 직접 불러 러너가 **한 번도 안 불렸는지** 를 문다.
+    const { resolveCursorCommit } = seam()
+    const runner = recordingRunner()
+
+    for (const bad of BAD_CURSORS) {
+      const result = resolveCursorCommit(bad, { runGit: runner })
+      expect(result, `거부 대상이 통과했다: ${JSON.stringify(bad)}`).toBeNull()
+    }
+
+    expect(runner.calls, `형식 거부 대상인데 git 이 불렸다: ${JSON.stringify(runner.calls)}`).toEqual([]) // prettier-ignore
+  })
+
   it('CR3: `after` 미지정은 거부가 아니라 **HEAD 해석**이다 (N4)', () => {
     const { resolveCursorCommit } = seam()
     const tiny = initTinyRepo()
@@ -210,6 +225,19 @@ function maxCountOf(argv) {
   return token === undefined ? null : Number(token.slice('--max-count='.length))
 }
 
+/**
+ * WA1~WA3·WA9 공유 — git argv 관측만으로는 "예상한 batch 호출은 났지만 CLI 자체는 exit≠0 이거나
+ * stdout 이 깨졌다" 를 놓친다(SILENT_PASS — argv 단언은 exitCode/stdout 을 전혀 보지 않는다).
+ * git 호출 **이후**에 CLI 가 실제로 건강하게 끝났는지를 짝으로 확인한다.
+ */
+function expectHealthyCliRun(run) {
+  expect(run.exitCode, `CLI 가 비정상 종료했다(exit=${run.exitCode})\n${run.stderr}`).toBe(0)
+  expect(
+    () => JSON.parse(run.stdout),
+    `stdout 이 유효 JSON 이 아니다: ${String(run.stdout).slice(0, 200)}`,
+  ).not.toThrow()
+}
+
 /** 워크 argv 관측 1회 — tmp vault 를 시딩해 조회 CLI 를 띄운다. */
 function observeWalk({ count, feedCount }) {
   const seeded = seedFeedVault({ feedCount })
@@ -258,6 +286,8 @@ describe('커서 워크 argv (WA1~WA3·WA9 · 🔴RED 조회 경로가 git 을 �
       // ★ 정렬 권위 이전이 계약이다(D39 · OQ-P2-2 (a)) — D12 형태에 정렬 플래그가 없다.
       //   선형에서는 무영향이지만 **병합 토폴로지에서는 페이지 집합 자체가 달라진다**(tdd §2.5-①).
       expect(argv, `배치 argv 에 --author-date-order 가 있다: ${JSON.stringify(argv)}`).not.toContain('--author-date-order') // prettier-ignore
+
+      expectHealthyCliRun(run)
     },
   )
 
@@ -272,6 +302,7 @@ describe('커서 워크 argv (WA1~WA3·WA9 · 🔴RED 조회 경로가 git 을 �
       expect(small.batches.length, `배치 0건 (exit=${small.exitCode})\n${small.stderr}`).toBeGreaterThan(0) // prettier-ignore
       expect(maxCountOf(small.batches[0])).toBeGreaterThanOrEqual(4)
       expect(maxCountOf(small.batches[0])).toBeLessThanOrEqual(6)
+      expectHealthyCliRun(small)
 
       const large = observeWalk({ count: 5, feedCount: 3 })
       expect(large.batches.length, `배치 0건 (exit=${large.exitCode})\n${large.stderr}`).toBeGreaterThan(0) // prettier-ignore
@@ -281,6 +312,7 @@ describe('커서 워크 argv (WA1~WA3·WA9 · 🔴RED 조회 경로가 git 을 �
       // 채워지지 않는 구간(피드 3건 < count 5)이므로 2차 배치가 실재하고 그것이 ×4 다.
       expect(large.batches.length, '2차 배치가 없다 — 채워지지 않았는데 한 번만 훑었다').toBeGreaterThanOrEqual(2) // prettier-ignore
       expect(maxCountOf(large.batches[1])).toBe(20)
+      expectHealthyCliRun(large)
     },
   )
 
@@ -292,6 +324,7 @@ describe('커서 워크 argv (WA1~WA3·WA9 · 🔴RED 조회 경로가 git 을 �
 
       // 앵커: 0회·1회로 통과하는 것을 배제한다 — **정확히 2회**를 문다.
       expect(observed.batches.length, `배치 횟수 (exit=${observed.exitCode})\n${observed.stderr}`).toBe(2) // prettier-ignore
+      expectHealthyCliRun(observed)
     },
   )
 
@@ -305,6 +338,7 @@ describe('커서 워크 argv (WA1~WA3·WA9 · 🔴RED 조회 경로가 git 을 �
     for (const argv of observed.batches) {
       expect(maxCountOf(argv), JSON.stringify(argv)).toBeGreaterThanOrEqual(1)
     }
+    expectHealthyCliRun(observed)
   })
 })
 
@@ -341,6 +375,11 @@ describe('spawn 타임아웃 (WA11 · 🔴RED git spawn 자체가 없다)', () =
       expect(result.error?.code, '하네스가 죽여야 했다 = 스크립트에 spawn 타임아웃이 없다').toBeUndefined() // prettier-ignore
       expect(result.status, '느린 git 에서 exit 0 이 났다').not.toBe(0)
       expect(result.stdout, '타임아웃인데 페이지를 흘렸다').toBe('')
+      // ★ "exit≠0" 만 물으면 **다른 사유**의 비정상 종료(임의 크래시·검증 실패 등)도 통과한다 —
+      //   D23 의 실제 타임아웃 시그니처를 물어야 한다. `execFileSync` 가 `timeout` 으로 죽으면 그
+      //   Error 의 `.message` 가 `ETIMEDOUT` 을 담고(node:child_process 실측), `checkGitAvailable`
+      //   등 이 리포의 러너 래퍼들도 원문 메시지를 이어붙여 던지므로 stderr 에 그대로 남는다.
+      expect(result.stderr, `타임아웃 시그니처가 없다: ${result.stderr}`).toMatch(/ETIMEDOUT/u)
     },
   )
 

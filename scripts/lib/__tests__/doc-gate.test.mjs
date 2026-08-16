@@ -35,15 +35,21 @@ import { describe, expect, it } from 'vitest'
 
 // RED 시점에 이 모듈은 존재하지 않는다 → 로드 에러를 붙들었다가 케이스별로 되던진다.
 const loaded = await import(new URL('../doc-gate.mjs', import.meta.url).href).catch((error) => ({
+  // ★ collection error 회피(위 주석)를 위해 여전히 **넓게** 잡는다 — 그러나 "아직 없다" 라는 진단은
+  //   실제로 모듈 해석이 실패한 경우(`ERR_MODULE_NOT_FOUND`)로 좁힌다. 그 외 원인(문법 오류·import
+  //   하는 다른 모듈의 런타임 버그 등)까지 "미구현" 으로 오도하면 실제 버그가 "아직 코딩 안 함" 처럼
+  //   읽혀 원인 추적이 늦어진다 — 원문(`error.message`)은 두 경우 모두 그대로 싣는다.
   __loadError: error instanceof Error ? error.message : String(error),
+  __notImplemented: error instanceof Error && error.code === 'ERR_MODULE_NOT_FOUND',
 }))
 
 /** 아직 없는 seam 을 **케이스별** 명시 실패로 바꾼다(파일 통째 collection error 회피 · tdd §2.4). */
 function judge(parsedDocs, ctx) {
   if (loaded.__loadError !== undefined) {
-    throw new Error(
-      `[RED] scripts/lib/doc-gate.mjs 가 아직 없다 (P3 Task 1 미구현): ${loaded.__loadError}`,
-    )
+    const label = loaded.__notImplemented
+      ? '아직 없다'
+      : '로드 중 다른 오류가 났다(미구현이 아닐 수 있다)'
+    throw new Error(`[RED] scripts/lib/doc-gate.mjs 가 ${label} (P3 Task 1): ${loaded.__loadError}`)
   }
   if (typeof loaded.judgeDocs !== 'function') {
     throw new Error('[RED] doc-gate.mjs 에 judgeDocs export 가 아직 없다 (P3 Task 1 미구현)')

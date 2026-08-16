@@ -108,6 +108,13 @@ describe('derive render seam — footnote 렌더 드롭 + 추출 존치 (§2 이
     const body = bodyOf('note')
 
     expect(body.html).not.toContain('<sup') // 렌더 드롭(RED — 현 렌더러는 <sup> 생성)
+    // ★ 부재만 확인하면(`<sup>` 없음) 그 자리에 `<sup>` 가 아닌 **다른 형태**로 결함이 새도(예: 마커
+    //   텍스트 자체가 깨지거나 엉뚱한 링크가 생겨도) 잡지 못한다(SILENT_PASS). 양성 앵커로 그 문단의
+    //   실제 렌더 결과를 리터럴로 고정한다(footnote-ref 는 remark-gfm 미사용이라 일반 참조링크
+    //   문법[`[^1]`/`[^1]: 텍스트`]으로 파싱된다 — 표시 텍스트는 원문 그대로 `^1` 이어야 한다).
+    expect(body.html).toContain(
+      '<p>각주 표기<a href="%EC%82%AC%EC%97%85%EB%B3%B4%EA%B3%A0%EC%84%9C">^1</a> 는 렌더에서 드롭된다.</p>',
+    )
     expect(body.sources).toContainEqual({ label: '1', text: '사업보고서' }) // 추출 존치(회귀 0)
   })
 })

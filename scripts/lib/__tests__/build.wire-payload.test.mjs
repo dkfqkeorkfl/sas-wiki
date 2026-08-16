@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { cleanup, commit, feedCommit, initVault, makeOut, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
+import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
 
 const { parseVault } = await import(new URL('../parse-vault.mjs', import.meta.url).href)
 const build = await import(new URL('../../validate.mjs', import.meta.url).href)
@@ -28,7 +28,8 @@ const SHAPE_KEYS = ['bodies', 'docs', 'generatedAt', 'ignore', 'items', 'sourceC
 function seedVault(vault) {
   // 두 문서를 **각각** chore 커밋으로 시드한다.
   // WP3 은 buildContent(전량 검증)를 직접 호출해 parseVault(...).wire 와 대조하므로, 시드가 컨벤션을
-  // 문서 집합·draft 구성은 불변이다.
+  // 지켜야 한다(그러지 않으면 buildContent 의 게이트가 던진다) — WP1·WP2·WP4 는 parseVault(...).wire
+  // 만 호출해 게이트를 타지 않으므로 이 요구가 없다. 문서 집합·draft 구성은 불변이다.
   // type 은 concept 로 둔다 — company 는 스키마상 meta(ticker·sector·exchange)를 요구하는데 시딩
   // 헬퍼가 meta 를 내지 못해 buildContent 검증이 막힌다(WP 는 type·meta 를 단언하지 않는다).
   writeDoc(vault, 'company/삼성전자', { id: ID_A, title: '삼성전자', type: 'concept' })
@@ -51,7 +52,10 @@ describe('parseVault(...).wire — shape (WP1·WP2 🟢회귀 · 좌표 이동)'
 
       const keys = Object.keys(wireOf(vault, 'dev')).toSorted()
 
-      expect(keys).toEqual(expect.arrayContaining(SHAPE_KEYS))
+      // ★ `arrayContaining` 은 부분집합 검사라 계약에 없는 **여분 키**가 섞여도 통과한다(SILENT_PASS —
+      //   예: 실수로 내부 필드를 wire 에 흘려도 잡지 못한다). SHAPE_KEYS 는 이미 정렬된 8키 전체이므로
+      //   `toSorted()` 결과와 **정확히** 같아야 한다 — 부족도 초과도 여기서 잡는다.
+      expect(keys).toEqual(SHAPE_KEYS)
     } finally {
       cleanup(vault)
     }
@@ -77,21 +81,25 @@ describe('parseVault(...).wire — draft 필터 상속 (WP4 🟢회귀 · 좌표
 })
 
 describe('parseVault(...).wire — build.mjs 산출 회귀 0 (WP3 🟡CARRIED · 좌표 이동)', () => {
-  it('WP3: parseVault(...).wire.docs id 집합이 buildContent summary 와 동일하다(파싱 엔진 공유)', () => {
+  it('WP3: parseVault(...).wire.docs 가 buildContent summary.docs 와 필드까지 동일하다(파싱 엔진 공유)', () => {
     const vault = initVault()
-    const out = makeOut()
     try {
       seedVault(vault)
 
-      const wireIds = wireOf(vault, 'dev')
-        .docs.map((doc) => doc.id)
-        .toSorted()
-      const built = build.buildContent({ env: 'dev', out, vault })
-      const summaryIds = built.summary.docs.map((doc) => doc.id).toSorted()
+      // ★ id 집합만 비교하면 본문 파생물(excerpt)·tags 등이 두 경로 사이에서 갈려도(예: 한쪽만
+      //   조용히 truncate·drop) 잡히지 않는다(SILENT_PASS) — id 로 정렬한 **전체 문서 객체**를
+      //   비교한다. `wire.docs` 는 derive.mjs 가 이미 summary 계약 키(ACTIVE_DOC_KEYS)와 동일한
+      //   10키로 낸다(disable 스텁은 4키로 동일) — 두 경로가 같은 파싱 엔진을 공유하면 완전히
+      //   같아야 한다.
+      const byId = (a, b) => a.id.localeCompare(b.id)
+      const wireDocs = wireOf(vault, 'dev').docs.toSorted(byId)
+      // `out` 은 buildContent() 가 받지 않는 옵션이다(죽은 픽스처였다 — makeOut() 을 걷어냈다).
+      const built = build.buildContent({ env: 'dev', vault })
+      const summaryDocs = built.summary.docs.toSorted(byId)
 
-      expect(wireIds).toEqual(summaryIds) // 같은 파싱 엔진이므로 buildContent 와 갈리지 않는다
+      expect(summaryDocs).toEqual(wireDocs) // 같은 파싱 엔진이므로 buildContent 와 갈리지 않는다
     } finally {
-      cleanup(vault, out)
+      cleanup(vault)
     }
   })
 })
