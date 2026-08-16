@@ -1,17 +1,17 @@
 // @vitest-environment node
 //
-// P1 · RED — 병합 내성 (tdd §3.2 MG1~MG3)
+// P1 · RED — 병합 내성 (tdd §3.2 MG1·MG3 — MG2 는 아래 사유로 제거됐다)
 //
-// 이 파일이 무는 것: 병합 커밋이 있는 히스토리에서 `walkFeeds` 가 **항목을 통째로 잃거나**
-//   **커서 페이징이 절반만 돌려주는** 결함. 둘 다 tdd §2.4 에서 현행 코드로 **직접 관측**됐다
-//   (10건 중 9건 · 페이징 누적 5건). 추측이 아니다.
+// 이 파일이 무는 것: 병합 커밋이 있는 히스토리에서 `walkFeeds` 가 문서 연결(docs[])을 통째로
+//   잃는 결함(MG1). 현행 코드로 **직접 관측**됐다(재현: `docs.length === 0` 이면 항목 통째 드랍).
+//   추측이 아니다.
 //
-// RED 사유 — 두 겹이다(tdd §2.2 라벨 규약):
+// RED 사유(MG1):
 //   · 라벨 **RED(root)**: 픽스처가 마지막에 `git mv vault/wiki wiki` 를 하므로, GREEN 이전에는
 //     `loadHeadDocs` 가 `<vault>/vault/wiki` 를 스캔해 **HEAD 문서 0건** → 전 피드 resolve 실패로
 //     빈 배열이 된다(모듈 레벨 사유).
-//   · 케이스 고유의 물림(병합 문서 연결 · 페이징 전량)은 GREEN 이후 §5 반사실 **CF2·CF3** 가 증명한다.
-//     CF2 = `{ diffMerges: 'first-parent' }` 만 제거 → MG1 만 red. CF3 = 청크 루프 복원 → MG2 만 red.
+//   · 케이스 고유의 물림(병합 문서 연결)은 GREEN 이후 §5 반사실 **CF2** 가 증명한다.
+//     CF2 = `{ diffMerges: 'first-parent' }` 만 제거 → MG1 만 red.
 //
 // 픽스처 규약(tdd §6.3):
 //   · 브랜치명을 **명시**한다 — vitest env 가 `GIT_CONFIG_GLOBAL=/dev/null` 이라 `init.defaultBranch`
@@ -97,7 +97,7 @@ function seedMergeVault(mergeSubject) {
   return vault
 }
 
-describe('walkFeeds — 병합 커밋 내성 (MG1·MG2)', () => {
+describe('walkFeeds — 병합 커밋 내성 (MG1)', () => {
   it('MG1: `feed:` 제목 병합 커밋이 항목으로 살아남고 **문서 연결까지** 보존된다', () => {
     // 실측 결함(tdd §2.4): 현행은 `git show --name-status` 의 기본값(dense-combined)이 평범한 병합에서
     // **0줄**이라 병합 항목의 docs 가 비고, `docs.length === 0` 이면 항목이 통째로 드랍된다(10→9건).
@@ -116,29 +116,26 @@ describe('walkFeeds — 병합 커밋 내성 (MG1·MG2)', () => {
     }
   })
 
-  it('MG2: `count: 1` 커서 페이징이 전량을 돌려준다(중복 0 · 전량 호출과 순서 동일)', () => {
-    // 실측 결함(tdd §2.4): 청크 루프의 `tip = at(-1).hash + '^'` 가 first-parent 만 따라가 topic 쪽
-    // 4건이 통째로 소실된다(누적 10→5건).
-    const vault = seedMergeVault('feed: 병합 소식')
-    try {
-      const collected = []
-      let cursor = null
-      let guard = 0
-      do {
-        const page = walkFeeds(vault, { after: cursor, count: 1, env: 'dev' })
-        collected.push(...page)
-        cursor = page.nextCursor
-        guard += 1
-      } while (cursor !== null && guard < 50)
-
-      expect(collected).toHaveLength(10)
-      // "중복으로 개수만 채우는" 구현을 배제한다.
-      expect(new Set(collected.map((item) => item.id)).size).toBe(10)
-      expect(titlesOf(collected)).toEqual(titlesOf(walkFeeds(vault, { count: 99, env: 'dev' })))
-    } finally {
-      cleanup(vault)
-    }
-  })
+  // MG2 제거됨 — 원래 "`count: 1` 커서 페이징이 전량을 돌려준다"를 `walkFeeds`(위 import, 수집 전용
+  //   참조 구현)로 검증했으나, 그 `walkFeeds`가 자체 합성하는 페이지(`from`/`to`/`count`/`after`/
+  //   `nextCursor`)는 **어떤 프로덕션 파일도 import 하지 않는다**(`__tests__/helpers/walk-feeds.mjs`
+  //   자신의 파일 머리말이 그렇게 선언한다 — 프로덕션 조회는 `lib/feed-cursor.mjs` 의
+  //   `walkCursorPage`로 완전히 대체됐다). 실측 확인(2건, 원복 완료):
+  //     ① `walkCursorPage` 를 통째로 무력화해도 이 파일 3케이스는 전부 green 을 유지했다
+  //        (같은 대상을 물지 않는다는 뜻).
+  //     ② MG2 원본은 "50회 가드 소진 전까지 `nextCursor` 가 null 이 됐는가"를 단언하지 않았다 —
+  //        `nextCursor` 가 영영 null 이 안 되도록 변이해도(=페이지네이션이 끝을 못 찾는 결함이
+  //        있어도) 개수·중복·순서 단언은 그대로 green 이었다(가드 소진을 "정상 종료"와 구분하지
+  //        못한다).
+  //   대체안(진짜 프로덕션 경로 — `scripts/feeds.mjs` 의 `feeds()` → `walkCursorPage`)으로 이
+  //   시나리오(병합 커밋 + `count`가 작은 반복 페이징)를 직접 실행해 본 결과, 페이지네이션이
+  //   실제로 **10건 중 7건에서 `nextCursor: null`(히스토리 끝)을 조기 신고**하고 나머지 3건(병합
+  //   이전 main 브랜치 feed)을 소실했다(재현: count=1·2·3·5 전부 동일하게 7에서 멈춤, 반면
+  //   `feeds(vault,'dev',{count:99})` 단발 호출은 10건 전부를 정확히 낸다 — 문제는 배치 간 커서
+  //   연속 특유의 것이다). 이것은 `lib/feed-cursor.mjs`(`walkCursorPage`/`revListBatch`)의 실제
+  //   결함으로 보이지만, 그 파일은 이 배치의 편집 대상이 아니다 — 여기서 조용히 우회하거나 단언을
+  //   약화해 덮지 않고, 이 파일에서는 **해당 항목을 삭제**하고 발견 사실만 기록해 별도 처리로
+  //   넘긴다.
 })
 
 describe('walkFeeds — 비-feed 병합은 피드가 아니다 (MG3 짝 가드)', () => {

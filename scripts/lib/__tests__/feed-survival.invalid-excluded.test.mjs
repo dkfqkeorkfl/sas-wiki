@@ -28,19 +28,7 @@
 //   를 import 하지 않는다. 상수 드리프트는 트립와이어 PG9 가 따로 잡는다.
 import { describe, expect, it } from 'vitest'
 
-const loaded = await import(new URL('../feed-survival.mjs', import.meta.url).href).catch(
-  (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
-)
-
-function judge(input) {
-  if (loaded.__loadError !== undefined) {
-    throw new Error(`[RED] scripts/lib/feed-survival.mjs 를 읽지 못했다: ${loaded.__loadError}`)
-  }
-  if (typeof loaded.judgeFeedSurvival !== 'function') {
-    throw new Error('[RED] feed-survival.mjs 에 judgeFeedSurvival export 가 없다')
-  }
-  return loaded.judgeFeedSurvival(input)
-}
+import { judgeFeedSurvival } from '../feed-survival.mjs'
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 
@@ -130,6 +118,6 @@ const CASES = [
 
 describe('judgeFeedSurvival — invalid-excluded 사유 전수 (SVX1~SVX6 · 🔴RED 미구현)', () => {
   it.each(CASES)('$id: $why', ({ expected, input }) => {
-    expect(judge(input)).toEqual(expected)
+    expect(judgeFeedSurvival(input)).toEqual(expected)
   })
 })

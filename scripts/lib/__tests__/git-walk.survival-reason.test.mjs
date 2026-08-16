@@ -2,14 +2,19 @@
 //
 // P2 · Task 2 — 서빙 경로가 참조 소실 **사유**를 안다 (`git-walk.mjs:walkFeeds`) — tdd §3.2 (RR1~RR6)
 //
-// 무엇이 바뀌는가: 지금 `resolveDocId` 는 "못 찾음" 하나로 끝난다 → **삭제된 문서**를 가리킨 참조와
-//   **prod 에서 draft 배제된** 문서를 가리킨 참조가 구분되지 않는다. D-A 는 앞을 살리고(D9) 뒤를
-//   막는다(D2 fail-closed). 사유를 값으로 만들지 않으면 두 요구가 동시에 성립할 수 없다.
+// 무엇이 바뀌는가(★ 정정 — 이 문제는 이미 해결된 상태다): RED 당시엔 참조 소실 사유를 "못 찾음"
+//   하나로만 취급해 **삭제된 문서**를 가리킨 참조와 **prod 에서 draft 배제된** 문서를 가리킨 참조가
+//   구분되지 않았다. D-A 는 앞을 살리고(D9) 뒤를 막는다(D2 fail-closed). 사유를 값으로 만들지 않으면
+//   두 요구가 동시에 성립할 수 없었다 — 그래서 오늘의 `git-walk.mjs`(`resolveDocRef`)는 참조마다
+//   `{ id, reason }` 를 반환하고, `judgeFeedSurvival`(`feed-survival.mjs`)이 그 사유로 생존을 가른다
+//   (아래 함수 이름은 RED 당시 가명 `resolveDocId` 를 오늘의 실제 함수명으로 교체한 것 — 라인
+//   번호는 밀리므로 박지 않는다).
 //
 // RED 사유(라벨별):
-//   RR1·RR2  RED(flip) — 현행 `git-walk.mjs:169` 가 `docs.length === 0 → continue` 로 드랍하고,
-//                        prod 는 draft 를 pathIndex/headIds 에서 빼 두 사유를 뭉갠다.
-//                        뒤집히는 기존 단언: tdd §4 원장 ①(`git-walk.test.mjs:166` GW6).
+//   RR1·RR2  RED(flip) — 현행 `resolveDocRef`(git-walk.mjs)가 `docs.length === 0 → continue` 로
+//                        드랍하고, prod 는 draft 를 pathIndex/headIds 에서 빼 두 사유를 뭉갠다.
+//                        뒤집히는 기존 단언: `git-walk.test.mjs`의 GW6("참조 문서가 HEAD 에서
+//                        삭제돼도 피드는 살고 연결만 끊긴다").
 //   RR3      pair       — GREEN 이후 항상 통과해야 하는 짝(같은 "빈 docs" 라도 하나는 살고 하나는 죽는다).
 //   RR4      pin(실측)  — 현행도 통과한다(부분 resolve). 사유 도입이 과잉 차단으로 번지면 red.
 //   RR5      pin        — `env !== 'dev'` fail-closed 극성. **비교 형태**로 걸어 GREEN 전후 모두 통과한다.
@@ -23,10 +28,7 @@ import { describe, expect, it } from 'vitest'
 
 import { ID_A, ID_B, T2, seedSurvivalVault } from '../../__tests__/helpers/survival-vault.mjs'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
-
-const { walkFeeds } = await import(
-  new URL('../../__tests__/helpers/walk-feeds.mjs', import.meta.url).href
-)
+import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 
 const titlesOf = (items) => items.map((item) => item.title)
 const docIdsOf = (items, title) =>

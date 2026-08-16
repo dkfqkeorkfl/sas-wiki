@@ -15,7 +15,11 @@ export const byRecencyThenId = (a, b) => {
 }
 
 export function extractTrailers(body) {
-  const lines = body.split(/\r?\n/)
+  // 종단 개행(들)을 먼저 벗긴다 — git 커밋 본문은 흔히 개행으로 끝난다(`%b` 포맷). 벗기지 않으면
+  // split 의 마지막 원소가 빈 문자열이 되어 그 빈 줄이 "trailer 블록과 본문을 가르는 구분자"로
+  // 잘못 인식되고, 그 뒤(=아무것도 없음)가 candidateLines 가 되어 길이 0 → trailer 블록 전체가
+  // 파싱되지 않고 본문 텍스트로 조용히 뭉개진다. 개행 없는 입력과 동치로 만드는 정규화다.
+  const lines = body.replace(/\s+$/, '').split(/\r?\n/)
   const trailers = {}
   let trailerStart = lines.length
   let lastBlankIdx = -1

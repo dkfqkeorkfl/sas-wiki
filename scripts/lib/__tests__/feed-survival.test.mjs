@@ -30,22 +30,10 @@
 // 비용(tdd §7.3): 순수 함수 + 리터럴 테이블. git·fs 접근 0 → 9p 마운트 spawn 비용을 여기서 전부 회피한다.
 import { describe, expect, it } from 'vitest'
 
-// RED 시점에 이 모듈은 존재하지 않는다 → 로드 에러를 붙들었다가 케이스별로 되던진다.
-const loaded = await import(new URL('../feed-survival.mjs', import.meta.url).href).catch(
-  (error) => ({ __loadError: error instanceof Error ? error.message : String(error) }),
-)
+import { judgeFeedSurvival } from '../feed-survival.mjs'
 
-/** 아직 없는 seam 을 **케이스별** 명시 실패로 바꾼다(파일 통째 collection error 회피 · tdd §2.4). */
 function judge(input) {
-  if (loaded.__loadError !== undefined) {
-    throw new Error(
-      `[RED] scripts/lib/feed-survival.mjs 가 아직 없다 (P2 Task 1 미구현): ${loaded.__loadError}`,
-    )
-  }
-  if (typeof loaded.judgeFeedSurvival !== 'function') {
-    throw new Error('[RED] feed-survival.mjs 에 judgeFeedSurvival export 가 아직 없다 (P2 Task 1 미구현)') // prettier-ignore
-  }
-  return loaded.judgeFeedSurvival(input)
+  return judgeFeedSurvival(input)
 }
 
 // 유효 UUIDv7 리터럴(feeds.schema.json docRef pattern 준수) — 문서 정체성.

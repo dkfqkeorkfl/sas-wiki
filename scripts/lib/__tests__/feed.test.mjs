@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// P2 RED-6 · scripts/wiki/lib/feed.mjs (신 커밋 컨벤션 · trailer · 정렬) — tdd §6.6
+// P2 RED-6 · scripts/lib/feed.mjs (신 커밋 컨벤션 · trailer · 정렬) — tdd §6.6
 //
 // RED 사유: 현행 feed.mjs 는 구 컨벤션(`post(<해시>)`)만 안다.
 //   - `parseCommitForFeed` 는 `post(` 로 시작하지 않으면 무조건 null → `feed:` 를 못 읽는다.
@@ -89,6 +89,21 @@ describe('extractTrailers (재사용 — 삭제 금지)', () => {
   it('말미 trailer 블록을 키 소문자로 추출하고 본문과 분리한다', () => {
     const { articleBody, trailers } = extractTrailers(
       '본문 첫줄\n두번째 줄\n\nKeywords: a, b\nImportance: highlight',
+    )
+
+    expect(trailers.keywords).toBe('a, b')
+    expect(trailers.importance).toBe('highlight')
+    expect(articleBody).toBe('본문 첫줄\n두번째 줄')
+  })
+
+  // 회귀 프로브(존치) — git 커밋 본문은 흔히 종단 개행으로 끝난다(`%b` 포맷). 종단 개행 1개가
+  //   split 뒤 마지막 원소로 빈 문자열을 만들어 그 빈 줄이 "trailer 블록과 본문을 가르는 구분자"로
+  //   오인되면 그 뒤(=아무것도 없음)가 candidateLines 가 되어 길이 0 → trailer 블록 전체가 조용히
+  //   본문 텍스트로 뭉개진다(파싱되지 않고 사라진다). 위 케이스(개행 없음)와 정확히 같은 입력에
+  //   종단 개행만 하나 붙였을 때도 결과가 같아야 한다.
+  it('본문이 종단 개행으로 끝나도 trailer 블록을 잃지 않는다(개행 정규화)', () => {
+    const { articleBody, trailers } = extractTrailers(
+      '본문 첫줄\n두번째 줄\n\nKeywords: a, b\nImportance: highlight\n',
     )
 
     expect(trailers.keywords).toBe('a, b')

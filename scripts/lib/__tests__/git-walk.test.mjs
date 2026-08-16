@@ -50,7 +50,6 @@ const T6 = '2026-01-06T00:00:00Z'
 
 const titlesOf = (items) => items.map((item) => item.title)
 const tsOf = (items) => items.map((item) => item.ts)
-const idsOf = (items) => items.map((item) => item.id)
 
 /** 문서 생성 커밋 — 문서 하나를 frontmatter id 와 함께 만든다. */
 function seedDoc(vault, rel, id) {
@@ -102,48 +101,18 @@ describe('walkFeeds — 모듈·subject 필터 (GW1·GW2 🔴RED)', () => {
   })
 })
 
-describe('walkFeeds — JS 재정렬 권위 · tie-break (GW3·GW4 🔴RED)', () => {
-  it('GW3: git 워크순서 ≠ author-date → 결과는 author-date 내림차순(재정렬 권위)', () => {
-    // author-date 를 **커밋순서와 역행**시켜 시딩한다. 선형 히스토리에서 git rev-list --author-date-order
-    // 의 원시 워크순서는 역-커밋순서(= 여기선 중간·최신·최고참)라 내림차순이 **아니다** → JS 재정렬이
-    // 없으면 결과가 내림차순이 아니게 되어 실패한다(over-walk 후 재정렬 누락의 핵심 함정).
-    const vault = initVault()
-    try {
-      seedDoc(vault, 'company/삼성', ID_A)
-      seedFeed(vault, 'company/삼성', ID_A, { date: T2, subject: '최고참 소식' }) // 커밋2 · ts 최과거
-      seedFeed(vault, 'company/삼성', ID_A, { date: T6, subject: '최신 소식' }) //   커밋3 · ts 최신
-      seedFeed(vault, 'company/삼성', ID_A, { date: T4, subject: '중간 소식' }) //   커밋4 · ts 중간
-
-      const items = walkFeeds(vault, { count: 10 })
-
-      // author-date 내림차순 — 원시 워크순서(['중간','최신','최고참'])가 아니다.
-      expect(titlesOf(items)).toEqual(['최신 소식', '중간 소식', '최고참 소식'])
-      expect(tsOf(items)).toEqual([T6, T4, T2])
-    } finally {
-      cleanup(vault)
-    }
-  })
-
-  it('GW4: 동일 author-date 는 feedId 오름차순으로 tie-break(입력 순서 무의존·결정적)', () => {
-    const vault = initVault()
-    try {
-      seedDoc(vault, 'company/삼성', ID_A)
-      // 같은 author-date T3 3건 — tie-break 없으면 워크순서(역-커밋순서)가 새어 비결정적이다.
-      seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: '동시 A' })
-      seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: '동시 B' })
-      seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: '동시 C' })
-
-      const items = walkFeeds(vault, { count: 10 })
-      const ids = idsOf(items)
-
-      expect(items).toHaveLength(3)
-      expect(tsOf(items)).toEqual([T3, T3, T3]) // 전부 동일 ts
-      expect(ids).toEqual([...ids].toSorted()) // feedId 오름차순 결정적
-    } finally {
-      cleanup(vault)
-    }
-  })
-})
+// GW3·GW4(JS 재정렬 권위 · tie-break) 제거됨 — 대상은 이 파일이 import 하는 `walkFeeds`
+//   (`__tests__/helpers/walk-feeds.mjs`)가 내부에서 자체 재구현한 `pageFeeds`의 `.toSorted(byRecencyThenId)`
+//   였다. 그 재정렬은 이제 어떤 프로덕션 파일도 쓰지 않는다 — 조회 경로는 `lib/feed-cursor.mjs`의
+//   `walkCursorPage`로 교체됐고, 그 함수는 git 의 **기본 rev-list 워크 순서**를 정렬 권위로 쓴다
+//   (`--author-date-order`를 의도적으로 붙이지 않는다 — 붙이면 병합 토폴로지에서 페이지 「집합」
+//   자체가 달라진다는 것이 `feed-cursor.mjs` 자신의 실측 주석이다). 즉 GW3/GW4 의 주장("JS 재정렬이
+//   권위") 자체가 지금의 프로덕션에는 성립하지 않는다 — 대상을 실 함수로 재배선해도 같은 단언을
+//   유지할 수 없다. 실측(무력화 프로브, 원복 완료): `walkCursorPage` 를 통째로 비워도 이 배치의
+//   git-walk·feed 계열 8파일 79케이스가 전부 green 을 유지했다 — 애초에 이 두 케이스가 무엇을
+//   실패시킬 수 있는 대상도 아니다.
+//   epoch 비교·tie-break 자체(`byRecencyThenId`)의 실제 프로덕션 단위 테스트는 이 배치 안
+//   `feed.test.mjs`(byRecencyThenId 직접 호출, F2 케이스)가 이미 갖고 있다.
 
 describe('walkFeeds — blob-id resolve · prune · dedupe (GW5·GW6·GW8 🔴RED)', () => {
   it('GW5: 이동한 문서의 과거 피드가 현재 id 로 resolve 된다(rename 내성 · 소실 0)', () => {
@@ -230,90 +199,27 @@ describe('walkFeeds — 억제 직교(P4 SSOT 재사용) (GW7 🔴RED)', () => {
   })
 })
 
-describe('walkFeeds — 값 경계·상한 (GW9·GW10 🟡CARRIED)', () => {
-  /** 5 feed(ts T1..T5, 제목 n1..n5) 세계관. */
-  function seedFive(vault) {
-    seedDoc(vault, 'company/삼성', ID_A)
-    seedFeed(vault, 'company/삼성', ID_A, { date: T1, subject: 'n1' })
-    seedFeed(vault, 'company/삼성', ID_A, { date: T2, subject: 'n2' })
-    seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: 'n3' })
-    seedFeed(vault, 'company/삼성', ID_A, { date: T4, subject: 'n4' })
-    seedFeed(vault, 'company/삼성', ID_A, { date: T5, subject: 'n5' })
-  }
-
-  it('GW9: from=T3 → ts>=T3 경계 포함 · to=T3 → ts<=T3 경계 포함', () => {
-    const vault = initVault()
-    try {
-      seedFive(vault)
-
-      expect(tsOf(walkFeeds(vault, { count: 10, from: T3 }))).toEqual([T5, T4, T3])
-      expect(tsOf(walkFeeds(vault, { count: 10, to: T3 }))).toEqual([T3, T2, T1])
-      expect(tsOf(walkFeeds(vault, { count: 10, from: T2, to: T4 }))).toEqual([T4, T3, T2]) // 닫힌구간
-    } finally {
-      cleanup(vault)
-    }
-  })
-
-  it('GW10: count<가용 → 정확 count(최신 상위) · count>가용 → 전량', () => {
-    const vault = initVault()
-    try {
-      seedFive(vault)
-
-      expect(titlesOf(walkFeeds(vault, { count: 3 }))).toEqual(['n5', 'n4', 'n3'])
-      expect(walkFeeds(vault, { count: 99 })).toHaveLength(5)
-    } finally {
-      cleanup(vault)
-    }
-  })
-})
-
-describe('walkFeeds — after 커서 연속 (GW11 🔴RED)', () => {
-  it('GW11: 1페이지 커서로 2페이지 요청 → 경계 재포함 0·중복 0·누락 0(strict `<`)', () => {
-    const vault = initVault()
-    try {
-      seedDoc(vault, 'company/삼성', ID_A)
-      seedFeed(vault, 'company/삼성', ID_A, { date: T1, subject: 'n1' })
-      seedFeed(vault, 'company/삼성', ID_A, { date: T2, subject: 'n2' })
-      seedFeed(vault, 'company/삼성', ID_A, { date: T3, subject: 'n3' })
-      seedFeed(vault, 'company/삼성', ID_A, { date: T4, subject: 'n4' })
-
-      const page1 = walkFeeds(vault, { count: 2 }) // [n4, n3]
-      const cursor = { feedId: page1.at(-1).id, ts: page1.at(-1).ts } // (T3, id(n3))
-      const page2 = walkFeeds(vault, { after: cursor, count: 2 }) // strict < cursor → [n2, n1]
-
-      expect(titlesOf(page1)).toEqual(['n4', 'n3'])
-      expect(titlesOf(page2)).toEqual(['n2', 'n1']) // 경계(n3) 재포함 없음
-      const overlap = idsOf(page2).filter((id) => idsOf(page1).includes(id))
-      expect(overlap).toEqual([]) // 중복 0
-    } finally {
-      cleanup(vault)
-    }
-  })
-})
-
-describe('walkFeeds — over-walk continuation (GW12 🔴RED)', () => {
-  it('GW12: 상한 창 안 항목이 억제로 대량 드롭돼도 continuation 으로 count 를 채운다(언더필 0)', () => {
-    // 상위 8건을 억제한다 → 작은 K 의 단일 창(max-count=count*K)은 전부 억제라 언더필한다.
-    // continuation 이 다음 tip 으로 이어 걸어야 최과거 2건(n1·n2)이 채워진다(누락·중복 0).
-    const vault = initVault()
-    try {
-      seedDoc(vault, 'company/삼성', ID_A)
-      const suppress = []
-      const dates = [T1, T2, T3, T4, T5, T6, '2026-01-07T00:00:00Z', '2026-01-08T00:00:00Z', '2026-01-09T00:00:00Z', '2026-01-10T00:00:00Z'] // prettier-ignore
-      dates.forEach((date, i) => {
-        const feedId = seedFeed(vault, 'company/삼성', ID_A, { date, subject: `n${i + 1}` })
-        if (i >= 2) suppress.push(feedId) // n3..n10 억제 → 생존 n1·n2
-      })
-      writeIgnore(vault, suppress)
-
-      const items = walkFeeds(vault, { count: 2 })
-
-      expect(titlesOf(items)).toEqual(['n2', 'n1']) // 최과거 2건 · 언더필 없음
-    } finally {
-      cleanup(vault)
-    }
-  })
-})
+// GW9·GW10(값 경계·상한) · GW11(after 커서 연속) · GW12(over-walk continuation) 제거됨 — 넷 다
+//   `walkFeeds`의 로컬 `pageFeeds`/`pageItems`가 자체 재구현한 from/to 경계·count 슬라이스·
+//   `{ts,feedId}` 객체 커서·continuation(nextCursor 계산)을 겨눴다. 이 넷은 이 파일이 겨눈 것 중
+//   프로덕션 커플링이 가장 약한 부분이다 — `lib/git-walk.mjs`(collectFeedItems)나
+//   `lib/feed-cursor.mjs`(walkCursorPage) 어느 쪽에도 대응 코드가 없다(전자는 개념 자체가 없고,
+//   후자는 완전히 다른 매커니즘 — 불투명 12-hex 커서·배치 2회·git 워크 순서). 실측(무력화 프로브
+//   1건, 원복 완료): `walkCursorPage` 를 통째로 비워도 이 배치의 git-walk·feed 계열 8파일 79케이스
+//   전부 green 유지.
+//   실 프로덕션 경로에 대한 동등 보장은 이제 다른 파일이 직접 진다:
+//     · count 상한·1↔2페이지 연속(누락·중복 0)·명시 억제 — `scripts/__tests__/feeds.test.mjs`
+//       (E-F1·E-F2·E-F3, `feeds()` → `walkCursorPage` 를 직접 호출)
+//     · 커서 3단 검증(형식·해석·startsWith)·배치 argv·spawn 타임아웃 — `feed-cursor.test.mjs`
+//       (CR1~CR6·WA1~WA3·WA9·WA11)
+//   over-walk continuation(GW12)을 실 프로덕션 경로(`feeds()`)로 재현하려 시도한 결과(병합 커밋
+//   +`count`가 작은 반복 페이징 — `git-walk.merge-tolerance.test.mjs`의 舊 MG2 참조), 그 경로가
+//   실제로 페이지 도중 `nextCursor: null`(히스토리 끝)을 조기에 신고하며 나머지 항목을 소실하는
+//   현상을 발견했다 — `lib/feed-cursor.mjs`(walkCursorPage)의 실제 결함으로 보이나, 그 파일은 이
+//   배치의 편집 대상이 아니라서 여기서 고치지 않는다(별도 처리로 넘긴다). GW9~GW12 를 그 경로로
+//   재배선해 "고쳐서 통과시키는" 것은 이 배치 밖 프로덕션 수정을 전제하므로 하지 않았다 — 대신
+//   대상이 죽어 있다는 사실만 남기고 제거한다(무언가를 검증한다고 주장하며 아무것도 검증하지
+//   않는 상태를 유지하는 것보다 낫다).
 
 describe('walkFeeds — 경계·스케일 (GW13·GW14)', () => {
   it('GW13: `feed:` 0 → [] · throw 없음 (🟢GFS)', () => {
@@ -326,9 +232,11 @@ describe('walkFeeds — 경계·스케일 (GW13·GW14)', () => {
     }
   })
 
-  it('GW14: 다수 피드 커밋을 결정적으로 전부 resolve 한다(blob batch 정확성 경계 · 🔴RED)', () => {
-    // cat-file batch(N+1 회피)의 **정확성 경계**를 대량 시딩으로 관측한다(스파이 아님) — 배치가
-    // 누락·중복을 내면 length·정렬에서 드러난다.
+  it('GW14: 다수 피드 커밋을 결정적으로 전부 resolve 한다(blob-id resolve 정확성 경계 · 🔴RED)', () => {
+    // ★ 이름 정정: resolve 는 cat-file **배치**(N+1 회피)가 아니다 — 확인(pathIndex 캐시 hit)이면
+    //   git 호출 0회, 미스면 후보 ref 마다 `git show <sha>:<path>` 를 **개별 호출**한다(오히려 N+1
+    //   그 자체). 여기서 관측하는 것은 그 순차 개별-resolve 가 대량 시딩에서도 누락·중복 없이
+    //   결정적인가다(스파이 아님) — 배치가 누락·중복을 내면 length·정렬에서 드러난다.
     const vault = initVault()
     try {
       seedDoc(vault, 'company/삼성', ID_A)
