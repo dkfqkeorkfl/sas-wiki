@@ -327,7 +327,7 @@ function revParseCommit(runGit, rev, { narrowCatch = false } = {}) {
   try {
     raw = runGit(['rev-parse', '--verify', '--quiet', '--end-of-options', `${rev}^{commit}`])
   } catch (error) {
-    if (narrowCatch && !isEmptyHistory(error)) throw error
+    if (narrowCatch && !isEmptyHistory(error) && !isSilentNameMiss(error)) throw error
     return null
   }
   const objectName = String(raw).trim()
@@ -337,4 +337,27 @@ function revParseCommit(runGit, rev, { narrowCatch = false } = {}) {
 function isEmptyHistory(error) {
   const stderr = typeof error?.stderr === 'string' ? error.stderr : ''
   return EMPTY_HISTORY_RE.test(`${error?.message ?? ''}\n${stderr}`)
+}
+
+/**
+ * `rev-parse --verify --quiet` 가 **문서가 약속한 그 방식으로** "이름을 못 찾았다" 를 말한 실패인가.
+ * `git-rev-parse` 의 `--quiet`: _"Do not output an error message if the first argument is not a valid
+ * object name; instead exit with non-zero status **silently**."_ ⇒ 판정 신호는 **「프로세스가 실제로
+ * 돌았고 · 비0 으로 끝났고 · 아무 말도 하지 않았다」** 셋이다.
+ *
+ * ★ 위 `isEmptyHistory` 의 문구 판별만으로는 이 명령을 **원리적으로 가릴 수 없다** — `--quiet` 가
+ * stderr 를 지우므로 대조할 문구 자체가 존재하지 않는다. 문구 판별은 러너를 주입하는 호출자가
+ * 메시지를 실어 보내는 경우를 위해 남긴다.
+ *
+ * ★ **종료코드 숫자에 결속하지 않는다**(이 파일 `resolveCursorCommit` 의 ② 와 같은 원칙) — 문서
+ * 보증은 "비0" 까지이고 1 vs 128 은 실측일 뿐이다. 대신 `status` 가 **수인지**를 본다: 그것이
+ * "프로세스가 돌긴 했다" 를 뜻하고, spawn 자체가 실패한 경우(git 미설치 등 `status: null`)를
+ * 배제한다 — 그 실패까지 "커밋 0건" 으로 오번역하면 안 된다. 침묵 여부로 좁히는 이 형태는
+ * `git.mjs` 의 `isBenignConfigMiss`(`config --get` 의 "값 없음")와 같은 계열이다.
+ *
+ * 실측(git 2.51.1): 커밋 0건 리포 `status:1 stderr:""` · 비-git 경로 `status:128 stderr:"fatal: not a
+ * git repository…"` · git 미설치 `status:null stderr:undefined`.
+ */
+function isSilentNameMiss(error) {
+  return typeof error?.status === 'number' && error.status !== 0 && !error.stderr
 }

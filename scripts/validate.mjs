@@ -140,7 +140,17 @@ export function buildContent({
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const options = parseArgs(argv)
+  let options
+  try {
+    options = parseArgs(argv)
+  } catch (error) {
+    // 호출 계약 위반(알 수 없는 인자·거부된 옛 이름·열거 오타)은 **exit 2** 다 — 이 리포의 다른
+    //   엔드포인트 CLI 와 같은 코드여야 자동화가 "호출이 틀렸다" 와 "런타임이 실패했다" 를 가를 수
+    //   있다. 이 catch 가 없으면 아래 최상위 `main().catch` 가 둘을 exit 1 로 뭉갠다.
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exitCode = 2
+    return
+  }
   if (options.help) {
     console.log(usage())
     return

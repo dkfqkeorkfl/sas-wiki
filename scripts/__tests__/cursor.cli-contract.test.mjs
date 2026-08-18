@@ -28,14 +28,14 @@
 // 규범 B: 부재 단언(파일 미생성 · `--from`/`--to` 0건) 앞에 **위험 실재 앵커**를 짝으로 둔다.
 // 규범 F: 실 vault 를 건드리지 않는다 — 태그 생성은 **tmp 리포에서만**(12-hex 태그는 그 리포의 모든
 //   축약 해석을 오염시킨다 · tdd §2.5-②).
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { cleanup } from './helpers/tmp-git-vault.mjs'
+import { cleanup, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
 import { listTracked, scanTracked } from './helpers/tracked-scan.mjs'
 import {
   initTinyRepo,
@@ -373,6 +373,81 @@ describe('exit code 충돌 — 사유는 stderr 가 가른다 (CQ6 · 규범 P)'
 
     // 둘 다 무효면 **어느 사유인지 stderr 가 말한다**(OQ-P2-4 (a) = env 먼저).
     expect(both.stderr, both.stderr).toMatch(ENV_VOCAB)
+  })
+
+  // 「호출이 틀렸다」와 「런타임이 실패했다」를 자동화가 가르려면 종료코드가 갈려야 한다. 그런데
+  //   `node:util` 의 `parseArgs` 가 알 수 없는 인자에 던지는 throw 를 최상위 `.catch`(exit 1)로
+  //   흘려보내는 CLI 가 있어, **같은 종류의 위반이 파일마다 다른 코드**로 나갔다(실측: 넷 중 둘이 1).
+  //   그 상태에서는 위 CQ6 의 exit 2 단언도 "feeds 의 일부 갈래만" 보증하는 국소 계약이었다.
+  const ARG_CONTRACT_CLIS = ['feeds.mjs', 'summary.mjs', 'validate.mjs', 'wiki.mjs']
+
+  it('알 수 없는 인자는 네 엔드포인트에서 모두 exit 2 다', { timeout: 300_000 }, () => {
+    // 앵커: 목록이 비면 아래 루프가 한 번도 돌지 않아 단언이 공허하게 통과한다.
+    expect(ARG_CONTRACT_CLIS.length, '검사 대상 CLI 목록이 비었다').toBeGreaterThan(0)
+
+    for (const cli of ARG_CONTRACT_CLIS) {
+      const result = spawnSync(process.execPath, [path.join(SCRIPTS_DIR, cli), '--bogus'], {
+        encoding: 'utf8',
+        timeout: CLI_TIMEOUT_MS,
+      })
+
+      expect(result.error ?? null, `${cli} 실행 자체가 실패했다`).toBeNull()
+      expect(result.status, `${cli} stderr=${result.stderr}`).toBe(2)
+      expect(result.stdout, `${cli} 가 인자 위반 경로에서 stdout 을 썼다`).toBe('')
+    }
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 빈 저장소 관용 — 커밋 0건은 「빈 페이지」이지 크래시가 아니다
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('빈 저장소 관용', () => {
+  const loadCursor = () =>
+    import(new URL('../lib/feed-cursor.mjs', import.meta.url).href).then((m) => m.walkCursorPage)
+
+  it('커밋 0건 vault 에서 빈 페이지를 낸다', async () => {
+    // `walkCursorPage` 는 이 상태를 흡수하도록 설계돼 있지만, HEAD 해석이 쓰는
+    //   `git rev-parse --verify --quiet` 는 실패 **사유를 stderr 에 남기지 않는다**(git 문서:
+    //   "instead exit with non-zero status silently"). 그래서 문구 대조만으로는 이 상태를 원리적으로
+    //   식별할 수 없고, 흡수 분기가 도달 불가가 된 채 사유 없는 예외가 올라왔다.
+    const walkCursorPage = await loadCursor()
+    const empty = initVault() // git init 만 — 커밋 0건
+    tmps.push(empty)
+
+    expect(walkCursorPage(empty, { count: 5, resolveItems: () => [] })).toEqual({
+      items: [],
+      nextCursor: null,
+    })
+  })
+
+  it('앵커: git 저장소가 아닌 경로는 여전히 던진다', async () => {
+    // 위 흡수가 「비0 종료는 전부 빈 페이지」로 넓어지면 진짜 고장(권한·손상·경로 오류)이 조용히
+    //   "피드 끝" 으로 둔갑한다 — 그 방향을 이 앵커가 막는다. 이쪽은 git 이 사유를 말한다.
+    const walkCursorPage = await loadCursor()
+    const notARepo = makeOut()
+    tmps.push(notARepo)
+
+    expect(() => walkCursorPage(notARepo, { count: 5, resolveItems: () => [] })).toThrow()
+  })
+
+  it('앵커: 프로세스가 돌지도 못한 실패는 흡수하지 않는다', async () => {
+    // 위 앵커와 **다른 축**이다. 저쪽은 git 이 사유를 말하므로 침묵 판정만으로도 걸러지지만, 이쪽은
+    //   git 실행 자체가 안 된 경우(미설치·권한)라 **사유도 침묵**이다. 침묵만 보고 흡수하면 이
+    //   실패가 "커밋 0건" 으로 둔갑해 피드가 통째로 빈 채 exit 0 이 된다.
+    const walkCursorPage = await loadCursor()
+    const spawnFailure = () => {
+      const error = new Error('spawn git ENOENT')
+      error.code = 'ENOENT'
+      error.status = null // 프로세스가 시작되지 못했다 — 종료코드 자체가 없다
+      throw error
+    }
+    const dir = makeOut()
+    tmps.push(dir)
+
+    expect(() =>
+      walkCursorPage(dir, { count: 5, resolveItems: () => [], runGit: spawnFailure }),
+    ).toThrow(/ENOENT/u)
   })
 })
 

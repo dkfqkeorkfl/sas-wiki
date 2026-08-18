@@ -137,8 +137,15 @@ function latestItemTimestamp(items) {
   return timestamps.at(-1)
 }
 
-export async function main(argv = process.argv.slice(2)) {
-  const { values } = parseArgs({
+/**
+ * argv → `values`. **호출을 감싸기 좋게 함수로 분리해 둔다**(`summary.mjs` 의 `parseCliArgs` 와 같은
+ * 형태) — `node:util` 의 `parseArgs`(strict 기본)는 알 수 없는 인자·형식이 어긋난 인자에 던지고, 그
+ * throw 를 그대로 흘려보내면 이 파일 맨 아래 최상위 `main().catch` 가 **무조건 exit 1** 로 만든다.
+ * 그러면 아래 `fail` 이 exit 2 로 내는 다른 인자 위반들과 **같은 종류의 위반이 서로 다른 코드**로
+ * 나간다 — `main` 안의 "셋 다 2" 선언이 이 갈래에서만 깨져 있었다.
+ */
+function parseCliArgs(argv) {
+  return parseArgs({
     allowPositionals: false,
     args: argv,
     options: {
@@ -150,6 +157,17 @@ export async function main(argv = process.argv.slice(2)) {
       vault: { type: 'string' },
     },
   })
+}
+
+export async function main(argv = process.argv.slice(2)) {
+  let values
+  try {
+    // ★ 이 try 는 인자 파싱 **자체**만 감싼다 — 아래 워크·쓰기의 런타임 실패는 여전히 최상위
+    //   `main().catch` 의 exit 1 을 그대로 탄다.
+    ;({ values } = parseCliArgs(argv))
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error))
+  }
   // ★ 인자 검증 순서는 계약이되 **exit code 로 가르지 않는다**(셋 다 2 · 규범 P). 사유는 stderr
   //   어휘가 가른다 — `--env` 는 `dev|prod`, `--count` 는 `count`, `--after` 는 `--after`/커서.
   //   문구 소유자만 다르다: env 는 `lib/cli-env.mjs`, 나머지는 여기다. **종료는 전부 여기서** 한다
