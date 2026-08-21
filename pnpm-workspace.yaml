@@ -2,3 +2,4 @@
 # walks up to the parent workspace and never installs sas-wiki devDependencies.
 packages:
   - '.'
+nodeLinker: hoisted
