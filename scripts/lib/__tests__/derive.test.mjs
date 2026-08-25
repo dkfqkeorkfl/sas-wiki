@@ -33,6 +33,14 @@ const HBM_ID = '0192b000-0000-7000-8000-0000000000bb'
 const SUB_ID = '0192c000-0000-7000-8000-0000000000cc'
 const DIS_ID = '0192d000-0000-7000-8000-0000000000dd'
 const DEFAULT_ID = '0192e000-0000-7000-8000-0000000000ee'
+const TSMC_ID = '0192f000-0000-7000-8000-0000000000ff'
+const SK_HYNIX_ID = '01930000-0000-7000-8000-000000000001'
+const AI_FOLDER_ID = '01930000-0000-7000-8000-000000000002'
+const KOREAN_FOLDER_ID = '01930000-0000-7000-8000-000000000003'
+const NESTED_AI_FOLDER_ID = '01930000-0000-7000-8000-000000000004'
+const NESTED_KOREAN_FOLDER_ID = '01930000-0000-7000-8000-000000000005'
+const AI_TAG_ID = '01930000-0000-7000-8000-000000000006'
+const KOREAN_TAG_ID = '01930000-0000-7000-8000-000000000007'
 
 /** `git log --follow --name-status --format=%H%x09%aI` 의 실제 출력(최신순). */
 function aLog(sha, { created = '2026-01-01T00:00:00Z', file, updated = '2026-01-09T00:00:00Z' }) {
@@ -193,6 +201,109 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
 
     expect(tree.map((node) => node.path).toSorted()).toEqual(['company', 'tech'])
   })
+
+  it('같은 폴더의 문서 id 배열은 title 기준 ko locale 순서로 정렬된다', () => {
+    const docs = [
+      aParsedDoc({
+        frontmatter: { id: TSMC_ID, status: 'active', tags: [], title: 'TSMC', type: 'company' },
+        relPath: 'company/tsmc',
+      }),
+      aParsedDoc({
+        frontmatter: {
+          id: SAMSUNG_ID,
+          status: 'active',
+          tags: [],
+          title: '삼성전자',
+          type: 'company',
+        },
+        relPath: 'company/samsung',
+      }),
+      aParsedDoc({
+        frontmatter: {
+          id: SK_HYNIX_ID,
+          status: 'active',
+          tags: [],
+          title: 'SK하이닉스',
+          type: 'company',
+        },
+        relPath: 'company/sk-hynix',
+      }),
+    ]
+    const { tree } = deriveForTest(
+      docs,
+      makeRunner({
+        'company/samsung': aLog(SAMSUNG_SHA, { file: 'wiki/company/samsung.md' }),
+        'company/sk-hynix': aLog(HBM_SHA, { file: 'wiki/company/sk-hynix.md' }),
+        'company/tsmc': aLog(SUB_SHA, { file: 'wiki/company/tsmc.md' }),
+      }),
+    )
+
+    expect(tree.find((node) => node.path === 'company').docs).toEqual([
+      SK_HYNIX_ID,
+      TSMC_ID,
+      SAMSUNG_ID,
+    ])
+  })
+
+  it('최상위와 재귀 폴더는 자기 세그먼트 기준으로 영문 시작 폴더를 먼저 정렬한다', () => {
+    const docs = [
+      aParsedDoc({
+        frontmatter: {
+          id: KOREAN_FOLDER_ID,
+          status: 'active',
+          tags: [],
+          title: '한글 폴더',
+          type: 'concept',
+        },
+        relPath: '가나다/doc',
+      }),
+      aParsedDoc({
+        frontmatter: {
+          id: AI_FOLDER_ID,
+          status: 'active',
+          tags: [],
+          title: 'AI 폴더',
+          type: 'concept',
+        },
+        relPath: 'AI/doc',
+      }),
+      aParsedDoc({
+        frontmatter: {
+          id: NESTED_KOREAN_FOLDER_ID,
+          status: 'active',
+          tags: [],
+          title: '중첩 한글 폴더',
+          type: 'concept',
+        },
+        relPath: '분야/반도체/doc',
+      }),
+      aParsedDoc({
+        frontmatter: {
+          id: NESTED_AI_FOLDER_ID,
+          status: 'active',
+          tags: [],
+          title: '중첩 AI 폴더',
+          type: 'concept',
+        },
+        relPath: '분야/AI/doc',
+      }),
+    ]
+    const { tree } = deriveForTest(
+      docs,
+      makeRunner({
+        'AI/doc': aLog(HBM_SHA, { file: 'wiki/AI/doc.md' }),
+        '가나다/doc': aLog(SAMSUNG_SHA, { file: 'wiki/가나다/doc.md' }),
+        '분야/AI/doc': aLog(SUB_SHA, { file: 'wiki/분야/AI/doc.md' }),
+        '분야/반도체/doc': aLog(DIS_SHA, { file: 'wiki/분야/반도체/doc.md' }),
+      }),
+    )
+
+    expect(tree.map((node) => node.path)).toEqual(['AI', '가나다', '분야'])
+    expect(tree.find((node) => node.path === '분야').children.map((node) => node.path)).toEqual([
+      '분야/AI',
+      '분야/반도체',
+    ])
+  })
 })
 
 describe('derive — tags (Record<tag, docId[]>)', () => {
@@ -227,6 +338,40 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
 
     expect(payloadTags.__proto__).toEqual([HBM_ID])
     expect(payloadTags.constructor).toEqual([HBM_ID])
+  })
+
+  it('태그 키는 영문 시작 태그를 한글 시작 태그보다 먼저 정렬한다', () => {
+    const docs = [
+      aParsedDoc({
+        frontmatter: {
+          id: KOREAN_TAG_ID,
+          status: 'active',
+          tags: ['반도체'],
+          title: '한글 태그',
+          type: 'concept',
+        },
+        relPath: 'tag/korean',
+      }),
+      aParsedDoc({
+        frontmatter: {
+          id: AI_TAG_ID,
+          status: 'active',
+          tags: ['AI'],
+          title: 'AI 태그',
+          type: 'concept',
+        },
+        relPath: 'tag/ai',
+      }),
+    ]
+    const { tags } = deriveForTest(
+      docs,
+      makeRunner({
+        'tag/ai': aLog(HBM_SHA, { file: 'wiki/tag/ai.md' }),
+        'tag/korean': aLog(SAMSUNG_SHA, { file: 'wiki/tag/korean.md' }),
+      }),
+    )
+
+    expect(Object.keys(tags)).toEqual(['AI', '반도체'])
   })
 })
 

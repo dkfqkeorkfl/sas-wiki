@@ -10,6 +10,15 @@ import { renderMarkdownToHtml } from './render.mjs'
 
 /** excerpt 최대 길이(평문 기준). 초과하면 말줄임표 없이 자른다. */
 const EXCERPT_MAX = 160
+const ASCII_LETTER_START = /^[A-Za-z]/
+
+function scriptRank(text) {
+  return ASCII_LETTER_START.test(text) ? 0 : 1
+}
+
+function compareLocale(a, b) {
+  return scriptRank(a) - scriptRank(b) || a.localeCompare(b, 'ko')
+}
 
 export function checkAnchorExists(pathToDoc, targetPath, anchorRaw) {
   if (!anchorRaw) return true
@@ -111,7 +120,7 @@ export function derive(parsedDocs, runGit, { wikiPrefix }) {
     docs,
     pathToDoc,
     resolveTargetPath,
-    tags: Object.fromEntries([...tags.entries()].toSorted(([a], [b]) => a.localeCompare(b, 'ko'))),
+    tags: Object.fromEntries([...tags.entries()].toSorted(([a], [b]) => compareLocale(a, b))),
     tree: buildTree(docs.filter((doc) => doc.status !== 'disable')),
   }
 }
@@ -128,6 +137,12 @@ function buildBasenameIndex(pathToDoc) {
 
 /** 폴더 트리 — 노드 키는 누적 경로(`company/반도체`), 문서는 **id 배열**. 최상위가 배열이다. */
 function buildTree(activeDocs) {
+  const idToTitle = new Map(activeDocs.map((doc) => [doc.id, doc.title]))
+  const byTitle = (a, b) => compareLocale(idToTitle.get(a) ?? '', idToTitle.get(b) ?? '')
+  const nodeName = (path) => path.split('/').at(-1) ?? path
+  const byPath = (a, b) =>
+    scriptRank(nodeName(a.path)) - scriptRank(nodeName(b.path)) || compareLocale(a.path, b.path)
+
   const root = { children: new Map(), docs: [], path: '' }
   let hasRootDocs = false
 
@@ -151,18 +166,14 @@ function buildTree(activeDocs) {
 
   function toArray(node) {
     return {
-      children: [...node.children.values()]
-        .map(toArray)
-        .toSorted((a, b) => a.path.localeCompare(b.path, 'ko')),
-      docs: node.docs,
+      children: [...node.children.values()].map(toArray).toSorted(byPath),
+      docs: node.docs.toSorted(byTitle),
       path: node.path,
     }
   }
 
-  const top = [...root.children.values()]
-    .map(toArray)
-    .toSorted((a, b) => a.path.localeCompare(b.path, 'ko'))
-  return hasRootDocs ? [{ children: [], docs: root.docs, path: '' }, ...top] : top
+  const top = [...root.children.values()].map(toArray).toSorted(byPath)
+  return hasRootDocs ? [{ children: [], docs: root.docs.toSorted(byTitle), path: '' }, ...top] : top
 }
 
 /**
