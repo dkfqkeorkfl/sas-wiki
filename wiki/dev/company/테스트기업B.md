@@ -1,20 +1,20 @@
 ---
 id: "01088d27-d8c8-71d7-80df-fe55c5a99b8e"
-title: SK하이닉스
+title: 테스트기업B
 type: company
 status: active
 draft: true
-aliases: ["SK Hynix", "000660"]
+aliases: ["TestCorpB", "TCB1"]
 tags: ["반도체", "메모리"]
 meta:
-  ticker: "000660"
+  ticker: "TCB1"
   sector: "반도체"
   exchange: "KRX"
 ---
 
 ## 개요
 
-SK하이닉스는 DRAM·NAND 를 주력으로 하는 메모리 반도체 기업이다.
+테스트기업B는 DRAM·NAND 를 주력으로 하는 메모리 반도체 기업(스키마 테스트용 가상 기업)이다.
 
 ## 메모리 사업
 

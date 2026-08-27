@@ -1,20 +1,20 @@
 ---
 id: "01088d26-ee68-7a11-b53c-398f328d520e"
-title: 삼성전자
+title: 테스트기업A
 type: company
 status: active
 draft: true
-aliases: ["Samsung", "005930"]
+aliases: ["TestCorpA", "TCA1"]
 tags: ["반도체", "메모리"]
 meta:
-  ticker: "005930"
+  ticker: "TCA1"
   sector: "반도체"
   exchange: "KOSPI"
 ---
 
 ## 개요
 
-삼성전자는 메모리·시스템 반도체와 완제품을 함께 다루는 종합 전자 기업이다.
+테스트기업A는 메모리·시스템 반도체와 완제품을 함께 다루는 종합 전자 기업(스키마 테스트용 가상 기업)이다.
 
 ## 사업 부문
 
