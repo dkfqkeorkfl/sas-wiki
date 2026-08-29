@@ -6,8 +6,11 @@ status: active
 aliases: ['LLM 시대 광고시장', 'AI 검색과 광고', 'Zero-click 검색', 'AI Overview 광고']
 tags: ['광고시장', 'AI검색', '클라우드', '빅테크']
 meta:
+  asOf: '2026-08-27'
   scope: '생성형 AI·AI 검색(AI Overview 등)이 온라인 광고시장 구조에 미치는 영향 — 검색광고·퍼블리셔·소셜광고·클라우드 매출의 구분과 실적 근거'
 ---
+
+> 이 분석은 **2026-08-27 기준**(Alphabet·Meta 2026년 2분기 실적 반영)이다. 검색·광고 실적은 분기마다 갱신되므로, 이 문서를 나중에 읽는다면 아래 수치가 이미 낡았을 수 있다. 갱신 트리거는 문서 맨 아래 [[#갱신-트리거]] 참고.
 
 ## 개요
 
@@ -73,3 +76,12 @@ LLM은 "질문 → 조사 → 비교 → 답"을 주는 도구인 반면, 소셜
 [^alphabet-q2]: Alphabet 2026년 2분기 실적 발표 관련 보도 종합(digitalapplied.com "Alphabet Q2 2026: Search Ads Grew 17% in AI Overviews Era", futurumgroup.com "Alphabet Q2 FY 2026: Google Cloud Leads Growth Amid Rising AI Investment"), 확인일 2026-08-27. 1차 출처인 Alphabet 공식 IR 자료(abc.xyz/investor) 대조를 권장한다.
 [^meta-q2]: Meta 2026년 2분기 실적 발표 관련 보도 종합(storyboard18.com "Meta's AI push lifts ad revenue 27% to $59.4 billion in Q2 2026", digitalapplied.com "Meta Q2 2026: Ad Machine Strong, Capex Spooks the Street"), 확인일 2026-08-27.
 [^searchenginejournal]: Search Engine Journal, "Google AI Overviews Impact On Publishers & How To Adapt Into 2026", 확인일 2026-08-27.
+
+## 갱신 트리거
+
+다음 중 하나가 발생하면 이 문서를 재검토해야 한다.
+
+- Alphabet·Meta 신규 분기 실적 발표(Search & other, YouTube 광고, Google Cloud, Meta 광고매출 성장률 변동)
+- 검색광고 성장률 둔화(19%→17%, 2026년 2분기)가 다음 분기에도 이어지는지 여부 — 추세 반전 여부 판정 근거
+- Zero-click 비율(SparkToro)·AI Overview 클릭률(Pew) 관련 신규 조사 발표
+- 퍼블리셔 총수익 감소 여부에 대한 산업 전반 정량 집계 공개(현재 미확인 상태)
