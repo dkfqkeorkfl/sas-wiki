@@ -1,5 +1,5 @@
 ---
-id: "01a04dc9-9687-7760-bac5-c4017ffa2aba"
+id: "01a04241-ce57-7548-9765-9bc283163869"
 title: 오픈AI 동맹
 type: moc
 status: active
