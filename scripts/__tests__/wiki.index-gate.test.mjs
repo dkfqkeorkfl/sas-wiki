@@ -16,7 +16,7 @@
 //   그래서 모든 부재 단언은 케이스 안에 둘 중 하나를 갖는다 —
 //     ⓐ **인덱스 주입 앵커** — 같은 vault·같은 `readFile` 로 그 경로를 읽으면 **원문이 나온다**
 //        (= 게이트만이 유일한 방벽이다),
-//     ⓑ **양성 대조**(규범 U) — 같은 vault·같은 빌드에서 정상 문서가 **정확 7키**다.
+//     ⓑ **양성 대조**(규범 U) — 같은 vault·같은 빌드에서 정상 문서가 **정확 8키**다.
 //
 // 픽스처 제약(tdd §2.4):
 //   ① 실 vault 무접촉(특히 `git tag`) — 전 케이스 tmp vault
@@ -75,8 +75,31 @@ const OUTSIDE_MARKER = '밖의문서마커'
 const REF_LEAK = 'leak'
 const REF_ESC_OUTSIDE = 'esc/OUTSIDE'
 
-/** active 응답 계약 — **정확 7키**(리터럴). disable 스텁 4키와 뭉개지지 않는다. */
-const ACTIVE_KEYS = ['breadcrumb', 'headings', 'html', 'meta', 'path', 'sources', 'status']
+/**
+ * active 응답 계약 — **정확 8키**(리터럴). disable 스텁 4키와 뭉개지지 않는다.
+ *
+ * ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+ *    (선례 형식: 부모 리포 `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462`)
+ *
+ *    옛 값은 **7키**였고 그것은 「wiki 응답에 **이력 필드가 없다**」(아카이브 결정 D-H②)의 물질화였다.
+ *    news-convention-migration **Phase 2(doc-history-assembly)** 가 그 조건을 실현한다 — 문서 응답이
+ *    그 문서의 발행 이력을 `feed: { items, nextCursor }` 로 동봉한다(`wiki.mjs` 가 `feeds()` 를 내부
+ *    호출해 조달하고 `projectSingleDoc` 반환 블록이 부착한다). 그래서 이 상수는 7 → 8 로 **교체**되고
+ *    이 파일의 8개 소비처(`:258`·`:272`·`:289`·`:315`·`:323`·`:331`·`:340`·`:346` — 좌표는 교체 전
+ *    기준)가 같은 축을 그대로 물려받는다.
+ *
+ *    🔴 **이 파일이 무는 주제는 그대로다** — 「인덱스 게이트가 없는 것을 404 로 만든다」이지 키 개수가
+ *    아니다. 아래 케이스 제목·주석의 「8키」는 **양성 대조(규범 U)** 의 표기일 뿐이다.
+ *
+ *    🔴 **`feed` 를 조건부로 넣지 마라**(D-P2-9). 이 파일의 tmp vault 에는 `feed:` 커밋이 없으므로
+ *    기대값은 `feed: { items: [], nextCursor: null }` — **비어 있지만 키는 있다**. 「비었으니 키를
+ *    빼자」로 처분하면 이 8케이스가 조용히 green 이 되고 응답 계약이 둘로 갈린다.
+ *
+ *    🔴 **전제가 하나 늘었다**: 이 8케이스가 이제 `feeds()` 를 거쳐 **git 을 탄다**. 이 파일의 vault 는
+ *    `:161` `git(VAULT, ['init','-q'])` + `:203` `commit(...)` 으로 세운 **실 git 저장소**라 승격은
+ *    불필요하다(착수 전 T0-c 실측 재확인).
+ */
+const ACTIVE_KEYS = ['breadcrumb', 'feed', 'headings', 'html', 'meta', 'path', 'sources', 'status']
 
 /** 위키링크 `<a>` 계약(wikilink-plugin.mjs) — `exists:false` 인 대상만 이 class 를 얹는다. 리터럴이다. */
 const DEAD_CLASS = 'wiki-link-dead'
@@ -236,7 +259,7 @@ describe('GATE-A 경로 봉쇄 — 심링크 2형태 (GATE-A2 · 🟢앵커(오�
 })
 
 describe('GATE-A 정규형 강제 — 별칭 4형태 (GATE-A3 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A3: 같은 파일로 풀리는 별칭 4형태가 **전부 `null`** 이고 정규형만 7키다', async () => {
+  it('GATE-A3: 같은 파일로 풀리는 별칭 4형태가 **전부 `null`** 이고 정규형만 8키다', async () => {
     // ★ 게이트가 **정규형까지 보장한다**: `makeDocIndex` 가 `paths` 를 `breadcrumb.join('/')` 로만
     //   채우므로 인덱스는 정규형만 담는다 ⇒ 통과 = 정규형 보장. 별칭이 열리면 같은 문서가 여러
     //   주소를 갖고 `breadcrumb` 이 오염된다(`ref.split('/')` 가 응답의 breadcrumb 이다).
@@ -254,7 +277,7 @@ describe('GATE-A 정규형 강제 — 별칭 4형태 (GATE-A3 · 🟢앵커(오�
       true,
       true,
     ])
-    // 앵커(규범 U): 같은 vault·같은 빌드에서 **정규형**은 정확 7키다.
+    // 앵커(규범 U): 같은 vault·같은 빌드에서 **정규형**은 정확 8키다.
     expect(Object.keys(await askWiki('dev', REL_SKH)).toSorted()).toEqual(ACTIVE_KEYS)
 
     for (const alias of aliases) {
@@ -264,7 +287,7 @@ describe('GATE-A 정규형 강제 — 별칭 4형태 (GATE-A3 · 🟢앵커(오�
 })
 
 describe('GATE-A 온디스크 이름 동일성 — 대소문자 (GATE-A4 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A4: `company/tsmc` · `COMPANY/TSMC` 가 `null` 이고 정규형만 7키다', async () => {
+  it('GATE-A4: `company/tsmc` · `COMPANY/TSMC` 가 `null` 이고 정규형만 8키다', async () => {
     // ★ 주석 계약(tdd §3.3 · 필수): 이 케이스는 **파일시스템의 대소문자 민감도를 주장하지 않는다** —
     //   `/tmp` 는 민감이고 9p 는 비민감이다. 무는 것은 **인덱스 정확 일치**다. 9p 에서
     //   `COMPANY/TSMC.md` 가 `company/TSMC.md` 를 여는 것(실측)과 `isDraft({relPath:'DEV/SECRET'})`
@@ -277,7 +300,7 @@ describe('GATE-A 온디스크 이름 동일성 — 대소문자 (GATE-A4 · 🟢
 })
 
 describe('GATE-A 유니코드 — 정규화를 넣지 않았다 (GATE-A5 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A5: 한글 NFC 는 **7키**이고 같은 문자열의 NFD 는 **`null`** 이다', async () => {
+  it('GATE-A5: 한글 NFC 는 **8키**이고 같은 문자열의 NFD 는 **`null`** 이다', async () => {
     // ★ 주석 계약(tdd §3.3 · 필수): 이 케이스의 목적은 양성 대조가 **아니다**. 나중에 누가 유니코드
     //   정규화를 넣으면 죽는 것이 목적이다. 온디스크 이름도 인덱스도 NFC 다 — **NFD 정규화를 넣으면
     //   실문서가 죽고, NFC 정규화를 넣으면 오늘 막히는 NFD 입력이 열린다**. 두 방향을 한 케이스에서
@@ -311,21 +334,21 @@ describe('GATE-A 실패 형태는 404 다 — 나머지 11종 (GATE-A6 · 🟢�
 
   it.each(CASES)('GATE-A6: %s → `null`', async (_label, ref) => {
     expect(await askWiki('dev', ref)).toBeNull()
-    // 앵커(규범 U): 같은 vault·같은 빌드에서 정규형은 정확 7키다 — 인덱스가 비어서 통과하는 것을 배제.
+    // 앵커(규범 U): 같은 vault·같은 빌드에서 정규형은 정확 8키다 — 인덱스가 비어서 통과하는 것을 배제.
     expect(Object.keys(await askWiki('dev', REL_SKH)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 })
 
 describe('GATE-B prod draft 차단 — `dev/` 폴더 백스톱 (GATE-B1·B2 · 🟢앵커(오늘도 green))', () => {
   it('GATE-B1: `dev/실험문서` 는 **prod 에서 `null`** 이다', async () => {
-    // 앵커(규범 U): **같은 prod 아티팩트**에서 정상 문서는 7키다 — 실 vault 6문서가 전부 draft 라
+    // 앵커(규범 U): **같은 prod 아티팩트**에서 정상 문서는 8키다 — 실 vault 6문서가 전부 draft 라
     //   prod `docs=0` 이라는 함정(§2.4-②)의 tmp 판이다. prod 인덱스가 비면 이 케이스는 공허하다.
     expect(Object.keys(await askWiki('prod', REL_SKH)).toSorted()).toEqual(ACTIVE_KEYS)
 
     expect(await askWiki('prod', REL_DEV_DRAFT)).toBeNull()
   })
 
-  it('GATE-B2: 같은 문서·같은 vault 인데 **dev 에서는 7키**다(env 만 다르다)', async () => {
+  it('GATE-B2: 같은 문서·같은 vault 인데 **dev 에서는 8키**다(env 만 다르다)', async () => {
     // 규범 U — B1 과 **같은 vault·같은 ref**, 다른 것은 env 하나뿐이다. 이 짝이 없으면 B1 은
     //   「그 문서가 애초에 빌드에 없다」로도 통과한다.
     expect(Object.keys(await askWiki('dev', REL_DEV_DRAFT)).toSorted()).toEqual(ACTIVE_KEYS)
@@ -342,7 +365,7 @@ describe('GATE-B prod draft 차단 — frontmatter 플래그 (GATE-B3·B4 · �
     expect(await askWiki('prod', REL_FLAG_DRAFT)).toBeNull()
   })
 
-  it('GATE-B4: 같은 플래그 문서가 **dev 에서는 7키**다(`head-state.mjs:65` dev 분기 대칭)', async () => {
+  it('GATE-B4: 같은 플래그 문서가 **dev 에서는 8키**다(`head-state.mjs:65` dev 분기 대칭)', async () => {
     expect(Object.keys(await askWiki('dev', REL_FLAG_DRAFT)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 })

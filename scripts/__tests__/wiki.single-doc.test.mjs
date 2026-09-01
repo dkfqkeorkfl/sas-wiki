@@ -71,8 +71,32 @@ const WIKI_ROOT = 'wiki'
 /** `<vault>/wiki/<ref>.md` — `wiki.mjs:50` 과 같은 조립식이되 **리터럴**로 세운다(규범 A). */
 const docFile = (vault, ref) => path.join(vault, WIKI_ROOT, `${ref}.md`)
 
-/** active 응답 계약 — **정확 7키**(리터럴). disable 스텁 4키와 뭉개지지 않는다. */
-const ACTIVE_KEYS = ['breadcrumb', 'headings', 'html', 'meta', 'path', 'sources', 'status']
+/**
+ * active 응답 계약 — **정확 8키**(리터럴). disable 스텁 4키와 뭉개지지 않는다.
+ *
+ * ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+ *    (선례 형식: 부모 리포 `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462`)
+ *
+ *    옛 값은 **7키**였고 그것은 「wiki 응답에 **이력 필드가 없다**」(아카이브 결정 D-H②)의 물질화였다.
+ *    news-convention-migration **Phase 2(doc-history-assembly)** 가 그 조건을 실현한다 — 문서 응답이
+ *    그 문서의 발행 이력을 `feed: { items, nextCursor }` 로 동봉한다. 그래서 이 상수는 7 → 8 로
+ *    **교체**되고, 이 파일의 4개 소비처(`:174`·`:193`·`:323`·`:342` — 좌표는 교체 전 기준)가
+ *    같은 축을 그대로 물려받는다.
+ *
+ *    🔴 **`feed` 를 조건부로 넣지 마라**(D-P2-9). 「이력 0건이면 키를 생략」하면 이 12케이스가 7키를
+ *    유지해 조용히 green 이 되고 응답 계약이 **둘로 갈린다**. 이 파일의 tmp vault 에는 `feed:` 커밋이
+ *    없으므로 기대값은 `feed: { items: [], nextCursor: null }` — **비어 있지만 키는 있다**.
+ *
+ *    🔴 **PN-1(`:323` 기준)은 `projectSingleDoc` 을 `feed` 인자 없이 직접 부른다.** 그 호출도 8키를
+ *    요구하므로 `feed` 파라미터는 **기본값 `{ items: [], nextCursor: null }`** 을 가져야 한다.
+ *    그 기본값이 「`wiki.mjs` 가 실제 이력 전달을 빠뜨렸다」를 가리는 것은 아니다 — 그것은
+ *    `wiki.doc-feed.test.mjs` 의 **W1**(심은 `feedCommit` 수와 일치)이 문다.
+ *
+ *    🔴 조달(`feeds()` 호출)은 **`wiki.mjs`** 에 두고 결과를 인자로 넘긴다. `single-doc.mjs` 에서
+ *    `feeds.mjs` 를 import 하면 `feeds.mjs:26` 의 `lib/git-walk.mjs` 가 정적 폐쇄로 들어와 아래
+ *    **WK8** 이 red 가 된다 — 가드를 고칠 신호가 아니라 **층을 잘못 잡았다는 신호**다.
+ */
+const ACTIVE_KEYS = ['breadcrumb', 'feed', 'headings', 'html', 'meta', 'path', 'sources', 'status']
 const DISABLE_STUB_KEYS = ['breadcrumb', 'id', 'status', 'title']
 
 /** 위키링크 `<a>` 계약(wikilink-plugin.mjs) — 데드 링크만 이 class 를 얹는다. 리터럴이다. */
@@ -103,7 +127,7 @@ function singleDoc() {
 /**
  * ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
  *
- * 이 파일의 케이스들이 무는 것은 **엔드포인트 반환 계약**(7키/4키/null·격리·링크 해석)이지 인자
+ * 이 파일의 케이스들이 무는 것은 **엔드포인트 반환 계약**(8키/4키/null·격리·링크 해석)이지 인자
  * 개수가 아니다. 그래서 주제는 그대로 두고 **호출 인자만** 갱신한다 — D15 로 `--count` 가 필수가
  * 됐을 때 `cli.env-enum.test.mjs:98-103` 이 남긴 처분과 같은 형태다.
  *
@@ -165,7 +189,7 @@ describe('wiki 는 async 이고 순수부는 lib/single-doc.mjs 다 (WK1 · 🔴
 })
 
 describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () => {
-  it('WK2: active 문서 → **정확 7키** · 자기 마커 있고 이웃 마커 없다', async () => {
+  it('WK2: active 문서 → **정확 8키** · 자기 마커 있고 이웃 마커 없다', async () => {
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
 
@@ -189,7 +213,7 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
 
     expect(Object.keys(stub).toSorted()).toEqual(DISABLE_STUB_KEYS)
     expect(stub.status).toBe('disable')
-    // 앵커: active 는 7키다(둘이 같은 모양으로 뭉개지지 않는다).
+    // 앵커: active 는 8키다(둘이 같은 모양으로 뭉개지지 않는다 · 축 교체는 ACTIVE_KEYS 문단 참조).
     expect(Object.keys(await askWiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 
@@ -313,7 +337,7 @@ describe('머리말 없는 파일은 크래시가 아니라 부재다 (PN-1 · �
     const mod = singleDoc()
     const index = mod.makeDocIndex(readJson(summaryFile(vault, 'dev')).docs)
 
-    // 앵커(케이스 내): **같은 index·같은 ref** 에 실제 파서를 주면 정확 7키가 나온다 →
+    // 앵커(케이스 내): **같은 index·같은 ref** 에 실제 파서를 주면 정확 8키가 나온다 →
     //   "그 ref 가 애초에 인덱스에 없어서 null" 이라는 공허 통과를 배제한다.
     const parsedReal = mod.projectSingleDoc({
       index,
@@ -338,7 +362,7 @@ describe('빌드 후 머리말이 사라져도 500 이 아니다 (PN-2 · 🔴RE
 
     // 앵커 ⓐ: 그 파일은 **디스크에 실재한다** → "없어서 null" 을 배제.
     expect(existsSync(broken)).toBe(true)
-    // 앵커 ⓑ(규범 U): **같은 vault·같은 빌드**의 정상 문서는 정확 7키 → "인덱스가 비었다" 를 배제.
+    // 앵커 ⓑ(규범 U): **같은 vault·같은 빌드**의 정상 문서는 정확 8키 → "인덱스가 비었다" 를 배제.
     expect(Object.keys(await askWiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
 
     const returned = askWiki(vault, 'dev', REL_NEIGHBOR)

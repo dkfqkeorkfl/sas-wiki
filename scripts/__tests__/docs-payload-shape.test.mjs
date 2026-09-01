@@ -71,7 +71,10 @@
 //          FP2(문서 1 vs 소스 3) · FP3(docs[0] 유령 anchor,anchorText) · FP4(표 유령 2행)
 //          AN1(feeds 구간 anchor 6줄 · 전문 anchorText 4줄) · MP1(매핑표 유령 행)
 //          IV1(README:480 이 없는 불변식 6 참조)
-//   ✅green WP1(wiki 7키 일치 — pin) · WP2(살아 있는 headings[].anchor — AN1 의 짝)
+//   ✅green WP2(살아 있는 headings[].anchor — AN1 의 짝)
+//   🔴RED  WP1′ — **축 교체**(news-convention-migration Phase 2 · doc-history-assembly).
+//          wiki 반환 키가 7 → **8**(`feed` 가산)이 되므로 옛 7키 pin 은 「승계」가 아니라 「대체」다.
+//          사유는 WP1′ 케이스 위 문단 참조.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -503,8 +506,9 @@ function topLevelReturnKeys(returnBlock) {
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('결속 — wiki 반환값 (WP · pin)', () => {
   it('WP0: README 에 `contract:wiki-payload` 마커가 열림/닫힘 각 1개이고 구간이 비어 있지 않다', () => {
-    // 🔴 지금 red(마커 부재)이지만 이 절의 **값은 정확하다**(실측 7키 일치). 그래도 마커를 두는 것은
-    //   ① AN1(부재)의 짝인 WP2 에 권위 있는 구간을 주고 ② 같은 계열의 재발을 대칭으로 막기 위해서다.
+    // 🔴 지금 red(마커 부재). 마커를 두는 것은 ① AN1(부재)의 짝인 WP2 에 권위 있는 구간을 주고
+    //   ② 같은 계열의 재발을 대칭으로 막기 위해서다. (구간의 **값**은 WP1′ 가 8키로 대조한다 —
+    //   축 교체 사유는 그 케이스 위 문단 참조.)
     const { extractMarkerBlock } = markdownHelpers()
     const block = extractMarkerBlock(readme(), 'wiki-payload')
 
@@ -512,10 +516,35 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
     expect(block.join('\n')).toContain('"headings"')
   })
 
-  it('WP1: active 문서 예시의 키 == `wikiDocBody` 4키 + 봉투 3키 (양방향)', () => {
-    // ✅ 지금 green — **pin** 이 본분이다(실측 7키가 문서와 일치한다).
-    // 코드 축이 둘인 이유: 본문 4키는 `body.schema.json` 이, 봉투 3키(`path`·`breadcrumb`·`status`)는
-    //   `projectSingleDoc` 이 소유한다(wiki 응답 봉투에는 스키마 파일이 없다 — 서빙 조립물이다).
+  // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+  //    (선례 형식: `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462` · 부모 리포)
+  //
+  //    WP1 은 **코드(`single-doc.mjs` 마지막 return 블록) ↔ 스키마(`body.schema.json`) ↔ 문서(README
+  //    `contract:wiki-payload` 예시)** 3자를 양방향으로 묶는 트립와이어였고, 옛 기대는 「봉투 3키 +
+  //    본문 4키 = **정확 7키**」였다. 그 7키는 「wiki 응답에 **이력 필드가 없다**」는 아카이브 결정
+  //    **D-H②** 의 물질화였다 — _"있으면 게이트가 하나 더 필요하다는 뜻(회귀 감지)"_.
+  //
+  //    🔴 news-convention-migration **Phase 2(doc-history-assembly)** 가 정확히 그 조건을 실현한다:
+  //    문서 응답이 그 문서의 발행 이력을 `feed: { items, nextCursor }` 로 동봉한다(D-P2-9 — 이력이
+  //    0건이어도 **항상** 싣는다. 조건부로 넣으면 응답 계약이 둘로 갈린다). 그래서 이 케이스는
+  //    **7키 pin 을 8키 pin 으로 교체**한다. 숫자만 고쳐 통과시키는 것이 아니라 **무엇을 지키던
+  //    가드가 무엇을 지키게 되었는지**를 여기 남긴다: 「이력 필드가 없다」 → 「이력 필드가 **여기
+  //    한 곳에만** 있고 본문 4키(`body.schema.json` · `additionalProperties:false`)는 무손상이다」.
+  //
+  //    🔴 함정 둘(둘 다 red 가 **엉뚱한 곳**을 가리키게 만든다):
+  //      ① `topLevelReturnKeys` 는 **정적 텍스트 스캔**이다 — 반환 블록에 spread(`...`)를 쓰면
+  //         _"WP1 파서를 갱신하라"_ 로 명시 throw 한다. 키를 하나씩 나열하라.
+  //      ② `feed` 를 `wiki.mjs` 에서 스프레드로 얹으면 이 파서는 **7키인 채 green** 이고 README
+  //         대조만 red 가 된다. 부착 지점은 `projectSingleDoc` 의 **마지막 `return {`** 블록이다.
+  //
+  //    🔴 README 갱신은 이 축 교체의 **일부**다(tdd §5-A(2)③): `sas-wiki/README.md` 의
+  //    `contract:wiki-payload` 구간(「7키」 문면 · JSONC 예시 · 키 설명 표)에 `feed` 를 더하지 않으면
+  //    마지막 양방향 대조가 계속 red 다. **그 갱신은 GREEN 단계 소관**이다(이 RED 커밋은 테스트만 만진다).
+  it('WP1′: active 문서 예시의 키 == `wikiDocBody` 4키 + 봉투 **4키** (양방향 · 🔴축 교체)', () => {
+    // 코드 축이 둘인 이유: 본문 4키는 `body.schema.json` 이, 봉투 4키(`path`·`breadcrumb`·`status`
+    //   ·**`feed`**)는 `projectSingleDoc` 이 소유한다(wiki 응답 봉투에는 스키마 파일이 없다 — 서빙
+    //   조립물이다). 🔴 `feed` 를 `body.schema.json` 의 `wikiDocBody` 에 넣지 마라 — 그것은 벌크
+    //   아티팩트 원소 타입이고 _"정확히 4키"_ + `additionalProperties:false` 다(D-P2-6).
     const bodyKeys = sorted(readSchema('body.schema.json').definitions.wikiDocBody.required)
     expect(bodyKeys).toEqual(['headings', 'html', 'meta', 'sources'])
 
@@ -523,14 +552,14 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
     const returnBlock = source.slice(source.lastIndexOf('  return {'))
     const projection = topLevelReturnKeys(returnBlock)
 
-    // 앵커: 봉투가 본문 4키를 **전부** 싣고, 그 위에 정확히 3키를 더한다(리터럴 축 — 규범 A).
-    expect(sorted(projection.filter((key) => !bodyKeys.includes(key)))).toEqual(['breadcrumb', 'path', 'status']) // prettier-ignore
-    expect(projection).toHaveLength(7)
+    // 앵커: 봉투가 본문 4키를 **전부** 싣고, 그 위에 정확히 4키를 더한다(리터럴 축 — 규범 A).
+    expect(sorted(projection.filter((key) => !bodyKeys.includes(key)))).toEqual(['breadcrumb', 'feed', 'path', 'status']) // prettier-ignore
+    expect(projection).toHaveLength(8)
 
     const scope = docScope('wiki-payload')
     const documented = sorted(Object.keys(exampleObject(scope, 'wiki-payload', '"headings"')))
 
-    expect(documented, `wiki active 문서 예시(${scope.via}) — 실제 응답 7키와 대조`).toEqual(projection) // prettier-ignore
+    expect(documented, `wiki active 문서 예시(${scope.via}) — 실제 응답 8키와 대조`).toEqual(projection) // prettier-ignore
   })
 
   it('WP2: ★ 살아 있는 앵커 — `headings[].anchor` 는 스키마가 요구하고 예시가 보여준다', () => {

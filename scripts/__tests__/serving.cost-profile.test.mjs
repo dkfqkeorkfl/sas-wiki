@@ -6,11 +6,12 @@
 //   Task 9 로 소멸하지만 그것이 지키려던 것("서빙이 문서당 git 을 팔지 않는다")은 더 강한 형태로
 //   남는다 — **히트 경로의 git 호출 multiset === `[]`**. 삭제가 아니라 교체다.
 //
-// ★ 정정(v3 P2 이후 오늘의 상태로 — 케이스 본문 PU4·PU5 대조): 이 "조회는 아티팩트만 읽는다 —
-//   git 을 한 번이라도 부르면 판정 경로가 되살아났다는 신호"는 이제 `wiki.mjs`(PU5)에만 참이다.
-//   `feeds.mjs`(PU4)는 반대로 뒤집혔다 — 조회가 커서 기반 라이브 워크로 교체되며 git 호출이
-//   **정상**이 됐고(`LIVE_WALK_VERBS` 절 참고), 판정 대상은 "0건" 이 아니라 "그 동사 집합이 반드시
-//   난다"로 바뀌었다. **빈 multiset 동치**로 못박는 것은 `wiki.mjs`(PU5) 쪽만이다.
+// ★ 정정 2차(news-convention-migration Phase 2 · 케이스 본문 PU4·PU5 대조): 이 "조회는 아티팩트만
+//   읽는다 — git 을 한 번이라도 부르면 판정 경로가 되살아났다는 신호"는 **이제 어느 쪽에도 참이 아니다**.
+//   `feeds.mjs`(PU4)가 v3 P2 에서 커서 기반 라이브 워크로 뒤집혔고, `wiki.mjs`(PU5)도 Phase 2 에서
+//   **이력 조달을 `feeds()` 내부 호출로** 하면서 같은 전환을 겪는다(`LIVE_WALK_VERBS` 절 참고).
+//   ⇒ 두 조회 도구 모두 판정 대상이 "0건" 이 아니라 **"그 동사 집합이 반드시 난다"** 로 바뀌었다.
+//   **빈 multiset 동치 계약은 더 이상 남아 있지 않다** — 대체 사유는 PU5 케이스 위 문단이 소유한다.
 //
 // ★ 규범 G(이 phase 신설): "열지 않았다" 는 정적 그래프가 아니라 **실행에서** 관측한다. 재생성 분기가
 //   `await import()` 라서 정적 게이트(FC1·WK8)가 green 인 채로 툴체인이 로드되는 상태가 성립한다
@@ -45,14 +46,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCRIPTS_DIR = path.resolve(HERE, '..')
 
 /**
- * v3 P1(Task 6) 이후의 조회 경로 git 호출 계약 — **빈 multiset**이다.
- *
- * 신선도 판정이 사라지면 `rev-parse HEAD` 를 낼 이유도 사라진다(D1). 조회 도구는 **캐시 파일을 읽기만**
- * 한다 — git 을 한 번이라도 부르면 그 자체가 "판정이 남아 있다" 는 신호다.
- */
-const READ_ONLY_GIT_CALLS = []
-
-/**
  * ★ **v3 P2 · PU4 계약 소멸의 새 리터럴**(tdd §4.2). 조회가 라이브 커서 워크가 되면서 **반드시 내는**
  * git 동사 집합이다 — `rev-parse`(커서 3단 검증 ② · D10)와 `rev-list`(배치 워크 · D12).
  *
@@ -60,9 +53,10 @@ const READ_ONLY_GIT_CALLS = []
  * 「이 둘이 반드시 있다」인 이유: 워크는 문서 해석을 위해 `log`·`show` 도 내므로 전량을 리터럴로
  * 박으면 GREEN 의 내부 분해에 결속되어 깨지기 쉬운 가드가 된다(규범 A 의 취지).
  *
- * ★★ **`READ_ONLY_GIT_CALLS`(위)를 지우지 마라** — `:157` **PU5**(`wiki.mjs`)가 같은 상수를 쓰고
- * 그쪽은 **파이프라인 P4 소관이라 살아 있다.** 상수를 지우는 것이 가장 자연스러운 "정리" 이고,
- * 그것이 PU5 를 죽인다(§4.6 무변경 pin).
+ * ★★ **news-convention-migration Phase 2 로 `wiki.mjs`(PU5)도 이 집합을 쓴다.** 예전 이 자리에는
+ * `READ_ONLY_GIT_CALLS = []`(빈 multiset) 상수와 _"지우지 마라 — PU5 가 쓴다"_ 는 경고가 있었다.
+ * 그 상수는 **소비처가 0 이 되어 함께 제거**했다 — 「승계」가 아니라 「대체」이므로 사유는 사라지지
+ * 않고 PU5 케이스 위 문단으로 **옮겨 갔다**(그 문단을 지우지 마라).
  */
 const LIVE_WALK_VERBS = ['rev-list', 'rev-parse']
 
@@ -243,10 +237,41 @@ describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip) v3 P2: 조회가 
     expect(verbCount(hitFeeds, 'rev-list')).toBeGreaterThanOrEqual(1)
   })
 
-  it('PU5(구 TR2): `wiki.mjs` 히트 실행도 git 호출 multiset === `[]`', () => {
-    // 하나만 고친 구현을 배제한다 — D-E 와 D-F 는 서로 다른 Task 다.
-    expect(hitWiki.exitCode).toBe(0)
-    expect(hitWiki.gitCalls).toEqual(READ_ONLY_GIT_CALLS)
+  // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+  //    (선례 형식: 부모 리포 `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462`.
+  //     같은 파일이 **PU4**(`feeds.mjs`)에 대해 v3 P2 에서 이미 같은 전환을 겪었다 — 그 서술을 따른다.)
+  //
+  //    옛 기대는 `hitWiki.gitCalls` **=== 빈 multiset** 이었고, 그 근거는 `wiki.mjs:2-5` 가 선언한
+  //    비용 계약 _"히트 경로의 비용 계약은 «아티팩트 읽기 + 단일 문서 렌더» 이며 git 호출은 없다"_ 였다.
+  //    즉 「git 을 한 번이라도 부르면 그 자체가 «판정이 남아 있다»는 신호」라는 **탐지기**였다.
+  //
+  //    🔴 news-convention-migration **Phase 2(doc-history-assembly)** 가 그 계약을 **의도적으로**
+  //    바꾼다: 문서 응답이 그 문서의 발행 이력을 동봉해야 하고, 그 이력의 조달은 **`feeds()` 내부
+  //    호출**(= 라이브 git 커서 워크)이다. 아티팩트(`cache/feeds.<env>.json`) 직독으로 git 을 피하는
+  //    안은 **2차 정정이 명시적으로 철회**했다 — ⓐ 기존 두 조달 경로 어느 쪽도 아닌 세 번째 경로를
+  //    발명해 재사용성 요구를 깨고 ⓑ PRD 가 이미 기각한 「캐시 없으면 이력 없음」·「지평 200건에
+  //    갇힘」을 되살리기 때문이다. 라이브 워크 비용은 **알고 받는 수용된 리스크**다(D-P2-1).
+  //
+  //    🔴 그래서 처분은 「가드를 지우거나 `toBe(0)` 을 느슨하게 만드는 것」이 **아니다**. 관측 대상을
+  //    **0건 → 「반드시 나는 동사 집합」** 으로 바꾼다(PU4 와 같은 형식). 방어는 약해지지 않는다 —
+  //    「조달이 실제로 일어났는가」를 이제 이 케이스가 문다. 🔴 **다시 0건으로 돌아가면** 그것은
+  //    「이력 조달이 사라졌거나 아티팩트 직독으로 우회했다」는 신호이므로 여기가 red 여야 한다.
+  it('PU5(구 TR2): `wiki.mjs` 히트 실행이 이력 조달 때문에 `rev-parse`·`rev-list` 를 **각각 1회 이상** 낸다 (🔴축 교체)', () => {
+    // 앵커 ⓐ: 인자 계약 위반(exit 2)으로 죽은 것이 아니다 — 사유 뒤바뀜 방지(규범 P).
+    expect(hitWiki.exitCode, hitWiki.stderr).toBe(0)
+    // 앵커 ⓑ: 관측기(PATH shim)가 살아 있다 — 0건이면 아래 집합 단언이 사유를 못 가른다.
+    expect(hitWiki.gitCalls.length, `git 호출 0건 (exit=${hitWiki.exitCode})`).toBeGreaterThan(0)
+
+    // 규범 N — 개수 단독 금지: **정렬 verb 집합 동등** + verb 별 개수 하한. 잉여 동사(`log`·`show`
+    //   등 문서 해석 계층)는 PU4 와 같은 이유로 걸러 낸다 — 「이 동사들만 난다」는 참이 아니다.
+    const observedVerbs = [...new Set(hitWiki.gitCalls.map((argv) => gitVerb(argv)))]
+      .filter((verb) => LIVE_WALK_VERBS.includes(verb))
+      .sort()
+    expect(observedVerbs, `관측된 git 호출: ${JSON.stringify(gitVerbs(hitWiki))}`).toEqual(
+      [...LIVE_WALK_VERBS].sort(),
+    )
+    expect(verbCount(hitWiki, 'rev-parse')).toBeGreaterThanOrEqual(1)
+    expect(verbCount(hitWiki, 'rev-list')).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -296,11 +321,30 @@ describe('런타임 로드 관측 — 규범 G (TR3·TR5 · 🔴RED 오늘 툴�
     expect(countUrls(hitFeeds, NODE_MODULES)).toBe(0)
   })
 
-  it('TR5: `wiki.mjs` 히트 실행은 `derive`·`git-walk` 를 안 열고 **`render` 는 연다**', () => {
+  // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+  //
+  //    옛 기대는 `git-walk` **0건**이었고, 그것은 「`wiki` 는 커밋 워크를 타지 않는다」(D-F)의 런타임
+  //    짝이었다(정적 짝은 `wiki.single-doc.test.mjs` 의 **WK8**). news-convention-migration
+  //    **Phase 2** 가 `wiki.mjs` 에 `feeds()` 내부 호출을 더하면서 `feeds.mjs:26` 의 `lib/git-walk.mjs`
+  //    가 **실제로 열린다** ⇒ 그 0건 기대는 참이 아니게 된다.
+  //
+  //    🔴 **그러나 `derive` 0건은 그대로 green 이 정답이다** — 축을 뭉뚱그려 셋 다 고치지 마라.
+  //    착수 전 실측: `feeds.mjs` 의 정적 체인(`git-walk`→`feed`·`git`·`feed-survival`·`head-state`
+  //    ·`parse` / `head-state`→`doc-gate`·`draft`·`git`·`parse`·`schema-validator` /
+  //    `feed-cursor`→`git`·`ignore`→`schema-validator`)은 **어느 경로도 `derive.mjs` 에 닿지 않는다**
+  //    (`derive.mjs` 를 무는 것은 `parse-vault.mjs:1`·`validate.mjs:15` 뿐). 즉 「전 문서 파생을 타지
+  //    않는다」는 D-F 의 핵심 성질은 **무손상**이고, 이 케이스는 그 성질을 계속 지킨다.
+  //
+  //    🔴 **층 경계 주의**: `git-walk` 유입은 **`wiki.mjs` 의 폐쇄**에서만 허용된다.
+  //    `single-doc.mjs` 로 조달을 내리면 **WK8** 이 red 가 된다 — 가드를 고칠 신호가 아니라
+  //    조달을 잘못된 층에 두었다는 신호다(tdd T2 GREEN 계약 4).
+  it('TR5: `wiki.mjs` 히트 실행은 `derive` 를 안 열고 **`render`·`git-walk` 는 연다** (🔴축 교체)', () => {
     // D-F 의 비대칭이 **의도**임을 못박는다 — `wiki` 는 본문 HTML 이 실제로 필요하다(F-21 미배정).
     expect(countUrls(hitWiki, RENDER)).toBeGreaterThan(0)
+    // 🟢 무변경 — 전 문서 파생은 여전히 타지 않는다(위 문단의 정적 체인 실측이 근거다).
     expect(countUrls(hitWiki, DERIVE)).toBe(0)
-    expect(countUrls(hitWiki, GIT_WALK)).toBe(0)
+    // 🔴 축 교체 — 이력 조달(`feeds()` → 커서 워크)이 실제로 일어났다는 **런타임 증거**다.
+    expect(countUrls(hitWiki, GIT_WALK)).toBeGreaterThan(0)
   })
 })
 
