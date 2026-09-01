@@ -62,10 +62,10 @@ const RESOLVE_BACKSTOP_TIMEOUT_MS = 600_000
  *
  * @param {string} vault git vault repository root
  * @param {'dev'|'prod'} env
- * @param {{ after?: string, count?: number, ignore?: string }} [window]
+ * @param {{ after?: string, count?: number, doc?: string, ignore?: string }} [window]
  *   `after` 는 12-hex 커서(미지정 = HEAD 부터) · `count` 는 페이지 크기(**미지정 = 상한 없음**;
- *   지정 시 1 이상의 안전정수여야 한다 · CLI 층은 D15 로 필수다) · `ignore` 는 억제 목록 파일 경로
- *   (미지정 = 억제 없음 · D20).
+ *   지정 시 1 이상의 안전정수여야 한다 · CLI 층은 D15 로 필수다) · `doc` 은 문서 id 필터 ·
+ *   `ignore` 는 억제 목록 파일 경로(미지정 = 억제 없음 · D20).
  */
 export async function feeds(vault, env = 'prod', window = {}) {
   const envError = envEnumError(env)
@@ -94,6 +94,7 @@ export async function feeds(vault, env = 'prod', window = {}) {
   const { items, nextCursor } = walkCursorPage(vaultDir, {
     after: window.after,
     count: window.count,
+    doc: window.doc,
     ignoreEntries: loadIgnoreEntries(vaultDir, window.ignore),
     resolveItems: makeFeedItemResolver(vaultDir, { env, runGit: resolveGit }),
     runGit: walkGit,
@@ -151,6 +152,7 @@ function parseCliArgs(argv) {
     options: {
       after: { type: 'string' },
       count: { type: 'string' },
+      doc: { type: 'string' },
       env: { default: 'prod', type: 'string' },
       ignore: { type: 'string' },
       out: { type: 'string' },
@@ -204,6 +206,7 @@ export async function main(argv = process.argv.slice(2)) {
   const result = await feeds(vault, values.env, {
     after: values.after,
     count,
+    doc: values.doc,
     ignore: values.ignore,
   })
   process.stdout.write(`${JSON.stringify(result)}\n`)

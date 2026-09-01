@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // wiki 엔드포인트 — **단일 문서 렌더**(D-F). summary 아티팩트를 읽어 `docs[].breadcrumb` 로 경로
 //   집합 + basename 인덱스를 만들고(`lib/single-doc.mjs`), 요청 문서 **1건만** 파싱·렌더한다.
-//   `derive()`·`collectFeedItems()`·`getFileCommitDates()` 를 타지 않고, 생성기도 부르지 않는다.
-//   히트 경로의 비용 계약은 "아티팩트 읽기 + 단일 문서 렌더" 이며 git 호출은 없다.
+//   본문은 summary 아티팩트와 디스크에서, 문서 이력은 라이브 git 워크에서 조달한다.
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import { feeds } from './feeds.mjs'
 import { SCHEMA_VERSION, readArtifact } from './lib/artifact.mjs'
 import { envEnumError } from './lib/cli-env.mjs'
 import { WIKI_PREFIX } from './lib/head-state.mjs'
@@ -32,9 +32,10 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  * @param {'dev'|'prod'} env
  * @param {string} ref path(canonical)
  * @param {string} summaryPath summary 아티팩트 경로 — `main()` 이 해석해 넘긴다(기본값 없음)
+ * @param {string} [ignorePath] 억제 목록 경로 — 호출자가 넘긴 값을 그대로 피드 조달에 사용한다
  * @returns {Promise<object|null>}
  */
-export async function wiki(vault, env = 'prod', ref = '', summaryPath) {
+export async function wiki(vault, env = 'prod', ref = '', summaryPath, ignorePath) {
   const vaultDir = path.resolve(vault)
   // 읽기 실패 처리일 뿐 신선도 판정이 아니다. path 가 summary 아티팩트를 가리키고, 남은 expect 는
   // `{env, schemaVersion}` 로 feeds 독자와 같다.
@@ -51,8 +52,22 @@ export async function wiki(vault, env = 'prod', ref = '', summaryPath) {
       `summary 아티팩트를 읽을 수 없다(${artifact.reason}): ${summaryPath} — 빌드를 먼저 실행하세요.`,
     )
   }
-  const index = makeDocIndex(artifact.payload.docs)
+  const artifactDocs = artifact.payload.docs
+  const index = makeDocIndex(artifactDocs)
+  const artifactDoc = artifactDocs.find((doc) => doc.breadcrumb.join('/') === ref)
+  if (artifactDoc === undefined) {
+    return projectSingleDoc({
+      index,
+      readFile: (docRef) => parseMarkdownFile(path.join(vaultDir, WIKI_PREFIX, `${docRef}.md`)),
+      ref,
+    })
+  }
+  const { items, nextCursor } = await feeds(vault, env, {
+    doc: artifactDoc.id,
+    ignore: ignorePath,
+  })
   return projectSingleDoc({
+    feed: { items, nextCursor },
     index,
     readFile: (docRef) => parseMarkdownFile(path.join(vaultDir, WIKI_PREFIX, `${docRef}.md`)),
     ref,
@@ -74,6 +89,7 @@ export async function main(argv = process.argv.slice(2)) {
       args: argv,
       options: {
         env: { default: 'prod', type: 'string' },
+        ignore: { type: 'string' },
         path: { type: 'string' },
         // D27 — **기본값을 두지 않는다**(`summary --out`·`feeds --out`·`validate --out` 와 같은
         //   "명시 출력/입력만 쓴다" 계약). 기본값을 주면 파생이 되살아나 D27 이 무의미해진다.
@@ -115,6 +131,7 @@ export async function main(argv = process.argv.slice(2)) {
     values.env,
     values.path ?? '',
     resolveFromVault(vault, values.summary),
+    values.ignore,
   )
   process.stdout.write(`${JSON.stringify(result)}\n`)
 }

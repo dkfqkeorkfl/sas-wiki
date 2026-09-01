@@ -211,13 +211,14 @@ node scripts/summary.mjs [--vault <dir>] [--env dev|prod]
 ```bash
 node scripts/feeds.mjs [--vault <dir>] [--env dev|prod]
                        --count <n> [--after <cursor>]
-                       [--ignore <file>] [--out <file>]
+                       [--doc <docId>] [--ignore <file>] [--out <file>]
 ```
 
 | 플래그     | 기본값          | 의미                                                                          |
 | ---------- | --------------- | ----------------------------------------------------------------------------- |
 | `--count`  | **필수**        | 페이지 크기(1 이상 정수). 누락·무효면 [exit 2](#종료-코드) — 조용한 폴백 없음 |
 | `--after`  | 없음            | 커서. 반환값의 `nextCursor` 를 **그대로** 넘긴다(12자리 소문자 16진수)        |
+| `--doc`    | 없음            | 문서 id. 해당 문서를 가리키는 항목만 반환한다                                 |
 | `--ignore` | 없음(억제 없음) | 억제 목록 파일 경로. 상대 경로는 `--vault` 기준                               |
 | `--out`    | 없음            | feeds 아티팩트 생성 모드. stdout 은 비고 상대 경로는 vault 기준               |
 
@@ -247,12 +248,13 @@ node scripts/feeds.mjs --env dev --count 2 --after 4eb6ee1c9d6b
 
 ```bash
 node scripts/wiki.mjs [--vault <dir>] [--env dev|prod] --path <경로>
-                      --summary <file>
+                      --summary <file> [--ignore <절대경로>]
 ```
 
 | 플래그      | 기본값   | 의미                                                                              |
 | ----------- | -------- | --------------------------------------------------------------------------------- |
 | `--summary` | **필수** | summary 아티팩트 경로. 누락이면 [exit 2](#종료-코드) · 상대 경로는 `--vault` 기준 |
+| `--ignore`  | 없음     | 피드 억제 목록의 절대 경로                                                        |
 
 `--path` 는 `breadcrumb.join('/')` 형태다 — 확장자도, `wiki/` 접두사도 붙이지 않는다.
 
@@ -534,13 +536,14 @@ active 문서는 10키다.
 
 `--path` 가 무엇을 가리키느냐에 따라 셋 중 하나다.
 
-**① active 문서 — 7키.**
+**① active 문서 — 8키.**
 
 ```jsonc
 {
   "path": "company/삼성전자",
   "breadcrumb": ["company", "삼성전자"],
   "status": "active",
+  "feed": { "items": [/* … */], "nextCursor": null },
   "html": "<h2 id=\"개요\">개요</h2>\n<p>…</p>",
   "headings": [
     { "anchor": "개요", "level": 2, "text": "개요" },
@@ -554,6 +557,7 @@ active 문서는 10키다.
 
 | 키         | 설명                                                                         |
 | ---------- | ---------------------------------------------------------------------------- |
+| `feed`     | 이 문서를 가리키는 발행 이력과 다음 커서. 이력 0건이면 `items` 는 `[]`       |
 | `html`     | 렌더 완료된 본문. 위키링크는 `<a class="wiki-link" data-path="…">` 로 나온다 |
 | `headings` | 목차·앵커 검증용. `anchor` 는 URL 슬러그, `text` 는 표시용 원문              |
 | `meta`     | frontmatter 의 자유 필드 — 인포박스에 그대로 쓰인다                          |

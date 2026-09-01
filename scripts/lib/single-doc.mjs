@@ -62,11 +62,18 @@ function makeResolver(index, selfPath) {
  * - active 다 → `readFile(ref)` 로 그 문서 1건만 파싱하고 렌더한다
  * - active 인데 `readFile` 이 `null` 이다(머리말 파손) → `null`. 없는 문서와 **같은 실패 형태**다
  *
- * @param {{ index: object, readFile: (ref: string) => { body: string, frontmatter: object } | null,
+ * @param {{ feed?: { items: object[], nextCursor: string|null }, index: object,
+ *           readFile: (ref: string) => { body: string, frontmatter: object } | null,
  *           ref: string, render?: (body: string, resolve: Function) => string }} input
  * @returns {object | null}
  */
-export function projectSingleDoc({ index, readFile, ref, render = renderMarkdownToHtml }) {
+export function projectSingleDoc({
+  feed = { items: [], nextCursor: null },
+  index,
+  readFile,
+  ref,
+  render = renderMarkdownToHtml,
+}) {
   const stub = index.stubByPath.get(ref)
   if (stub) return stub
   if (!index.paths.has(ref)) return null
@@ -82,6 +89,7 @@ export function projectSingleDoc({ index, readFile, ref, render = renderMarkdown
 
   return {
     breadcrumb: ref.split('/'),
+    feed,
     headings: extractHeadings(body),
     html: render(body, resolver),
     meta: parsed.frontmatter.meta || {},

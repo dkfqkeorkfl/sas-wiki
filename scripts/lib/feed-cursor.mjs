@@ -181,6 +181,7 @@ export function resolveCursorCommit(cursor, { runGit } = {}) {
  * @param {{
  *   after?: string,
  *   count?: number,
+ *   doc?: string,
  *   ignoreEntries?: object[],
  *   resolveItems: (shas: string[]) => object[],
  *   runGit?: (args: string[]) => string,
@@ -202,7 +203,7 @@ export function resolveCursorCommit(cursor, { runGit } = {}) {
  */
 export function walkCursorPage(
   vaultDir,
-  { after, count, ignoreEntries = [], resolveItems, runGit, timeoutMs } = {},
+  { after, count, doc, ignoreEntries = [], resolveItems, runGit, timeoutMs } = {},
 ) {
   if (count !== undefined && !(Number.isSafeInteger(count) && count >= 1)) {
     throw new Error(
@@ -247,6 +248,7 @@ export function walkCursorPage(
     for (const item of applyIgnoreFeeds(resolveItems(shas), ignoreEntries)) {
       if (seen.has(item.id)) continue
       seen.add(item.id)
+      if (doc !== undefined && !item.docs.some((ref) => ref.id === doc)) continue
       collected.push(item)
     }
     if (bounded && collected.length >= count) break
