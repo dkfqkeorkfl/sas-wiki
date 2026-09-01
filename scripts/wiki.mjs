@@ -55,7 +55,12 @@ export async function wiki(vault, env = 'prod', ref = '', summaryPath, ignorePat
   const artifactDocs = artifact.payload.docs
   const index = makeDocIndex(artifactDocs)
   const artifactDoc = artifactDocs.find((doc) => doc.breadcrumb.join('/') === ref)
-  if (artifactDoc === undefined) {
+  // 이력을 **조달하지 않는** 두 갈래를 먼저 걸러낸다.
+  //   · 인덱스에 없는 경로 → 투영이 어차피 `null` 을 돌려준다.
+  //   · disable 문서 → 투영이 이력을 싣지 않는 스텁으로 **먼저 반환**하므로 조달 결과가 버려진다.
+  // 조달은 커밋 히스토리를 라이브로 걷는 비용이라, 결과를 쓰지 않는 갈래에서 부르면 그 비용이
+  //   통째로 낭비된다(응답은 같지만 저장소가 커질수록 손해가 커진다).
+  if (artifactDoc === undefined || artifactDoc.status === 'disable') {
     return projectSingleDoc({
       index,
       readFile: (docRef) => parseMarkdownFile(path.join(vaultDir, WIKI_PREFIX, `${docRef}.md`)),

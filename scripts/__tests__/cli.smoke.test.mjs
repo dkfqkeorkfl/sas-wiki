@@ -56,6 +56,13 @@ const SAVED_GIT_ENV = {}
 //   디렉토리에 쓰고, 아래 wiki 스모크가 그 경로를 직접 가리킨다.
 let repoRootOutDir
 let repoRootSummaryPath
+// 🔴 훅 예산을 명시한다(기본 60s 로는 모자란다). 이 훅은 tmp vault 가 아니라 **실 저장소 전체**를
+//   대상으로 아티팩트를 만들므로 비용이 저장소 크기에 비례하고, 네트워크 파일시스템 위에서는 기본값
+//   경계(60s)를 오르내린다 — 실측 60.9~61.2s 로 같은 커밋에서 통과와 실패가 갈렸다. 그 상태를 두면
+//   훅이 스위트 레벨로 죽어 **이 파일 8케이스가 통째로 skip 되고**, 그 skip 이 「초록」으로 오독된다.
+//   전역 `hookTimeout` 을 올리지 않는 이유: 다른 훅은 tmp vault 기준이라 60s 도 과하고, 전역을 올리면
+//   진짜로 매달린 훅을 늦게 발견한다. 예산은 **이 훅에만** 준다.
+const REPO_PREBUILD_TIMEOUT_MS = 300_000
 beforeAll(async () => {
   for (const [k, v] of [
     ['GIT_CONFIG_COUNT', '1'],
@@ -71,7 +78,7 @@ beforeAll(async () => {
     artifactPath: repoRootSummaryPath,
     feedsArtifactPath: path.join(repoRootOutDir, 'feeds.dev.json'),
   })
-})
+}, REPO_PREBUILD_TIMEOUT_MS)
 afterAll(() => {
   for (const [k, v] of Object.entries(SAVED_GIT_ENV)) {
     if (v === undefined) delete process.env[k]
