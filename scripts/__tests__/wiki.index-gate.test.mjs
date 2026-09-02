@@ -16,7 +16,7 @@
 //   그래서 모든 부재 단언은 케이스 안에 둘 중 하나를 갖는다 —
 //     ⓐ **인덱스 주입 앵커** — 같은 vault·같은 `readFile` 로 그 경로를 읽으면 **원문이 나온다**
 //        (= 게이트만이 유일한 방벽이다),
-//     ⓑ **양성 대조**(규범 U) — 같은 vault·같은 빌드에서 정상 문서가 **정확 8키**다.
+//     ⓑ **양성 대조**(규범 U) — 같은 vault·같은 빌드에서 정상 문서가 **정확 5키**다.
 //
 // 픽스처 제약(tdd §2.4):
 //   ① 실 vault 무접촉(특히 `git tag`) — 전 케이스 tmp vault
@@ -76,7 +76,7 @@ const REF_LEAK = 'leak'
 const REF_ESC_OUTSIDE = 'esc/OUTSIDE'
 
 /**
- * active 응답 계약 — **정확 8키**(리터럴). disable 스텁 4키와 뭉개지지 않는다.
+ * active 응답 계약 — **정확 5키**(리터럴). disable 스텁 4키와 뭉개지지 않는다.
  *
  * ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
  *    (선례 형식: 부모 리포 `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462`)
@@ -89,7 +89,7 @@ const REF_ESC_OUTSIDE = 'esc/OUTSIDE'
  *    기준)가 같은 축을 그대로 물려받는다.
  *
  *    🔴 **이 파일이 무는 주제는 그대로다** — 「인덱스 게이트가 없는 것을 404 로 만든다」이지 키 개수가
- *    아니다. 아래 케이스 제목·주석의 「8키」는 **양성 대조(규범 U)** 의 표기일 뿐이다.
+ *    아니다. 아래 케이스 제목·주석의 「5키」는 **양성 대조(규범 U)** 의 표기일 뿐이다.
  *
  *    🔴 **`feed` 를 조건부로 넣지 마라**(D-P2-9). 이 파일의 tmp vault 에는 `feed:` 커밋이 없으므로
  *    기대값은 `feed: { items: [], nextCursor: null }` — **비어 있지만 키는 있다**. 「비었으니 키를
@@ -98,11 +98,19 @@ const REF_ESC_OUTSIDE = 'esc/OUTSIDE'
  *    🔴 **전제가 하나 늘었다**: 이 8케이스가 이제 `feeds()` 를 거쳐 **git 을 탄다**. 이 파일의 vault 는
  *    `:161` `git(VAULT, ['init','-q'])` + `:203` `commit(...)` 으로 세운 **실 git 저장소**라 승격은
  *    불필요하다(착수 전 T0-c 실측 재확인).
+ *
+ * ★★ **두 번째 대체 — 8 → 5 (md 컷오버 · AK″).** 서버가 본문을 렌더해 `html` 로 내려주던 계약이
+ *    끝났다. 서버는 마크다운 **원문**(`md`)만 싣고 HTML·목차(`headings`)·각주 정의(`sources`)는
+ *    소비자가 그 원문에서 만든다. `breadcrumb` 은 `path` 의 파생값이라 함께 나간다.
+ *    ⇒ `['feed','md','meta','path','status']`.
+ *
+ *    🔴 **이 파일이 무는 주제는 여전히 그대로다** — 「인덱스 게이트가 없는 것을 404 로 만든다」이지
+ *    키 개수가 아니다. 다만 **양성 대조의 성격은 바뀐다**: 옛 8키 대조는 「같은 빌드에서 정상
+ *    문서는 렌더까지 끝난 응답을 준다」였고, 새 5키 대조는 **「같은 빌드에서 정상 문서는 본문
+ *    원문을 실은 응답을 준다」**이다. 어느 쪽이든 이 대조가 지는 역할은 하나다 — 아래 `null`
+ *    단언들이 「인덱스가 통째로 비어서」가 아니라 **「게이트가 막아서」**임을 케이스 안에서 확정.
  */
-const ACTIVE_KEYS = ['breadcrumb', 'feed', 'headings', 'html', 'meta', 'path', 'sources', 'status']
-
-/** 위키링크 `<a>` 계약(wikilink-plugin.mjs) — `exists:false` 인 대상만 이 class 를 얹는다. 리터럴이다. */
-const DEAD_CLASS = 'wiki-link-dead'
+const ACTIVE_KEYS = ['feed', 'md', 'meta', 'path', 'status']
 
 /** vault 안 문서 루트 — **리터럴**이다(규범 A). `head-state.mjs` 의 `WIKI_PREFIX` 를 import 하지 않는다. */
 const WIKI_ROOT = 'wiki'
@@ -127,31 +135,6 @@ const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 /** 아티팩트가 실제로 담고 있는 정규형 경로 집합 — 「제외가 일어났다」의 관측 좌표다. */
 const artifactPaths = (env) =>
   readJson(summaryFile(VAULT, env)).docs.map((doc) => doc.breadcrumb.join('/'))
-const anchorOf = (html, label) =>
-  html.split('<a ').find((chunk) => chunk.includes(`>${label}<`)) ?? ''
-
-/**
- * 그 라벨을 가진 위키링크 `<a>` 의 **`data-path` 값**. 앵커가 없으면 `null` 이다.
- *
- * ★★ 이 헬퍼가 존재하는 이유 = **공허성 차단**(메인 반증 프로브 실측 · 2026-08-04):
- *   `anchorOf` 는 못 찾으면 `''` 를 돌려주고, 빈 문자열은 `.not.toContain(...)` 을 **항상**
- *   만족한다. 그래서 단언이 전부 부정형인 케이스는 **관측자를 죽여도(= `anchorOf` 를 `() => ''`
- *   로 바꿔도) 통과**한다 — 이 파일의 `GATE-D2` 가 실제로 그 상태였다.
- *   `data-path` **값 일치**는 앵커 부재 시 `null` 이라 즉시 red 이고, 동시에 **해석 결과 자체**를
- *   문다 ⇒ 관측자 실재와 양성 판정을 한 단언으로 함께 진다.
- *
- * ★ 실측 직렬화(`renderMarkdownToHtml` 직접 호출 · rehype-sanitize 통과 후):
- *     live  `<a href="…" class="wiki-link" data-path="concept/비공개">비공개</a>`
- *     dead  `<a href="…" class="wiki-link wiki-link-dead" data-path="비공개">비공개</a>`
- *   ⇒ **basename 형태에서 `data-path` 가 두 갈래를 직접 가른다**: 살아 있으면 `resolveTarget` 의
- *   해석 결과(`concept/비공개`)가, dead 면 `single-doc.mjs:52` 가 싣는 `targetRaw`(`비공개`)가 실린다.
- *   (정확 경로 형태 `[[concept/비공개]]` 는 양쪽 다 `concept/비공개` 라 값으로는 안 갈린다 —
- *    그 갈래는 `DEAD_CLASS` 축이 가르고, 이 값 단언은 **앵커 실재**를 보증한다.)
- *
- * 규범 D: `expect` 없이 값만 돌려준다.
- */
-const dataPathOf = (html, label) => anchorOf(html, label).match(/data-path="([^"]*)"/)?.[1] ?? null
-
 /**
  * **인덱스 주입 앵커** — 아티팩트 `docs` 에 그 경로를 하나 얹은 뒤 같은 `readFile` 로 투영한다.
  *
@@ -205,9 +188,11 @@ beforeAll(async () => {
     '## 정의\n\ntype 필드가 없는 문서다.\n',
   )
 
-  // ★ §11 GATE-D — draft 문서를 가리키는 **공개** 문서. 두 링크 형태를 **각각** 담는다:
-  //   ① 정확 경로(`index.paths.has(targetRaw)` 갈래) ② basename(`basenames` 유일 해석 갈래).
-  //   `[[유일문서]]` 는 **양쪽 env 에서 항상 살아 있는** 대조항이다.
+  // draft 문서를 가리키는 **공개** 문서. 원래는 서버측 위키링크 해석(GATE-D1·D2)의 입력이었고
+  //   두 링크 형태(정확 경로 · basename)를 각각 담았다. 🔴 그 계약은 클라이언트로 이관됐다
+  //   (아래 「prod draft 링크 계약이 서버를 떠났다」 문단). 픽스처는 **남긴다** — 지우면 같은 vault 를
+  //   공유하는 이 파일의 나머지 20여 케이스가 보는 세계(문서 수·인덱스 내용)가 함께 바뀌기 때문이고,
+  //   이제 이 본문은 해석 대상이 아니라 **`md` 원문으로 그대로 나가는 문자열**이다.
   writeDoc(VAULT, REL_INDEX, {
     body: `## 색인\n\n[[${REL_FLAG_DRAFT}]] · [[비공개]] · [[유일문서]]\n`,
     id: ID_INDEX,
@@ -232,26 +217,38 @@ beforeAll(async () => {
   symlinkSync(path.join('..', '..'), path.join(VAULT, WIKI_ROOT, 'esc'))
 }, 300_000)
 
-describe('GATE-A 경로 봉쇄 — vault 밖 문서 (GATE-A1 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A1: `../../OUTSIDE` 는 `null` 이고, 인덱스에 얹으면 **원문이 나온다**', async () => {
-    // ★ 인덱스 주입 앵커: 게이트를 통과시키면 그 파일이 **실제로 읽히고 렌더된다** ⇒ 아래 `null` 은
-    //   「파일이 없어서」가 아니라 **「게이트가 막아서」**다. 이 행이 없으면 케이스가 공허하다.
+// ★★ **GA1′·GA2′ 축 교체 — 「승계」가 아니라 「대체」다.**
+//
+//    이 두 케이스의 첫 줄(인덱스 주입 앵커)은 GATE-A 군 **전체의 앵커**다. GATE-A 의 본 단언은 전부
+//    `null` 이라는 **부정형**이고, 부정형은 「인덱스가 통째로 비었다」·「그 파일이 애초에 없다」로도
+//    참이 된다. 주입 앵커가 「게이트만 통과시키면 그 파일이 **실제로 읽힌다**」를 보여야 비로소
+//    `null` 의 원인이 **게이트**로 확정된다. ⇒ 이 행을 지우면 GATE-A 가 통째로 공허해진다.
+//
+//    🔴 md 컷오버로 관측 좌표가 `injected.html`(렌더 산출)에서 `injected.md`(본문 원문)로 옮겨간다.
+//    **앵커의 역할은 무손상**이고 문장만 바뀐다: 「게이트를 통과시키면 그 파일이 읽히고 **렌더된다**」
+//    → 「게이트를 통과시키면 그 파일이 **읽히고 원문이 응답에 실린다**」. 좌표를 옮기지 않고
+//    `injected.html` 을 그냥 두면 컷오버 후 `undefined.toContain` 으로 red 가 되고, 그 red 를
+//    「앵커를 지우자」로 처분하면 위에 적은 공허가 실현된다.
+describe('GATE-A 경로 봉쇄 — vault 밖 문서 (GA1′ · 🔴RED 축 교체)', () => {
+  it('GA1′(GATE-A1): `../../OUTSIDE` 는 `null` 이고, 인덱스에 얹으면 **원문이 나온다**', async () => {
+    // ★ 인덱스 주입 앵커: 게이트를 통과시키면 그 파일이 **실제로 읽히고 본문 원문이 실린다** ⇒
+    //   아래 `null` 은 「파일이 없어서」가 아니라 **「게이트가 막아서」**다. 이 행이 없으면 공허하다.
     const injected = projectWithInjected('dev', '../../OUTSIDE', ['..', '..', 'OUTSIDE'])
-    expect(injected.html).toContain(OUTSIDE_MARKER)
+    expect(injected.md).toContain(OUTSIDE_MARKER)
 
     expect(await askWiki('dev', '../../OUTSIDE')).toBeNull()
   })
 })
 
-describe('GATE-A 경로 봉쇄 — 심링크 2형태 (GATE-A2 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A2: `leak` · `esc/OUTSIDE` 가 각각 `null` 이다(심링크는 실제로 풀린다)', async () => {
+describe('GATE-A 경로 봉쇄 — 심링크 2형태 (GA2′ · 🔴RED 축 교체)', () => {
+  it('GA2′(GATE-A2): `leak` · `esc/OUTSIDE` 가 각각 `null` 이다(심링크는 실제로 풀린다)', async () => {
     // 앵커 ⓐ: 심링크가 **실제로 vault 밖을 가리킨다** — 디스크에서 읽으면 밖의 원문이 나온다.
     //   (심링크가 깨져 있으면 아래 `null` 은 아무것도 증명하지 않는다.)
     expect(readFileSync(docFile(VAULT, REF_LEAK), 'utf8')).toContain(OUTSIDE_MARKER)
     expect(readFileSync(docFile(VAULT, REF_ESC_OUTSIDE), 'utf8')).toContain(OUTSIDE_MARKER)
 
-    // 앵커 ⓑ: 인덱스 주입 — 게이트를 통과시키면 심링크 너머 원문이 렌더된다.
-    expect(projectWithInjected('dev', REF_LEAK, ['leak']).html).toContain(OUTSIDE_MARKER)
+    // 앵커 ⓑ: 인덱스 주입 — 게이트를 통과시키면 심링크 너머 원문이 응답에 실린다.
+    expect(projectWithInjected('dev', REF_LEAK, ['leak']).md).toContain(OUTSIDE_MARKER)
 
     expect(await askWiki('dev', REF_LEAK)).toBeNull()
     expect(await askWiki('dev', REF_ESC_OUTSIDE)).toBeNull()
@@ -259,7 +256,7 @@ describe('GATE-A 경로 봉쇄 — 심링크 2형태 (GATE-A2 · 🟢앵커(오�
 })
 
 describe('GATE-A 정규형 강제 — 별칭 4형태 (GATE-A3 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A3: 같은 파일로 풀리는 별칭 4형태가 **전부 `null`** 이고 정규형만 8키다', async () => {
+  it('GATE-A3: 같은 파일로 풀리는 별칭 4형태가 **전부 `null`** 이고 정규형만 5키다', async () => {
     // ★ 게이트가 **정규형까지 보장한다**: `makeDocIndex` 가 `paths` 를 `breadcrumb.join('/')` 로만
     //   채우므로 인덱스는 정규형만 담는다 ⇒ 통과 = 정규형 보장. 별칭이 열리면 같은 문서가 여러
     //   주소를 갖고 `breadcrumb` 이 오염된다(`ref.split('/')` 가 응답의 breadcrumb 이다).
@@ -277,7 +274,7 @@ describe('GATE-A 정규형 강제 — 별칭 4형태 (GATE-A3 · 🟢앵커(오�
       true,
       true,
     ])
-    // 앵커(규범 U): 같은 vault·같은 빌드에서 **정규형**은 정확 8키다.
+    // 앵커(규범 U): 같은 vault·같은 빌드에서 **정규형**은 정확 5키다.
     expect(Object.keys(await askWiki('dev', REL_SKH)).toSorted()).toEqual(ACTIVE_KEYS)
 
     for (const alias of aliases) {
@@ -287,7 +284,7 @@ describe('GATE-A 정규형 강제 — 별칭 4형태 (GATE-A3 · 🟢앵커(오�
 })
 
 describe('GATE-A 온디스크 이름 동일성 — 대소문자 (GATE-A4 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A4: `company/tsmc` · `COMPANY/TSMC` 가 `null` 이고 정규형만 8키다', async () => {
+  it('GATE-A4: `company/tsmc` · `COMPANY/TSMC` 가 `null` 이고 정규형만 5키다', async () => {
     // ★ 주석 계약(tdd §3.3 · 필수): 이 케이스는 **파일시스템의 대소문자 민감도를 주장하지 않는다** —
     //   `/tmp` 는 민감이고 9p 는 비민감이다. 무는 것은 **인덱스 정확 일치**다. 9p 에서
     //   `COMPANY/TSMC.md` 가 `company/TSMC.md` 를 여는 것(실측)과 `isDraft({relPath:'DEV/SECRET'})`
@@ -300,7 +297,7 @@ describe('GATE-A 온디스크 이름 동일성 — 대소문자 (GATE-A4 · 🟢
 })
 
 describe('GATE-A 유니코드 — 정규화를 넣지 않았다 (GATE-A5 · 🟢앵커(오늘도 green · RED 아님))', () => {
-  it('GATE-A5: 한글 NFC 는 **8키**이고 같은 문자열의 NFD 는 **`null`** 이다', async () => {
+  it('GATE-A5: 한글 NFC 는 **5키**이고 같은 문자열의 NFD 는 **`null`** 이다', async () => {
     // ★ 주석 계약(tdd §3.3 · 필수): 이 케이스의 목적은 양성 대조가 **아니다**. 나중에 누가 유니코드
     //   정규화를 넣으면 죽는 것이 목적이다. 온디스크 이름도 인덱스도 NFC 다 — **NFD 정규화를 넣으면
     //   실문서가 죽고, NFC 정규화를 넣으면 오늘 막히는 NFD 입력이 열린다**. 두 방향을 한 케이스에서
@@ -334,21 +331,21 @@ describe('GATE-A 실패 형태는 404 다 — 나머지 11종 (GATE-A6 · 🟢�
 
   it.each(CASES)('GATE-A6: %s → `null`', async (_label, ref) => {
     expect(await askWiki('dev', ref)).toBeNull()
-    // 앵커(규범 U): 같은 vault·같은 빌드에서 정규형은 정확 8키다 — 인덱스가 비어서 통과하는 것을 배제.
+    // 앵커(규범 U): 같은 vault·같은 빌드에서 정규형은 정확 5키다 — 인덱스가 비어서 통과하는 것을 배제.
     expect(Object.keys(await askWiki('dev', REL_SKH)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 })
 
 describe('GATE-B prod draft 차단 — `dev/` 폴더 백스톱 (GATE-B1·B2 · 🟢앵커(오늘도 green))', () => {
   it('GATE-B1: `dev/실험문서` 는 **prod 에서 `null`** 이다', async () => {
-    // 앵커(규범 U): **같은 prod 아티팩트**에서 정상 문서는 8키다 — 실 vault 6문서가 전부 draft 라
+    // 앵커(규범 U): **같은 prod 아티팩트**에서 정상 문서는 5키다 — 실 vault 6문서가 전부 draft 라
     //   prod `docs=0` 이라는 함정(§2.4-②)의 tmp 판이다. prod 인덱스가 비면 이 케이스는 공허하다.
     expect(Object.keys(await askWiki('prod', REL_SKH)).toSorted()).toEqual(ACTIVE_KEYS)
 
     expect(await askWiki('prod', REL_DEV_DRAFT)).toBeNull()
   })
 
-  it('GATE-B2: 같은 문서·같은 vault 인데 **dev 에서는 8키**다(env 만 다르다)', async () => {
+  it('GATE-B2: 같은 문서·같은 vault 인데 **dev 에서는 5키**다(env 만 다르다)', async () => {
     // 규범 U — B1 과 **같은 vault·같은 ref**, 다른 것은 env 하나뿐이다. 이 짝이 없으면 B1 은
     //   「그 문서가 애초에 빌드에 없다」로도 통과한다.
     expect(Object.keys(await askWiki('dev', REL_DEV_DRAFT)).toSorted()).toEqual(ACTIVE_KEYS)
@@ -365,7 +362,7 @@ describe('GATE-B prod draft 차단 — frontmatter 플래그 (GATE-B3·B4 · �
     expect(await askWiki('prod', REL_FLAG_DRAFT)).toBeNull()
   })
 
-  it('GATE-B4: 같은 플래그 문서가 **dev 에서는 8키**다(`head-state.mjs:65` dev 분기 대칭)', async () => {
+  it('GATE-B4: 같은 플래그 문서가 **dev 에서는 5키**다(`head-state.mjs:65` dev 분기 대칭)', async () => {
     expect(Object.keys(await askWiki('dev', REL_FLAG_DRAFT)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 })
@@ -393,56 +390,32 @@ describe('GATE-C 불량 문서 차단 (GATE-C1 · 🟢앵커(오늘도 green · 
   })
 })
 
-describe('GATE-D prod 에서 draft 로의 링크는 dead 다 (GATE-D1·D2 · 🟢앵커(오늘도 green))', () => {
-  // ★ PRD fail-closed 검증 (b) 축자: _"prod 에서 draft 문서로의 링크가 dead 인지"_.
-  //   게이트 유지로 **오늘 이미 성립**한다 — prod 인덱스에 draft 가 없어 `makeResolver`
-  //   (`single-doc.mjs:47-55`)가 `{ exists: false, path: targetRaw }` 를 낸다. 회귀 앵커다.
-  // ★ 단언은 **`exists === false`** 에 건다. 그 관측 좌표는 `wikilink-plugin.mjs:35` 가 얹는
-  //   `wiki-link-dead` class 다. **`path` 값의 부재로 오해하지 마라** — `exists:false` 일 때
-  //   `path` 는 `targetRaw` 를 그대로 되돌려주며, 그 문자열은 **링크를 담은 공개 문서가 이미
-  //   저작한 것**이다(plan 「실재하는 라이브 창」의 수용 근거와 같은 사실).
-  it('GATE-D1: prod — 정확 경로 형태와 basename 형태가 **각각** dead 다', async () => {
-    // 앵커 ⓐ: prod 아티팩트에 그 draft 문서는 **없고** 링크를 담은 공개 문서는 **있다**
-    //   (부정형 단독이면 `docs` 가 비어도 통과한다 — 같은 케이스에 양성 대조를 짝으로 둔다).
-    expect(artifactPaths('prod')).toContain(REL_INDEX)
-    expect(artifactPaths('prod')).not.toContain(REL_FLAG_DRAFT)
-
-    const html = (await askWiki('prod', REL_INDEX)).html
-
-    // 앵커 ⓑ: 같은 문서의 **살아 있는 링크**는 해석 결과 경로를 싣는다 — 「링크 해석이 아예 안
-    //   된다」를 배제한다. ★ `.not.toContain(DEAD_CLASS)` 를 **단독으로 두지 않는다**: 앵커를
-    //   못 찾으면 `anchorOf` 가 `''` 를 돌려줘 부정형이 항상 참이 되기 때문이다(공허성).
-    expect(dataPathOf(html, '유일문서')).toBe(REL_UNIQUE)
-    expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
-
-    // `resolveTarget` 은 ① 정확 경로 ② basename 유일 해석의 **두 갈래**다. 한 형태만 고르면
-    //   미래에 한 갈래만 바뀌어도 안 잡힌다 ⇒ 두 형태를 각각 문다.
-    //   ★ basename 형태의 `data-path` 는 dead 일 때 **`targetRaw` 가 그대로** 실린다
-    //     (`single-doc.mjs:52`) — 그 값 자체가 「해석에 실패했다」의 직접 증거다.
-    expect(dataPathOf(html, REL_FLAG_DRAFT)).toBe(REL_FLAG_DRAFT)
-    expect(anchorOf(html, REL_FLAG_DRAFT)).toContain(DEAD_CLASS)
-    expect(dataPathOf(html, '비공개')).toBe('비공개')
-    expect(anchorOf(html, '비공개')).toContain(DEAD_CLASS)
-  })
-
-  it('GATE-D2: dev — **같은 공개 문서**에서 두 형태가 모두 살아 있다', async () => {
-    // ★ Arrange 자기모순 점검: dev 에서 살아 있으려면 **dev 아티팩트에 그 draft 문서가 실려 있어야**
-    //   한다. `head-state.mjs:65` 가 dev 에서 draft 를 거르지 않으므로 성립한다 — 단 **dev 빌드를
-    //   실제로 돌린 픽스처**여야 한다(prod 만 만들고 dev 를 기대하면 공허 참이다).
-    expect(artifactPaths('dev')).toContain(REL_FLAG_DRAFT)
-
-    const html = (await askWiki('dev', REL_INDEX)).html
-
-    // ★★ 공허성 차단(메인 반증 프로브 실측): 이 케이스가 `.not.toContain(DEAD_CLASS)` 만 갖고
-    //   있으면 **없는 라벨로도 통과**하고 **`anchorOf` 를 무력화해도 통과**한다 — 그러면 이 짝의
-    //   존재 이유(「dev 에서 링크가 산다」)를 아무도 물지 않는다. 그래서 **해석 결과 경로**를
-    //   양성으로 먼저 문다: basename 형태 `[[비공개]]` 는 살아 있을 때만 `concept/비공개` 로
-    //   해석되고, dead 면 `targetRaw` 인 `비공개` 가 실려 이 단언이 red 가 된다.
-    expect(dataPathOf(html, REL_FLAG_DRAFT)).toBe(REL_FLAG_DRAFT)
-    expect(dataPathOf(html, '비공개')).toBe(REL_FLAG_DRAFT)
-    expect(dataPathOf(html, '유일문서')).toBe(REL_UNIQUE)
-
-    expect(anchorOf(html, REL_FLAG_DRAFT)).not.toContain(DEAD_CLASS)
-    expect(anchorOf(html, '비공개')).not.toContain(DEAD_CLASS)
-  })
-})
+// ★★ **「prod draft 링크 계약이 서버를 떠났다」 — 「삭제」가 아니라 「층 이동」이다.
+//    이 문단을 지우면 다음 독자가 «fail-closed 검증이 그냥 없어졌다» 고 읽는다.**
+//
+//    이 자리에 **GATE-D1·GATE-D2** 두 케이스가 있었다. 무는 것은 「서버가 위키링크를
+//    해석해 응답 `html` 에 `wiki-link`/`wiki-link-dead` class 와 `data-path` 를 심는다」는
+//    계약이었고, 그 중에서도 **발행 환경별 극성**을 지는 가드였다:
+//      · **GATE-D1**(prod) — 공개 문서가 draft 문서를 가리키는 링크는 **dead** 다. 정확 경로
+//        형태(`[[concept/비공개]]`)와 basename 형태(`[[비공개]]`) **둘 다** 각각 물었고,
+//        같은 문서의 살아 있는 링크(`[[유일문서]]`)를 양성 대조로 두었다.
+//      · **GATE-D2**(dev) — **같은 공개 문서**에서 두 형태가 모두 살아 있다(env 하나만 다르다).
+//
+//    🔴 **왜 사라지는가**: 응답이 렌더된 `html` 이 아니라 마크다운 **원문 `md`** 가 되면서
+//    **서버는 위키링크를 해석하지 않는다** — 해석기(`makeResolver`·`resolveTarget`)와 렌더 파이프라인이
+//    `single-doc.mjs` 에서 함께 사라진다. 관측할 `<a>` 가 서버 응답에 아예 없으므로 이 계약은
+//    **약해진 것이 아니라 층이 바뀐 것**이다 — 해석은 이제 클라이언트 렌더 파이프라인이 소유한다.
+//
+//    **어디로 갔는가(착륙 좌표)**: 부모 리포
+//    `src/pages/news/wiki/markdown/WikiMarkdown.pipeline.contract.test.tsx`
+//      · **B6**(「동명 basename 은 dead · 유일 basename 과 정확 경로는 live 로 해석된다」) —
+//        모호 → dead · 유일 → live · **정확 경로 → live** 세 갈래를 한 케이스에서 문다.
+//        GATE-D1 이 물던 「두 링크 형태를 각각 문다」가 여기로 승계됐다.
+//      · **B3·B4·B5** — `wiki-link` class · `wiki-link-dead` · `data-path` · `data-anchor` 출력 계약.
+//        특히 `data-path` **값 일치**(해석되면 전체 경로, dead 면 입력 원문)는 여기에서
+//        `dataPathOf` 가 지던 「관측자 사망과 구분된다」 역할을 그대로 이어받는다.
+//
+//    🔴 **남는 것과의 경계**: 「prod 에서 draft 문서 자체가 404 다」(GATE-B1~B4)는 **이 파일에
+//    그대로 남는다** — 그것은 위키링크 해석이 아니라 **인덱스 게이트** 계약이고 서버가 계속
+//    진다. 이 파일에서 사라지는 것은 「그 문서로 가는 **링크**가 어떻게 그려지는가」 하나뿐이고,
+//    둘을 함께 지우면 fail-closed 의 절반이 아니라 전부가 사라진다.

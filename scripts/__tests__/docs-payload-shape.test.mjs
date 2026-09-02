@@ -22,10 +22,12 @@
 // ── ★ 앵커는 **반만 죽었다** (이 파일에서 가장 틀리기 쉬운 지점) ─────────────────────────────
 // 이 작업은 _"README 에서 `anchor` 라는 낱말을 0건으로 만드는 것"_ 이 **아니다.**
 //   · 죽음: feeds `docs[]`(docRef) 스코프의 `anchor`·`anchorText` — P2 가 기능째 제거했다.
-//   · 생존: wiki 응답 `headings[].anchor` — **현역**이고 `body.schema.json` 이
+//   · 생존: **벌크 body** 원소의 `headings[].anchor` — **현역**이고 `body.schema.json` 이
 //           `required:["anchor","level","text"]` 로 **강제한다**.
-// 그래서 부재 단언(AN1)에는 **위험 실재 앵커**(WP2)를 짝지운다. 낱말만 훑어 지우는 미래의 오수정은
-// WP2 에서 red 가 된다 — 부재만 단언하는 가드는 "다 지우면 통과" 라는 최악의 GREEN 을 허용한다.
+//           (초판은 이 자리를 _wiki 응답_ `headings[].anchor` 로 적었다. md 컷오버가 wiki 응답에서
+//            `headings` 를 없앴으므로 **생존 좌표가 벌크 쪽으로 옮겨갔다** — WP2′ 문단 참조.)
+// 그래서 부재 단언(AN1)에는 **위험 실재 앵커**(WP2′)를 짝지운다. 낱말만 훑어 지우는 미래의 오수정은
+// WP2′ 에서 red 가 된다 — 부재만 단언하는 가드는 "다 지우면 통과" 라는 최악의 GREEN 을 허용한다.
 //
 // ── 결속 방향 (규범 A 의 예외 조항) ─────────────────────────────────────────────────────────
 // 기대값은 **코드·스키마에서 유도해 문서와 대조**한다 — 이 가드의 본분이 그것이다. 금지되는 것은
@@ -43,7 +45,17 @@
 //           빼면 AN1(앵커 어휘 사망)이 산문을 놓친다.
 //     · `<!-- contract:wiki-payload -->` … `<!-- /contract:wiki-payload -->`
 //         → `### wiki 반환값` 바로 다음 줄부터 절 끝(`---`) 직전까지.
-//           **최소**: ① active 문서 예시 블록(= 살아 있는 `headings[].anchor` 가 있는 곳).
+//           **최소**: ① active 문서 예시 블록.
+//           ★ 초판은 이 자리에 _"= 살아 있는 `headings[].anchor` 가 있는 곳"_ 이라 적었다. md 컷오버로
+//             wiki 응답에 `headings` 가 없어졌으므로 **그 역할은 아래 네 번째 마커로 옮겨간다**.
+//     · 🔴 `<!-- contract:body-payload -->` … `<!-- /contract:body-payload -->` (**md 컷오버 신설**)
+//         → README 에 **벌크 body 페이로드 예시 절**을 새로 만들고 그 절을 감싼다.
+//           **최소**: `headings[]` 를 담은 jsonc 예시 1블록(`{ "anchor": …, "level": …, "text": … }`).
+//           이유: 살아 있는 `headings[].anchor` 예시가 README 에서 사라지면 AN1(앵커 어휘 부재 단언)의
+//           짝이 없어져 「anchor 를 전부 지운다」가 통과한다. WP2′ 가 이 절을 읽는다.
+//           🔴 **배치**: 위 세 마커 span **밖**에 둔다. 안에 두면 그 구간의 예시 블록이 2개가 되어
+//           `exampleObject` 가 _"예시 블록이 2개다(1개여야 한다)"_ 로 던지고, red 의 사유가
+//           「값이 어긋났다」에서 「구간을 잘못 잡았다」로 뒤바뀐다.
 // [2] **값·키를 고친다.** ②⑤: summary 예시·표에 `env` 추가, feeds 예시와 스키마 required 집합
 //     일치. schemaVersion 은 이미 소스(`payloads.mjs` 의 `SCHEMA_VERSION`)와 같은 1 이다(D29
 //     리셋 반영 — 더 손댈 것 없다). `producer` 는 wire 계약에 없는 키다(요구 키는 `env` 뿐 —
@@ -75,6 +87,14 @@
 //   🔴RED  WP1′ — **축 교체**(news-convention-migration Phase 2 · doc-history-assembly).
 //          wiki 반환 키가 7 → **8**(`feed` 가산)이 되므로 옛 7키 pin 은 「승계」가 아니라 「대체」다.
 //          사유는 WP1′ 케이스 위 문단 참조.
+//
+// ── RED 현황 2차 (md 컷오버 · 서버가 렌더를 그만두고 `md` 원문만 싣는다) ────────────────────
+//   🔴RED  WP0′ — 구간 확인 토큰이 `"headings"` → `"md"`. 오늘 README 예시에 `"md"` 가 없다.
+//   🔴RED  WP1″ — **재작성**. 「본문 4키 + 봉투 4키 = 8」 유도식이 성립하지 않는다(교집합이 `meta`
+//          하나로 줄어든다). 오늘 코드가 8키를 반환하므로 red 다. 사유는 그 케이스 위 문단.
+//   🔴RED  WP2′ — **재설계**. 살아 있는 `headings[].anchor` 예시가 wiki 응답 구간에서 사라지므로
+//          그 예시의 집을 README 의 **벌크 body 페이로드 절**(`contract:body-payload`)로 옮긴다.
+//          오늘 그 마커·절이 없어 red 다. 이 짝을 잃으면 AN1 이 공허해진다.
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -153,6 +173,27 @@ function docScope(marker) {
 }
 
 const scopeText = (scope) => scope.lines.join('\n')
+
+/** WP2′ 가 요구하는 **새 결속면**의 마커 이름 — 벌크 body 페이로드 예시 절. 리터럴이다. */
+const BODY_PAYLOAD_MARKER = 'body-payload'
+
+/**
+ * 마커 구간만 읽는 결속면 — **폴백이 없다.**
+ *
+ * `docScope` 의 폴백은 「그 절이 이미 있고 마커만 없다」를 위한 것인데, 이 결속면은 절 자체가 아직
+ * 없으므로 유도할 `###` 경계가 없다. 절 제목을 여기서 지어내면 그 이름이 계약이 아닌데 계약처럼
+ * 보인다 ⇒ 부재는 폴백으로 덮지 않고 **케이스가 명시 red 로** 문다.
+ *
+ * 규범 D: `expect` 없이 값만 돌려준다(없으면 `null`).
+ */
+function markerScope(marker) {
+  const block = markdownHelpers().extractMarkerBlock(readme(), marker)
+  if (block === null) return null
+  const open = readme()
+    .split('\n')
+    .findIndex((line) => line.includes(`<!-- contract:${marker} -->`))
+  return { lines: block, offset: open + 1, via: 'marker' }
+}
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
 // jsonc 예시 블록 → 구조. 정규식으로 키를 훑지 않는 이유: 예시가 **여러 개**인 절에서 정규식은
@@ -459,9 +500,9 @@ describe('결속 — feeds 반환값 (FP)', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
-// AN — 죽은 앵커 어휘 (⑥⑦⑧). **짝은 WP2** — 부재 단언만으로는 "다 지우면 통과" 가 된다.
+// AN — 죽은 앵커 어휘 (⑥⑦⑧). **짝은 WP2′** — 부재 단언만으로는 "다 지우면 통과" 가 된다.
 // ────────────────────────────────────────────────────────────────────────────────────────────
-describe('죽은 앵커 어휘 (AN · 짝 = WP2)', () => {
+describe('죽은 앵커 어휘 (AN · 짝 = WP2′)', () => {
   it('AN1: feeds 구간에 `anchor` 가 0건이고, README 전문에 `anchorText` 가 0건이다', () => {
     // 🔴 왜 지금 red 인가: feeds 구간에 앵커 서술이 6줄(README:464·473·474·476·478·480), 전문에
     //   `anchorText` 가 4줄(README:464·474·478·627) 남아 있다. 기능은 P2 가 제거했다.
@@ -502,18 +543,23 @@ function topLevelReturnKeys(returnBlock) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
-// WP — wiki 반환값 ↔ `body.schema.json` + `single-doc.mjs` (드리프트 없음 — pin · AN1 의 짝)
+// WP — wiki 반환값 ↔ `single-doc.mjs` (양방향) + 벌크 `body.schema.json` 분리 앵커 · AN1 의 짝
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('결속 — wiki 반환값 (WP · pin)', () => {
-  it('WP0: README 에 `contract:wiki-payload` 마커가 열림/닫힘 각 1개이고 구간이 비어 있지 않다', () => {
-    // 🔴 지금 red(마커 부재). 마커를 두는 것은 ① AN1(부재)의 짝인 WP2 에 권위 있는 구간을 주고
-    //   ② 같은 계열의 재발을 대칭으로 막기 위해서다. (구간의 **값**은 WP1′ 가 8키로 대조한다 —
-    //   축 교체 사유는 그 케이스 위 문단 참조.)
+  // ★ WP0′ 축 교체 — 두 번째 단언의 관측 토큰이 `"headings"` → `"md"` 로 바뀐다.
+  //   이 케이스의 본분은 「마커가 있고 구간이 비지 않았다」이고, 두 번째 줄은 **구간이 실제로 응답
+  //   본문 예시를 담는다**(제목만 감싸고 예시를 밖에 두지 않았다)는 얕은 확인이다. md 컷오버로 응답
+  //   본문 키가 `headings`(렌더 산출) → `md`(원문)로 바뀌었으므로 그 확인 토큰도 함께 옮긴다.
+  //   🔴 여기서 토큰을 안 옮기고 `"headings"` 를 남기면, README 가 갱신된 뒤 이 케이스가 「마커
+  //   부재」와 「예시 갱신됨」을 구분하지 못한 채 red 가 되어 red 의 사유가 뒤바뀐다.
+  it('WP0′: README 에 `contract:wiki-payload` 마커가 열림/닫힘 각 1개이고 구간이 비어 있지 않다', () => {
+    // 마커를 두는 것은 ① AN1(부재)의 짝에 권위 있는 구간을 주고 ② 같은 계열의 재발을 대칭으로 막기
+    //   위해서다. (구간의 **값**은 WP1″ 가 5키로 대조한다 — 축 교체 사유는 그 케이스 위 문단 참조.)
     const { extractMarkerBlock } = markdownHelpers()
     const block = extractMarkerBlock(readme(), 'wiki-payload')
 
     expect(block, 'README `### wiki 반환값` 절을 `<!-- contract:wiki-payload -->` … `<!-- /contract:wiki-payload -->` 로 감싸라(① active 문서 예시 포함).').not.toBeNull() // prettier-ignore
-    expect(block.join('\n')).toContain('"headings"')
+    expect(block.join('\n'), 'wiki 응답 예시가 본문 원문 키(`"md"`)를 보여줘야 한다').toContain('"md"') // prettier-ignore
   })
 
   // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
@@ -540,40 +586,96 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
   //    🔴 README 갱신은 이 축 교체의 **일부**다(tdd §5-A(2)③): `sas-wiki/README.md` 의
   //    `contract:wiki-payload` 구간(「7키」 문면 · JSONC 예시 · 키 설명 표)에 `feed` 를 더하지 않으면
   //    마지막 양방향 대조가 계속 red 다. **그 갱신은 GREEN 단계 소관**이다(이 RED 커밋은 테스트만 만진다).
-  it('WP1′: active 문서 예시의 키 == `wikiDocBody` 4키 + 봉투 **4키** (양방향 · 🔴축 교체)', () => {
-    // 코드 축이 둘인 이유: 본문 4키는 `body.schema.json` 이, 봉투 4키(`path`·`breadcrumb`·`status`
-    //   ·**`feed`**)는 `projectSingleDoc` 이 소유한다(wiki 응답 봉투에는 스키마 파일이 없다 — 서빙
-    //   조립물이다). 🔴 `feed` 를 `body.schema.json` 의 `wikiDocBody` 에 넣지 마라 — 그것은 벌크
-    //   아티팩트 원소 타입이고 _"정확히 4키"_ + `additionalProperties:false` 다(D-P2-6).
-    const bodyKeys = sorted(readSchema('body.schema.json').definitions.wikiDocBody.required)
-    expect(bodyKeys).toEqual(['headings', 'html', 'meta', 'sources'])
-
+  // ★★ **두 번째 대체(WP1′ → WP1″) — 「승계」가 아니라 「대체」이고, 이번에는 **유도식 자체가
+  //    성립하지 않는다**. 이 문단을 지우면 다음 독자가 «3자 결속이 2자로 약해졌다»고 읽는다.
+  //
+  //    WP1′ 의 형태는 「**본문 4키**(`body.schema.json` 의 `wikiDocBody`) + 봉투 4키 = 정확 8키」였다.
+  //    그 유도가 성립한 전제는 **wiki 엔드포인트가 벌크 원소의 본문 4키를 그대로 실어 보낸다**는
+  //    것이었다 — 그래서 스키마 파일이 없는 서빙 조립물(봉투)까지 스키마에 간접 결속됐다.
+  //
+  //    🔴 md 컷오버가 그 전제를 깬다. 엔드포인트는 이제 `md` 원문을 싣고 `html`·`headings`·`sources`
+  //    를 싣지 않는다 ⇒ **벌크 4키 중 응답에 남는 것은 `meta` 하나**다. 「본문 4키를 전부 싣는다」는
+  //    유도는 거짓이 되고, 숫자만 8 → 5 로 고치면 그 거짓 유도가 그대로 남는다.
+  //
+  //    ⇒ 새 형태는 **2자 양방향 + 분리 앵커**다.
+  //      ⓐ **코드 ↔ README 양방향**: `projectSingleDoc` 마지막 return 의 5키 == README 예시 5키.
+  //      ⓑ 🔴 **분리 앵커** — 벌크 원소 계약(`wikiDocBody.required`)은 **함께 무너지지 않았다**:
+  //         여전히 정확히 4키이고, 응답과의 교집합이 `['meta']` **정확 1개**다. 이 줄이 없으면
+  //         「응답을 md 로 바꾸는 김에 벌크까지 md 로 바꿨다」가 이 파일 어디에서도 안 잡힌다
+  //         (벌크 아티팩트는 이 컷오버에서 **무수정이 정답**이다).
+  //
+  //    지키던 것 → 지키게 된 것: 「응답은 벌크 본문을 전부 싣는다(스키마가 응답을 간접 지배한다)」
+  //    → **「응답과 벌크는 이제 갈라섰다 — 그 분기점이 `meta` 하나이고, 갈라섰다는 사실 자체를
+  //    여기서 못박는다」**.
+  //
+  //    🔴 함정 둘(둘 다 red 가 **엉뚱한 곳**을 가리키게 만든다):
+  //      ① `topLevelReturnKeys` 는 **정적 텍스트 스캔**이다 — 반환 블록에 spread(`...`)를 쓰면
+  //         _"WP1 파서를 갱신하라"_ 로 명시 throw 한다. 키를 하나씩 나열하라.
+  //      ② 키를 `wiki.mjs` 쪽에서 스프레드로 얹으면 이 파서는 **옛 키인 채 green** 이고 README
+  //         대조만 red 가 된다. 부착 지점은 `projectSingleDoc` 의 **마지막 `return {`** 블록이다.
+  //
+  //    🔴 README 갱신은 이 축 교체의 **일부**다: `contract:wiki-payload` 구간(「8키」 문면 · JSONC
+  //    예시 · 키 설명표)을 5키로 옮기지 않으면 ⓐ 가 계속 red 다. **그 갱신은 GREEN 단계 소관**이다
+  //    (이 RED 커밋은 테스트만 만진다).
+  it('WP1″: active 문서 예시의 키 == 코드 반환 **5키**(양방향) · 벌크와의 교집합은 `meta` 하나 (🔴재작성)', () => {
+    // ⓐ 코드 축 — `single-doc.mjs` 의 **마지막** return 블록(정적 텍스트 스캔).
     const source = readSource('scripts/lib/single-doc.mjs')
     const returnBlock = source.slice(source.lastIndexOf('  return {'))
     const projection = topLevelReturnKeys(returnBlock)
 
-    // 앵커: 봉투가 본문 4키를 **전부** 싣고, 그 위에 정확히 4키를 더한다(리터럴 축 — 규범 A).
-    expect(sorted(projection.filter((key) => !bodyKeys.includes(key)))).toEqual(['breadcrumb', 'feed', 'path', 'status']) // prettier-ignore
-    expect(projection).toHaveLength(8)
+    // 리터럴 축(규범 A) + 앵커 겸용: 파서가 죽어 빈 배열을 냈다면 이 정확 일치가 즉시 red 다.
+    expect(projection, 'wiki 응답 계약은 정확히 5키다(옛 렌더 산출 키가 남았는지 함께 본다)').toEqual(['feed', 'md', 'meta', 'path', 'status']) // prettier-ignore
 
+    // ⓑ 분리 앵커 — 벌크 원소 계약은 **무손상**이고 응답과 갈라섰다.
+    //   🔴 `md`·`feed` 를 `body.schema.json` 의 `wikiDocBody` 에 넣지 마라 — 그것은 벌크 아티팩트
+    //   원소 타입이고 _"정확히 4키"_ + `additionalProperties:false` 다.
+    const bodyKeys = sorted(readSchema('body.schema.json').definitions.wikiDocBody.required)
+    expect(bodyKeys, '벌크 원소 계약이 함께 흔들렸다(이 컷오버에서 벌크는 무수정이 정답이다)').toEqual(['headings', 'html', 'meta', 'sources']) // prettier-ignore
+    expect(projection.filter((key) => bodyKeys.includes(key)), '응답 ∩ 벌크 는 `meta` 하나여야 한다').toEqual(['meta']) // prettier-ignore
+
+    // ⓒ 문서 축 — README 예시와 **양방향** 정확 일치.
     const scope = docScope('wiki-payload')
-    const documented = sorted(Object.keys(exampleObject(scope, 'wiki-payload', '"headings"')))
+    const documented = sorted(Object.keys(exampleObject(scope, 'wiki-payload', '"md"')))
 
-    expect(documented, `wiki active 문서 예시(${scope.via}) — 실제 응답 8키와 대조`).toEqual(projection) // prettier-ignore
+    expect(documented, `wiki active 문서 예시(${scope.via}) — 실제 응답 5키와 대조`).toEqual(projection) // prettier-ignore
   })
 
-  it('WP2: ★ 살아 있는 앵커 — `headings[].anchor` 는 스키마가 요구하고 예시가 보여준다', () => {
-    // ✅ 지금 green — **AN1(부재)의 짝**이다. 이 케이스가 없으면 "README 에서 anchor 라는 낱말을
-    //   전부 지운다" 는 오수정이 AN1 을 통과시킨다. 앵커는 `docs[]` 에서만 죽었고 `headings[]` 에서는
-    //   **현역**이다(실측: `{"anchor":"개요","level":2,"text":"개요"}`).
+  // ★★ **재설계(WP2 → WP2′) — 「승계」가 아니라 「대체」다. 이 문단을 지우면 AN1 이 조용히
+  //    공허해진다.**
+  //
+  //    WP2 는 **AN1(부재 단언)의 짝**이었다. 이 파일 머리가 못박는다: _"부재만 단언하는 가드는
+  //    «다 지우면 통과» 라는 최악의 GREEN 을 허용한다"_. 그래서 「feeds `docs[]` 스코프에 `anchor` 가
+  //    0건」(AN1) 옆에는 반드시 **「그런데 `headings[].anchor` 는 살아 있다」**를 보이는 위험 실재
+  //    앵커가 있어야 한다. 그 앵커가 WP2 였고, 그것은 **wiki 응답 예시**(`contract:wiki-payload`
+  //    구간의 `headings[]`)를 읽었다.
+  //
+  //    🔴 md 컷오버가 wiki 응답에서 `headings` 를 **없앤다** ⇒ 옛 관측 좌표가 이 변경과 함께 죽는다.
+  //    그리고 README 전체에서 살아 있는 `headings[].anchor` 예시가 있던 곳은 그 구간뿐이었다.
+  //    ⇒ 여기서 케이스를 지우거나 스키마 한 줄만 남기면, 「README 에서 anchor 를 전부 지운다」는
+  //    오수정이 AN1 을 통과한다 — **부재 단언만 남는 그 상태가 정확히 이 파일이 막으려는 것**이다.
+  //
+  //    ⇒ 처분은 **두 축을 함께 옮기는 것**이다.
+  //      ① **스키마 축** — `headings[].anchor` 는 **벌크 body 계약**에서 현역이다. 벌크 아티팩트는
+  //         이 컷오버에서 무수정이므로 `definitions.heading.required` 는 그대로 3키다.
+  //      ② 🔴 **문서 축** — README 에 **벌크 body 페이로드 예시 절**을 만들고(`contract:body-payload`
+  //         마커) 거기에 살아 있는 `headings[].anchor` 예시를 둔다. 스키마 축만 남기면 AN1 의 짝은
+  //         「문서에서 다 지워도 통과」로 되돌아간다(스키마는 README 가 아니다).
+  //
+  //    지키던 것 → 지키게 된 것: 「wiki 응답 예시의 `headings[].anchor` 는 현역이다」 →
+  //    **「`headings[].anchor` 는 벌크 body 계약에서 현역이고, README 가 그것을 보여준다」**.
+  it('WP2′: ★ 살아 있는 앵커 — `headings[].anchor` 는 **벌크 body 계약**에서 현역이다 (🔴재설계)', () => {
+    // ① 스키마 축 — 벌크 원소의 heading 정의는 무손상이다.
     const heading = readSchema('body.schema.json').definitions.heading
-    expect(heading.required).toEqual(['anchor', 'level', 'text'])
+    expect(heading.required, '벌크 heading 계약이 흔들렸다(이 컷오버에서 벌크는 무수정이 정답이다)').toEqual(['anchor', 'level', 'text']) // prettier-ignore
 
-    const scope = docScope('wiki-payload')
-    const doc = exampleObject(scope, 'wiki-payload', '"headings"')
+    // ② 문서 축 — **AN1 의 짝**. 살아 있는 예시가 README 에 실재해야 한다.
+    const scope = markerScope(BODY_PAYLOAD_MARKER)
+    expect(scope, `README 에 벌크 body 페이로드 예시 절을 만들고 \`<!-- contract:${BODY_PAYLOAD_MARKER} -->\` … \`<!-- /contract:${BODY_PAYLOAD_MARKER} -->\` 로 감싸라. 그 안에 살아 있는 \`headings[]\` 예시(\`{ "anchor": …, "level": …, "text": … }\`)를 둔다 — wiki 응답에서 사라진 그 예시의 새 집이고, AN1(앵커 어휘 부재 단언)의 짝이다.`).not.toBeNull() // prettier-ignore
 
-    expect(doc.headings.length, 'wiki 예시에 headings 항목이 없다').toBeGreaterThan(0)
-    expect(sorted(Object.keys(doc.headings[0])), `wiki headings[] 예시(${scope.via})는 살아 있는 계약이다 — 지우지 마라`).toEqual(['anchor', 'level', 'text']) // prettier-ignore
+    const body = exampleObject(scope, BODY_PAYLOAD_MARKER, '"headings"')
+
+    expect(body.headings.length, '벌크 body 예시에 headings 항목이 없다').toBeGreaterThan(0)
+    expect(sorted(Object.keys(body.headings[0])), `벌크 body headings[] 예시(${scope.via})는 살아 있는 계약이다 — 지우지 마라`).toEqual(['anchor', 'level', 'text']) // prettier-ignore
   })
 })
 

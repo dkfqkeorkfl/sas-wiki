@@ -154,8 +154,14 @@ describe('B7 반전 — 피드는 살되 제외 문서를 가리키지 않는다
   })
 })
 
-describe('B8 반전 — 제외 문서의 본문을 서빙하지 않는다 (DR3 · 🔴RED flip)', () => {
-  it('DR3: 드리프트 문서 조회가 `null` 이고 대조 vault 의 같은 path 는 본문을 준다', async () => {
+// ★ DR3′ 축 교체 — 관측 좌표만 `doc.html`(렌더 산출)에서 `doc.md`(본문 원문)로 옮긴다.
+//   본문 서빙이 렌더된 HTML 이 아니라 마크다운 원문으로 바뀌었기 때문이다. **두 앵커의 역할은
+//   무손상**이다: ① 대조 vault 에서는 같은 path 가 본문을 준다(= 그 문서가 애초에 없어서 null 인
+//   것이 아니다) ② 같은 드리프트 vault 의 정상 문서는 여전히 본문을 준다(= 전부 null 을 내는
+//   구현 배제). 좌표를 안 옮기면 컷오버 후 `undefined.toContain` 으로 red 가 되고, 그 red 를
+//   「앵커를 지우자」로 처분하면 마지막 `toBeNull()` 이 두 공허 통과를 다시 허용한다.
+describe('B8 반전 — 제외 문서의 본문을 서빙하지 않는다 (DR3′ · 🔴RED 축 교체)', () => {
+  it('DR3′: 드리프트 문서 조회가 `null` 이고 대조 vault 의 같은 path 는 본문을 준다', async () => {
     const drifted = track(seedTamperedVault())
     const control = track(seedControlVault())
     await prebuildArtifacts(drifted.vault, 'dev')
@@ -164,12 +170,12 @@ describe('B8 반전 — 제외 문서의 본문을 서빙하지 않는다 (DR3 �
     // 앵커 ①: 대조 vault 의 같은 path 는 non-null 이고 본문 마커가 있다.
     const controlDoc = await wiki(control.vault, 'dev', drifted.tamperedRel)
     expect(controlDoc).not.toBeNull()
-    expect(controlDoc.html).toContain(DRIFT_MARKER)
+    expect(controlDoc.md).toContain(DRIFT_MARKER)
 
     // 앵커 ②: 같은 드리프트 vault 의 **정상 문서**는 여전히 non-null(전부 null 인 구현 배제).
     const healthy = await wiki(drifted.vault, 'dev', HEALTHY_REL)
     expect(healthy).not.toBeNull()
-    expect(healthy.html).toContain(HEALTHY_MARKER)
+    expect(healthy.md).toContain(HEALTHY_MARKER)
 
     expect(await wiki(drifted.vault, 'dev', drifted.tamperedRel)).toBeNull()
   })

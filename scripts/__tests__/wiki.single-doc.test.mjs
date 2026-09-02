@@ -16,8 +16,10 @@
 //     의심하라"(§5.1)의 답은 여기서 **공허가 아니라 계약 보존**이다. 조달 경로가 바뀌는 동안 이 다섯이
 //     흔들리면 그것이 회귀다.
 //
-// 픽스처(tdd §3.4): active 3(그중 1건이 위키링크 3종을 담는다) + disable 1 + **동명 basename 2건** +
-//   유일 basename 1건. 동명 basename 은 **실 vault 에 0건**(B9)이라 픽스처가 없으면 WK6 이 공허하다.
+// 픽스처: active 3(그중 1건이 위키링크 표기 3종을 본문에 담는다) + disable 1 + **동명 basename 2건** +
+//   유일 basename 1건. 🔴 이 픽스처가 원래 겨냥한 것은 **서버측 위키링크 해석**(WK5·WK6)이었는데
+//   그 계약은 클라이언트로 이관됐다(아래 「위키링크 해석 계약이 서버를 떠났다」 문단). 픽스처는
+//   남는다 — 이제 그 문자열들은 해석 대상이 아니라 **`md` 원문에 그대로 실려 나가는 본문**이다.
 //
 // 규범 A: 경로·id·마커·키 집합은 **리터럴**이다. 규범 B: 부재 단언마다 짝(이웃·정상 아티팩트)을 둔다.
 // 규범 C10: `rejects` 앞에 seam 가드. 규범 F: 실 vault 를 건드리지 않는다.
@@ -43,6 +45,9 @@ const SINGLE_DOC = path.join(SCRIPTS_DIR, 'lib', 'single-doc.mjs')
 const DERIVE = path.join(SCRIPTS_DIR, 'lib', 'derive.mjs')
 const GIT_WALK = path.join(SCRIPTS_DIR, 'lib', 'git-walk.mjs')
 const RENDER = path.join(SCRIPTS_DIR, 'lib', 'render.mjs')
+/** WK8′ 양성 대조 좌표 — 같은 파서가 **여기서는** 두 모듈을 실제로 검출해야 한다. */
+const WIKI = path.join(SCRIPTS_DIR, 'wiki.mjs')
+const PARSE = path.join(SCRIPTS_DIR, 'lib', 'parse.mjs')
 
 /** summary 아티팩트 경로 — **리터럴 조립**(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
 const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
@@ -72,7 +77,7 @@ const WIKI_ROOT = 'wiki'
 const docFile = (vault, ref) => path.join(vault, WIKI_ROOT, `${ref}.md`)
 
 /**
- * active 응답 계약 — **정확 8키**(리터럴). disable 스텁 4키와 뭉개지지 않는다.
+ * active 응답 계약 — **정확 5키**(리터럴). disable 스텁 4키와 뭉개지지 않는다.
  *
  * ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
  *    (선례 형식: 부모 리포 `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462`)
@@ -87,20 +92,35 @@ const docFile = (vault, ref) => path.join(vault, WIKI_ROOT, `${ref}.md`)
  *    유지해 조용히 green 이 되고 응답 계약이 **둘로 갈린다**. 이 파일의 tmp vault 에는 `feed:` 커밋이
  *    없으므로 기대값은 `feed: { items: [], nextCursor: null }` — **비어 있지만 키는 있다**.
  *
- *    🔴 **PN-1(`:323` 기준)은 `projectSingleDoc` 을 `feed` 인자 없이 직접 부른다.** 그 호출도 8키를
+ *    🔴 **PN-1(`:323` 기준)은 `projectSingleDoc` 을 `feed` 인자 없이 직접 부른다.** 그 호출도 5키를
  *    요구하므로 `feed` 파라미터는 **기본값 `{ items: [], nextCursor: null }`** 을 가져야 한다.
  *    그 기본값이 「`wiki.mjs` 가 실제 이력 전달을 빠뜨렸다」를 가리는 것은 아니다 — 그것은
  *    `wiki.doc-feed.test.mjs` 의 **W1**(심은 `feedCommit` 수와 일치)이 문다.
  *
  *    🔴 조달(`feeds()` 호출)은 **`wiki.mjs`** 에 두고 결과를 인자로 넘긴다. `single-doc.mjs` 에서
  *    `feeds.mjs` 를 import 하면 `feeds.mjs:26` 의 `lib/git-walk.mjs` 가 정적 폐쇄로 들어와 아래
- *    **WK8** 이 red 가 된다 — 가드를 고칠 신호가 아니라 **층을 잘못 잡았다는 신호**다.
+ *    **WK8′** 이 red 가 된다 — 가드를 고칠 신호가 아니라 **층을 잘못 잡았다는 신호**다.
+ *
+ * ★★ **두 번째 대체 — 8 → 5 (md 컷오버 · AK″).** 위 문단이 기록한 「7 → 8」 다음 전환이다.
+ *    **서버가 본문을 렌더해 `html` 로 내려주던 계약이 끝났다** — 서버는 마크다운 **원문**(`md`)만
+ *    싣고, HTML·목차·각주 정의는 소비자(클라이언트 렌더러)가 그 원문에서 만든다. 그래서 네 키가
+ *    한꺼번에 나가고 한 키가 들어온다:
+ *      · `html`       → **소멸** — 렌더 주체가 서버가 아니다.
+ *      · `headings`   → **소멸** — 목차는 렌더 트리에서 나온다(벌크 아티팩트에는 그대로 남는다).
+ *      · `sources`    → **소멸** — 각주 정의 수집도 렌더 파이프라인이 소유한다.
+ *      · `breadcrumb` → **소멸** — `path` 를 `/` 로 끊으면 나오는 파생값이라 봉투에 실을 이유가 없다.
+ *      · `md`         → **신설** — 요청 시점 디스크의 본문 원문 그대로(머리말 제외).
+ *
+ *    🔴 **무엇을 지키던 가드가 무엇을 지키게 되었는가**: 옛 8키 pin 은 「서버가 렌더 산출물까지
+ *    책임진다」의 물질화였다. 새 5키 pin 이 지키는 것은 **「서버는 조달만 하고 렌더하지 않는다」**
+ *    이다 — 렌더 산물 키(`html`·`headings`·`sources`)가 하나라도 되살아나면 렌더 책임이 두 곳으로
+ *    갈렸다는 뜻이고, **정렬 정확 일치**가 그것을 잡는다.
+ *
+ *    🔴 **`toHaveProperty`·`toContain` 으로 약화하지 마라.** 그 형태는 「`md` 를 **추가만** 하고 옛
+ *    키를 안 지웠다」를 통과시킨다 — 이 상수의 존재 이유가 정확히 그 통과를 막는 것이다.
  */
-const ACTIVE_KEYS = ['breadcrumb', 'feed', 'headings', 'html', 'meta', 'path', 'sources', 'status']
+const ACTIVE_KEYS = ['feed', 'md', 'meta', 'path', 'status']
 const DISABLE_STUB_KEYS = ['breadcrumb', 'id', 'status', 'title']
-
-/** 위키링크 `<a>` 계약(wikilink-plugin.mjs) — 데드 링크만 이 class 를 얹는다. 리터럴이다. */
-const DEAD_CLASS = 'wiki-link-dead'
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -127,7 +147,7 @@ function singleDoc() {
 /**
  * ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
  *
- * 이 파일의 케이스들이 무는 것은 **엔드포인트 반환 계약**(8키/4키/null·격리·링크 해석)이지 인자
+ * 이 파일의 케이스들이 무는 것은 **엔드포인트 반환 계약**(5키/4키/null·격리·링크 해석)이지 인자
  * 개수가 아니다. 그래서 주제는 그대로 두고 **호출 인자만** 갱신한다 — D15 로 `--count` 가 필수가
  * 됐을 때 `cli.env-enum.test.mjs:98-103` 이 남긴 처분과 같은 형태다.
  *
@@ -141,10 +161,10 @@ const askWiki = (vault, env, ref) => wikiFn()(vault, env, ref, summaryFile(vault
 /**
  * 세계관 — active 5 + disable 1.
  *
- * `company/삼성전자` 본문이 위키링크 3종을 담는다:
- *   `[[유일문서]]`  → basename 유일 → **해석된다**
- *   `[[HBM]]`      → 동명 2건 → **모호 → dead**
- *   `[[없는문서]]`  → 대상 부재 → dead
+ * `company/삼성전자` 본문이 위키링크 표기 3종을 담는다 — `[[유일문서]]`(basename 유일) ·
+ * `[[HBM]]`(동명 2건) · `[[없는문서]]`(대상 부재). 🔴 **서버는 이 표기를 해석하지 않는다** —
+ * 응답 `md` 에 원문 그대로 실려 나가고, 해석(live/dead 판정)은 클라이언트 렌더 파이프라인이
+ * 소유한다. 세 표기를 남겨 두는 이유는 **원문이 가공 없이 전달되는지**의 재료이기 때문이다.
  */
 function seedWorld() {
   const vault = initVault()
@@ -170,8 +190,6 @@ function seedWorld() {
 }
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
-const anchorOf = (html, label) =>
-  html.split('<a ').find((chunk) => chunk.includes(`>${label}<`)) ?? ''
 
 describe('wiki 는 async 이고 순수부는 lib/single-doc.mjs 다 (WK1 · 🔴RED 모듈·async 부재)', () => {
   it('WK1: `wiki()` 가 Promise 를 돌려주고 `single-doc.mjs` 의 두 export 가 함수다', async () => {
@@ -189,7 +207,11 @@ describe('wiki 는 async 이고 순수부는 lib/single-doc.mjs 다 (WK1 · 🔴
 })
 
 describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () => {
-  it('WK2: active 문서 → **정확 8키** · 자기 마커 있고 이웃 마커 없다', async () => {
+  // ★ WK2′ 축 교체 — 관측 대상이 `doc.html`(렌더 산출)에서 `doc.md`(본문 원문)로 옮겨간다.
+  //   **단언 구조는 그대로다**: 「자기 마커는 있고 이웃 마커는 없다 + 이웃을 조회하면 이웃 마커가
+  //   나온다」는 격리 대조가 이 케이스의 본질이고, 그 본질은 렌더 여부와 무관하다. 무는 것이
+  //   「렌더가 이 문서만 렌더했다」에서 **「투영이 이 문서 파일만 읽었다」**로 바뀌었을 뿐이다.
+  it('WK2′: active 문서 → **정확 5키** · 자기 마커 있고 이웃 마커 없다', async () => {
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
 
@@ -197,11 +219,12 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
 
     expect(Object.keys(doc).toSorted()).toEqual(ACTIVE_KEYS)
     expect(doc.path).toBe(REL_MAIN)
-    expect(doc.html).toContain(MARKER_MAIN)
-    expect(doc.html).not.toContain(MARKER_NEIGHBOR)
+    expect(typeof doc.md).toBe('string')
+    expect(doc.md).toContain(MARKER_MAIN)
+    expect(doc.md).not.toContain(MARKER_NEIGHBOR)
 
     // 앵커: 이웃을 조회하면 **그 마커가 나온다**(마커가 애초에 없어서 통과하는 것을 배제).
-    expect((await askWiki(vault, 'dev', REL_NEIGHBOR)).html).toContain(MARKER_NEIGHBOR)
+    expect((await askWiki(vault, 'dev', REL_NEIGHBOR)).md).toContain(MARKER_NEIGHBOR)
   })
 
   it('WK3: disable 문서 → 아티팩트 **스텁 4키 그대로**', async () => {
@@ -213,7 +236,7 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
 
     expect(Object.keys(stub).toSorted()).toEqual(DISABLE_STUB_KEYS)
     expect(stub.status).toBe('disable')
-    // 앵커: active 는 8키다(둘이 같은 모양으로 뭉개지지 않는다 · 축 교체는 ACTIVE_KEYS 문단 참조).
+    // 앵커: active 는 5키다(둘이 같은 모양으로 뭉개지지 않는다 · 축 교체는 ACTIVE_KEYS 문단 참조).
     expect(Object.keys(await askWiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
   })
 
@@ -227,32 +250,31 @@ describe('요청 문서 1건만 (WK2·WK3·WK4 · 🟢계약 보존 pin)', () =>
   })
 })
 
-describe('위키링크 해석 동치 (WK5·WK6 · 🟢계약 보존 pin · CX-O)', () => {
-  it('WK5: 같은 문서 안에서 존재 대상은 살고 부재 대상은 dead 로 렌더된다', async () => {
-    // 앵커가 케이스 안에 있다 — 한쪽만 두면 "전부 dead"·"전부 alive" 구현이 통과한다.
-    const vault = seedWorld()
-    await prebuildArtifacts(vault, 'dev')
-    const html = (await askWiki(vault, 'dev', REL_MAIN)).html
-
-    // `anchorOf` 는 라벨을 못 찾으면 빈 문자열을 돌려주고, 빈 문자열은 어떤 class 도 `toContain`
-    //   하지 않는다 — 그래서 대상 링크 자체가 사라져도(예: 렌더가 깨져 `<a>` 를 아예 안 낸다) 아래
-    //   `not.toContain` 만으로는 green 이 유지된다. 앵커로 `<a>` 자체가 실재함을 먼저 확인한다.
-    const uniqueAnchor = anchorOf(html, '유일문서')
-    expect(uniqueAnchor, '앵커: 유일문서 링크의 <a> 자체가 없다(공허 통과 방지)').not.toBe('')
-    expect(uniqueAnchor).not.toContain(DEAD_CLASS)
-    expect(anchorOf(html, '없는문서')).toContain(DEAD_CLASS)
-  })
-
-  it('WK6: **동명 basename** `[[HBM]]` 은 dead · 유일 basename 은 해석된다', async () => {
-    // plan Task 4 GOTCHA · B9 — 실 vault 에 동명 basename 이 0건이라 **픽스처가 없으면 공허**하다.
-    const vault = seedWorld()
-    await prebuildArtifacts(vault, 'dev')
-    const html = (await askWiki(vault, 'dev', REL_MAIN)).html
-
-    expect(anchorOf(html, 'HBM')).toContain(DEAD_CLASS)
-    expect(anchorOf(html, '유일문서')).not.toContain(DEAD_CLASS)
-  })
-})
+// ★★ **「위키링크 해석 계약이 서버를 떠났다」 — 「삭제」가 아니라 「층 이동」이다.
+//    이 문단을 지우면 다음 독자가 «방어가 그냥 없어졌다» 고 읽는다.**
+//
+//    이 자리에 **WK5·WK6** 두 케이스가 있었다. 무는 것은 「서버가 위키링크를 해석해 응답 `html`
+//    안에 `<a class="wiki-link">`(해석됨) / `<a class="wiki-link wiki-link-dead">`(해석 실패)를
+//    심는다」는 계약이었다:
+//      · **WK5** — 같은 문서 안에서 **존재 대상은 살고 부재 대상은 dead** 다(둘을 한 케이스에서 대조).
+//      · **WK6** — **동명 basename** `[[HBM]]` 은 모호하므로 dead, **유일 basename** 은 해석된다.
+//        (동명 basename 은 실 vault 에 0건이라 이 파일의 `a/HBM`·`b/HBM` 픽스처가 없으면 공허했다.)
+//
+//    🔴 **왜 사라지는가**: 응답이 렌더된 `html` 이 아니라 마크다운 **원문 `md`** 가 되면서
+//    **서버는 위키링크를 해석하지 않는다** — 해석기(`makeResolver`·`resolveTarget`)와 렌더 파이프라인이
+//    `single-doc.mjs` 에서 함께 사라진다. 관측할 `<a>` 가 서버 응답에 아예 없으므로 이 계약은
+//    **약해진 것이 아니라 층이 바뀐 것**이다 — 해석은 이제 클라이언트 렌더 파이프라인이 소유한다.
+//
+//    **어디로 갔는가(착륙 좌표)**: 부모 리포
+//    `src/pages/news/wiki/markdown/WikiMarkdown.pipeline.contract.test.tsx`
+//      · **B6**(「동명 basename 은 dead · 유일 basename 과 정확 경로는 live 로 해석된다」) —
+//        동명 2건 + 유일 1건 + 정확 경로를 한 입력에 담아 세 갈래를 한 케이스에서 문다. WK5·WK6 의
+//        직접 승계자다(모호 → dead · 유일 → live · 정확 경로 → live).
+//      · **B3·B4·B5** — `wiki-link` class · `wiki-link-dead` · `data-path` · `data-anchor` 출력 계약.
+//
+//    🔴 **경계 — 같이 지우면 안 되는 것**: 이 파일에 남은 케이스들은 위키링크 해석을 지지 않는다 —
+//    **투영 계약**(키 집합·본문 격리·`null`·disable 스텁·아티팩트 백스톱·라이브 본문)과 **구조**(정적
+//    폐쇄)를 진다. 그 둘은 서버에 그대로 남는 계약이라 이 이관과 무관하다.
 
 describe('해석 인덱스는 아티팩트에서 유도된다 (WK7 · 🔴RED 모듈 부재)', () => {
   it('WK7: 아티팩트 `docs[].breadcrumb` 집합 === 인덱스 경로 집합 (**disable 포함**)', async () => {
@@ -271,27 +293,64 @@ describe('해석 인덱스는 아티팩트에서 유도된다 (WK7 · 🔴RED �
   })
 })
 
-describe('단건 투영은 전 문서 파생을 타지 않는다 (WK8 · 🔴RED 모듈 부재)', () => {
-  it('WK8: `single-doc.mjs` 정적 폐쇄에 `derive.mjs`·`git-walk.mjs` 가 **없다**', () => {
-    // 런타임 짝은 TR5 다(정적 그래프만으로는 동적 import 를 못 본다 — 규범 G).
+// ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+//
+//    옛 WK8 의 첫 단언은 `expect(closure.files).toContain(RENDER)` 였고, 그것은 **양성 앵커**였다:
+//    _"폐쇄가 진입점 하나로 끝나지 않는다(파일이 없어서 «도달 안 함» 이 된 것을 구분한다)"_.
+//    나머지 두 단언(`derive`·`git-walk` 부재)이 전부 부정형이라, 그 한 줄이 없으면 파서가 죽어도
+//    가드가 통과하기 때문이다.
+//
+//    🔴 md 컷오버가 `single-doc.mjs` 의 `render.mjs`·`parse.mjs` import 를 **둘 다 끊는다**. 그래서
+//    옛 앵커가 그대로 죽는다 — 여기서 `toContain(RENDER)` 을 `not.toContain(RENDER)` 로 **반전만**
+//    하면 세 단언이 전부 부정형이 되어 **가드가 그날부터 아무것도 안 잡는다**. 이것은 이론이 아니다:
+//    `helpers/static-import-graph.mjs` 의 폐쇄 계산은 **읽을 수 없는 파일을 조용히 건너뛴다**
+//    (`continue`) — `single-doc.mjs` 를 통째로 지워도 폐쇄는 `[진입점]` 을 돌려주고 부정형 셋이
+//    전부 통과한다.
+//
+//    처분은 둘이다.
+//      ① **더 강한 형태로 승격** — 「`derive`·`git-walk` 가 없다」가 아니라 **「폐쇄가 정확히 자기
+//         자신뿐이다」**. 투영이 순수해졌다는 것이 이 phase 의 구조 주장 그 자체이므로, 부재 목록을
+//         나열하는 것보다 정확 일치가 그 주장을 직접 문다(어떤 모듈이 새로 들어와도 red 다).
+//      ② 🔴 **양성 대조 신설** — 같은 실행·같은 파서가 `wiki.mjs` 폐쇄에서는 `single-doc.mjs` 와
+//         `parse.mjs` 를 **실제로 검출한다**. 이 두 줄이 「파서가 살아 있다」를 진다. 그 좌표를 고른
+//         근거: `wiki.mjs` 는 컷오버 후에도 두 모듈을 **직접** import 한다(투영은 `single-doc.mjs`
+//         가, 머리말 파싱은 `parse.mjs` 가 소유한다) — 즉 앵커가 이 변경으로 함께 죽지 않는다.
+//
+//    지키던 것 → 지키게 된 것: 「전 문서 파생·커밋 워크를 타지 않는다」 → **「아무것도 물지 않는다
+//    (= 투영이 순수 함수가 됐다)」**. 런타임 짝은 `serving.cost-profile.test.mjs` 의 TR5′ 다(정적
+//    그래프만으로는 동적 import 를 못 본다).
+describe('단건 투영은 아무것도 물지 않는다 (WK8′ · 🔴RED 오늘 render·parse 를 문다)', () => {
+  it('WK8′: `single-doc.mjs` 정적 폐쇄가 **정확히 자기 자신뿐**이다 (+ `wiki.mjs` 양성 대조)', () => {
     const closure = graphModule.staticImportClosure(SINGLE_DOC)
+    const wikiClosure = graphModule.staticImportClosure(WIKI)
 
-    // 앵커: 폐쇄가 진입점 하나로 끝나지 않는다(파일이 없어서 "도달 안 함" 이 된 것을 구분한다).
-    expect(closure.files, `[RED] ${SINGLE_DOC} 가 아직 없거나 아무것도 물지 않는다`).toContain(
-      RENDER,
-    )
+    // 앵커(양성 대조): 같은 파서가 **검출을 실제로 한다**. 이 두 줄이 없으면 아래 단언들은
+    //   「파일을 못 읽어 폐쇄가 비었다」와 구분되지 않는다.
+    expect(wikiClosure.files, `[앵커 사망] ${WIKI} 폐쇄가 ${SINGLE_DOC} 를 검출하지 못한다`).toContain(SINGLE_DOC) // prettier-ignore
+    expect(wikiClosure.files, `[앵커 사망] ${WIKI} 폐쇄가 ${PARSE} 를 검출하지 못한다`).toContain(PARSE) // prettier-ignore
+
+    // 본 단언: 투영은 순수하다 — 자기 자신 말고는 아무것도 물지 않는다.
+    expect(closure.files, `[RED] ${SINGLE_DOC} 가 아직 다른 모듈을 문다`).toEqual([SINGLE_DOC])
+
+    // 명명된 계약은 남긴다(위 정확 일치에 포섭되지만, 「무엇을 특히 물면 안 되는가」는 세 좌표가
+    //   이름으로 말해야 다음 독자가 층 오배치를 즉시 알아본다 — 특히 `git-walk` 는 이력 조달을
+    //   `wiki.mjs` 가 아니라 이 층으로 내렸을 때 들어온다).
+    expect(closure.files).not.toContain(RENDER)
     expect(closure.files).not.toContain(DERIVE)
     expect(closure.files).not.toContain(GIT_WALK)
   })
 })
 
-describe('아티팩트 읽기 백스톱 (WK9 · 🔴RED 경로 부재)', () => {
-  it('WK9: 사전 빌드된 아티팩트는 읽고, 부재 아티팩트는 **reject** 한다', async () => {
+describe('아티팩트 읽기 백스톱 (WK9′ · 🔴RED 축 교체)', () => {
+  // ★ WK9′ 축 교체 — 앵커의 관측 좌표만 `html` → `md` 로 옮긴다. 이 케이스가 무는 것은
+  //   「아티팩트 부재는 fail-loud 다」이고, 앵커는 「정상 히트는 본문을 실제로 싣는다」이다.
+  //   본문이 렌더 산출이 아니라 원문이 되었을 뿐 두 역할 모두 그대로다.
+  it('WK9′: 사전 빌드된 아티팩트는 읽고, 부재 아티팩트는 **reject** 한다', async () => {
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
 
     // 앵커: 정상 히트는 resolve 하고 본문이 있다.
-    expect((await askWiki(vault, 'dev', REL_MAIN)).html).toContain(MARKER_MAIN)
+    expect((await askWiki(vault, 'dev', REL_MAIN)).md).toContain(MARKER_MAIN)
 
     // 아티팩트 부재는 fail-loud 다. 조회 경로가 생성기를 되살려 통과하면 안 된다.
     rmSync(summaryFile(vault, 'dev'), { force: true })
@@ -337,7 +396,7 @@ describe('머리말 없는 파일은 크래시가 아니라 부재다 (PN-1 · �
     const mod = singleDoc()
     const index = mod.makeDocIndex(readJson(summaryFile(vault, 'dev')).docs)
 
-    // 앵커(케이스 내): **같은 index·같은 ref** 에 실제 파서를 주면 정확 8키가 나온다 →
+    // 앵커(케이스 내): **같은 index·같은 ref** 에 실제 파서를 주면 정확 5키가 나온다 →
     //   "그 ref 가 애초에 인덱스에 없어서 null" 이라는 공허 통과를 배제한다.
     const parsedReal = mod.projectSingleDoc({
       index,
@@ -362,7 +421,7 @@ describe('빌드 후 머리말이 사라져도 500 이 아니다 (PN-2 · 🔴RE
 
     // 앵커 ⓐ: 그 파일은 **디스크에 실재한다** → "없어서 null" 을 배제.
     expect(existsSync(broken)).toBe(true)
-    // 앵커 ⓑ(규범 U): **같은 vault·같은 빌드**의 정상 문서는 정확 8키 → "인덱스가 비었다" 를 배제.
+    // 앵커 ⓑ(규범 U): **같은 vault·같은 빌드**의 정상 문서는 정확 5키 → "인덱스가 비었다" 를 배제.
     expect(Object.keys(await askWiki(vault, 'dev', REL_MAIN)).toSorted()).toEqual(ACTIVE_KEYS)
 
     const returned = askWiki(vault, 'dev', REL_NEIGHBOR)
@@ -394,17 +453,24 @@ describe('disable 스텁은 파일을 읽지 않는다 (STUB-1 · 🟢앵커(오
   })
 })
 
-describe('본문은 요청 시점 디스크다 (LIVE-1 · 🟢앵커(오늘도 green · RED 아님) · D25)', () => {
-  it('LIVE-1: 빌드 후 **본문만** 고치면 재빌드 없이 같은 요청에 반영된다', async () => {
+describe('본문은 요청 시점 디스크다 (LIVE-1′ · 🔴RED 축 교체 · D25)', () => {
+  it('LIVE-1′: 빌드 후 **본문만** 고치면 재빌드 없이 같은 요청에 반영된다', async () => {
     // ★ 규범 E: 전후를 가르는 것은 벽시계가 아니라 **쓰기 순서**다 — 같은 케이스 안에서 before 를
     //   먼저 수집하고, 그 다음에 쓴다. 재빌드·커밋은 하지 않는다(인덱스는 스냅샷 그대로다).
+    //
+    // ★ 축 교체 사유 — **앵커의 근거 문장이 바뀐다.** 옛 앵커는 「렌더가 실제로 돌고 있다」였다:
+    //   서버가 md 를 HTML 로 렌더했으므로, 빈 `html` 이면 아래 `not.toContain` 이 공허하게 참이
+    //   되는 것을 그 한 줄이 막았다. 컷오버 후 서버는 렌더하지 않으므로 그 근거는 성립하지 않는다.
+    //   **새 근거는 「요청마다 디스크를 다시 읽는다」**이다 — 투영이 아티팩트 스냅샷의 본문을
+    //   재활용하면 수정이 반영되지 않아 마지막 단언이 red 가 되고, 반대로 `md` 가 빈 문자열이면
+    //   첫 앵커가 red 가 된다. 두 방향이 같은 케이스 안에서 함께 걸린다.
     const vault = seedWorld()
     await prebuildArtifacts(vault, 'dev')
 
     const before = await askWiki(vault, 'dev', REL_MAIN)
-    // 앵커: 렌더가 실제로 돌고 있다(빈 html 로 "마커 없음" 이 참이 되는 것을 배제).
-    expect(before.html).toContain(MARKER_MAIN)
-    expect(before.html).not.toContain(LIVE_MARKER)
+    // 앵커: 투영이 본문을 실제로 싣고 있다(빈 md 로 "마커 없음" 이 참이 되는 것을 배제).
+    expect(before.md).toContain(MARKER_MAIN)
+    expect(before.md).not.toContain(LIVE_MARKER)
 
     writeDoc(vault, REL_MAIN, {
       body: `## 정의\n\n${MARKER_MAIN} 본문이다.\n\n${LIVE_MARKER}\n`,
@@ -413,6 +479,6 @@ describe('본문은 요청 시점 디스크다 (LIVE-1 · 🟢앵커(오늘도 g
       type: 'company',
     })
 
-    expect((await askWiki(vault, 'dev', REL_MAIN)).html).toContain(LIVE_MARKER)
+    expect((await askWiki(vault, 'dev', REL_MAIN)).md).toContain(LIVE_MARKER)
   })
 })

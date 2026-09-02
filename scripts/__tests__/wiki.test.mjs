@@ -8,10 +8,17 @@
 //   `vault.bodies.find` 를 호출해 **TypeError**(의도한 미구현)로 실패한다.
 //
 // 계약(GREEN 이 구현):
-//   wiki(vault, env, ref) → 그 path 문서 1건 { html, headings, meta, sources, path, status, breadcrumb }.
+//   wiki(vault, env, ref) → 그 path 문서 1건.
 //     없는 path → null(throw 아님) · disable → status='disable' 스텁 · 요청 path 만(이웃 본문 격리).
-//     렌더는 renderMarkdownToHtml **재사용**(build 렌더 경로와 동일 · 회귀 0).
 //   P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다. 단언 **내용**은 무변경 — `await` 만 붙는다.
+//
+// ★★ **md 컷오버(E-W′) — 반환 모양이 «렌더 산출»에서 «본문 원문»으로 바뀐다.**
+//   옛 계약은 `{ html, headings, meta, sources, path, status, breadcrumb }` 였고 _"렌더는
+//   renderMarkdownToHtml **재사용**(build 렌더 경로와 동일 · 회귀 0)"_ 이 그 근거였다. 이제 서버는
+//   렌더하지 않는다 — 반환은 `{ feed, md, meta, path, status }` 이고 HTML·목차·각주 정의는 소비자가
+//   그 `md` 에서 만든다. 그 5키 정확 일치는 `wiki.single-doc.test.mjs`·`wiki.index-gate.test.mjs` 의
+//   `ACTIVE_KEYS` 가 문다. 이 파일이 무는 것은 **엔드포인트 종단 계약**(1건만·격리·null·disable 스텁)
+//   이고, 그 주제는 그대로다.
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -49,8 +56,19 @@ function seedWorld(vault) {
   commit(vault, 'chore: active 2 + disable 1 생성')
 }
 
-describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () => {
-  it('E-W1: wiki(vault, env, path) → 그 문서 1건(본문 렌더) · 이웃 본문 미포함(격리)', async () => {
+describe('endpoints.wiki — per-doc git read (E-W′1 🔴RED 축 교체)', () => {
+  // ★ 축 교체 사유 — **한 단언은 성격이 바뀌고, 두 단언은 계약과 함께 사라진다.**
+  //   · `doc.html` 에 `<h2` → `doc.md` 에 `## ` : 옛 단언은 **렌더 산출**(heading 태그가 실제로
+  //     만들어졌다)을 물었다. 서버가 렌더를 그만두므로 같은 위치에서 물 수 있는 것은 **원문의
+  //     heading 문법**뿐이다. 즉 「렌더가 돌았다」가 아니라 **「본문이 원문 그대로 실렸다」**를 문다.
+  //     ⚠️ 그래서 이 줄은 더 이상 렌더러 회귀를 잡지 않는다 — 렌더 산출의 검증은 렌더 주체(소비자)
+  //     쪽으로 옮겨간 계약이고, 여기서는 그 자리를 **원문 무손상**이 대신한다.
+  //   · `doc.headings.length > 0` · `toHaveProperty('sources')` : 두 키가 응답에서 **사라진다**.
+  //     그 목차·각주 정의는 이제 원문에서 소비자가 만든다. 여기서 「없어졌다」를 부정형으로 다시
+  //     쓰지 않는다 — 키 집합의 권위는 `ACTIVE_KEYS` **정확 일치**(다른 두 파일)가 단독으로 지며,
+  //     같은 사실을 약한 형태로 중복하면 그쪽이 약화될 때 아무도 알아채지 못한다.
+  //   · `toHaveProperty('meta')` · 격리 대조는 **무변경**이다.
+  it('E-W′1: wiki(vault, env, path) → 그 문서 1건(본문 원문) · 이웃 본문 미포함(격리)', async () => {
     const vault = initVault()
     try {
       seedWorld(vault)
@@ -59,13 +77,12 @@ describe('endpoints.wiki — per-doc git read+render (E-W1 🔴RED 전환)', () 
       const doc = await askWiki(vault, 'dev', PATH_A)
 
       expect(doc).not.toBeNull()
-      expect(doc.html).toContain('<h2')
-      expect(doc.html).toContain('HBM 사업')
-      expect(doc.headings.length).toBeGreaterThan(0)
+      expect(typeof doc.md).toBe('string')
+      expect(doc.md).toContain('## HBM 사업') // heading 이 **원문 문법 그대로**다(렌더되지 않았다)
+      expect(doc.md).toContain('삼성 본문.') // 본문 텍스트도 그대로
       expect(doc).toHaveProperty('meta')
-      expect(doc).toHaveProperty('sources')
-      expect(doc.html).not.toContain('공급망') // 이웃 문서 B 본문이 새지 않는다
-      expect((await askWiki(vault, 'dev', PATH_B)).html).toContain('공급망') // B 는 정확히 B
+      expect(doc.md).not.toContain('공급망') // 이웃 문서 B 본문이 새지 않는다
+      expect((await askWiki(vault, 'dev', PATH_B)).md).toContain('공급망') // B 는 정확히 B
     } finally {
       cleanup(vault)
     }

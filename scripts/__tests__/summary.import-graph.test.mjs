@@ -10,7 +10,9 @@
 //     재export 없음)가 확정됐으므로 GREEN 은 그 이동까지 해야 여기가 green 이 된다.
 //   · IG3·IG4·IG5 — **RED(헬퍼 부재)**. 신설 파서 `helpers/static-import-graph.mjs` 가 없다.
 //     (작성 시점에 함께 신설하므로 실행 시엔 green 이 될 수 있다 — 그 경우 §3 과의 차이를 보고한다.)
-//   · IG2 — **pin(지금도 green)**. `wiki.mjs` 는 본문 HTML 을 실제로 렌더하므로 도달이 **정상**이다.
+//   · IG2′ — **pin(지금도 green)**. 대상이 `wiki.mjs` → `derive.mjs` 로 **교체**됐다(사유는 그
+//     케이스 위 문단). 벌크 파생은 본문 HTML 을 계속 만들므로 `derive.mjs → render.mjs` 도달이
+//     **정상**이고, 그 도달이 IG1·IG6·FC1 세 부재 단언의 공용 양성 앵커다.
 //
 // ★ 왜 벽시계가 아니라 구조인가(tdd §2.4 규범 E): "판정이 몇 초냐" 는 9p 마운트·호스트 부하 의존
 //   수치라 임계값을 CI 게이트로 걸면 flaky 하고, 그러면 다음 사람이 **가드를 무력화한다**. 여기서 재는
@@ -56,9 +58,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCRIPTS_DIR = path.resolve(HERE, '..')
 
 const SUMMARY = path.join(SCRIPTS_DIR, 'summary.mjs')
-const WIKI = path.join(SCRIPTS_DIR, 'wiki.mjs')
 /** (P5 · Task 3 · D-E) `feeds` 도 아티팩트 소비자가 된다 → 같은 게이트를 여기에도 세운다(FC1). */
 const FEEDS = path.join(SCRIPTS_DIR, 'feeds.mjs')
+/** 파생 진입점 — FC1 의 부재 좌표이자 **IG2′ 의 양성 앵커 좌표**다(두 역할을 겸한다). */
 const DERIVE = path.join(SCRIPTS_DIR, 'lib', 'derive.mjs')
 /** 렌더 툴체인의 입구 — 6.9초 import 의 정체(plan B1). 경로는 **리터럴**이다. */
 const RENDER = path.join(SCRIPTS_DIR, 'lib', 'render.mjs')
@@ -86,8 +88,8 @@ function describeChain(closure, target) {
 
 describe('정적 import 그래프 — 판정 경로 (IG1·IG6 · 🔴RED 오늘 도달 YES)', () => {
   it('IG1: `summary.mjs` 의 정적 전이 폐쇄에 `lib/render.mjs` 가 **없다**', () => {
-    // ★ 이 phase 의 핵심 게이트. 위험 실재 앵커는 **IG2** 다 — 같은 파서가 `wiki.mjs` 에서는 도달을
-    //   실제로 검출한다. 그 행이 없으면 "항상 빈 집합" 파서가 이 단언을 공허하게 만족시킨다.
+    // ★ 이 phase 의 핵심 게이트. 위험 실재 앵커는 **IG2′** 다 — 같은 파서가 `derive.mjs` 에서는
+    //   도달을 실제로 검출한다. 그 행이 없으면 "항상 빈 집합" 파서가 이 단언을 공허하게 만족시킨다.
     const closure = graph().staticImportClosure(SUMMARY)
 
     // 앵커: 폐쇄가 비어 있지 않다(파서가 죽어서 "도달 안 함" 이 된 것이 아니다).
@@ -115,7 +117,7 @@ describe('정적 import 그래프 — 판정 경로 (IG1·IG6 · 🔴RED 오늘 
 //     정적 폐쇄가 렌더-free 를 유지한다.
 //   ★ 이 게이트만으로는 부족하다(규범 G · D-J): 동적 import 는 정적 그래프에 안 잡히므로 게이트가
 //     green 인 채 툴체인이 실제로 로드되는 상태가 성립한다(CX-J′). 런타임 짝은 **TR3** 이다.
-//   앵커: 같은 파서가 `wiki.mjs` 에서는 도달을 실제로 검출한다(IG2) — 아래 describe 가 그것이다.
+//   앵커: 같은 파서가 `derive.mjs` 에서는 도달을 실제로 검출한다(IG2′) — 아래 describe 가 그것이다.
 describe('정적 import 그래프 — feeds 판정 경로 (FC1 · 🔴RED 오늘 도달 YES)', () => {
   it('FC1: `feeds.mjs` 의 정적 폐쇄에 `parse-vault`·`render`·`derive` 가 **없다**', () => {
     const closure = graph().staticImportClosure(FEEDS)
@@ -130,12 +132,29 @@ describe('정적 import 그래프 — feeds 판정 경로 (FC1 · 🔴RED 오늘
   })
 })
 
-describe('정적 import 그래프 — 위험 실재 앵커 (IG2 · 🟢pin)', () => {
-  it('IG2: `wiki.mjs` 의 정적 폐쇄에는 `lib/render.mjs` 가 **있다** (도달을 실제로 검출한다)', () => {
-    // ★ `wiki` 는 본문 HTML 을 실제로 렌더하므로 도달이 **정상**이다 — 이 행은 IG1 의 앵커이지
-    //   `wiki.mjs` 에 대한 요구가 아니다. `feeds.mjs` 는 **P5 소관**이라 여기서 걸지 않는다(§8-2 기록만).
-    const closure = graph().staticImportClosure(WIKI)
+// ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+//
+//    IG2 의 대상은 원래 `wiki.mjs` 였고 근거는 _"`wiki` 는 본문 HTML 을 실제로 렌더하므로 도달이
+//    **정상**"_ 이었다. 그 근거가 md 컷오버로 사라진다 — 서버는 더 이상 렌더하지 않고 `wiki.mjs`
+//    는 `md` 원문만 실어 내보내므로 그 폐쇄에서 `render.mjs` 가 **빠지는 것이 정답**이 된다.
+//
+//    🔴 그러나 이 케이스를 **지우면 안 된다.** IG2 는 `wiki.mjs` 에 대한 요구가 아니라 **IG1·IG6·FC1
+//    세 부재 단언의 공용 양성 앵커**다: 같은 파서가 「도달을 실제로 검출한다」를 보이지 못하면,
+//    폐쇄 계산이 파일을 못 읽어 조용히 건너뛰는 상태(`staticImportClosure` 는 읽기 실패 시 `continue`
+//    한다)와 「정말로 안 문다」가 구분되지 않는다.
+//
+//    ⇒ 처분은 **삭제가 아니라 대상 교체**다. `derive.mjs` 로 옮긴다 — 벌크 파생은 이 컷오버 뒤에도
+//    본문 HTML 을 계속 만들므로(벌크 아티팩트는 `html` 존치) `derive.mjs → render.mjs` 정적 사슬이
+//    남는다. 지키던 것 → 지키게 된 것: 「조회 도구가 렌더 툴체인을 문다(정상)」 → **「파서는 여전히
+//    도달을 검출한다 — 그 증거는 이제 벌크 파생 경로에 있다」**.
+describe('정적 import 그래프 — 위험 실재 앵커 (IG2′ · 🟢pin · 대상 교체)', () => {
+  it('IG2′: `derive.mjs` 의 정적 폐쇄에는 `lib/render.mjs` 가 **있다** (도달을 실제로 검출한다)', () => {
+    const closure = graph().staticImportClosure(DERIVE)
 
+    // 앵커: 폐쇄가 진입점 하나로 끝나지 않는다(파서가 파일을 못 읽어 `[진입점]` 만 돌려준 상태와
+    //   「정말로 도달한다」를 가른다). 이 줄이 없으면 아래 `toContain` 이 유일한 신호인데, 그것이
+    //   red 인 이유가 「끊겼다」인지 「못 읽었다」인지 알 수 없다.
+    expect(closure.files.length).toBeGreaterThan(1)
     expect(closure.files).toContain(RENDER)
   })
 })
