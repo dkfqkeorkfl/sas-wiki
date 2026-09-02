@@ -2,8 +2,8 @@ import { findAndReplace } from 'mdast-util-find-and-replace'
 
 /**
  * `[[target#anchor|display]]` 위키링크 문법(모든 절 선택적)을 mdast link 노드로 치환하는
- * 자체 remark 플러그인. `mdast-util-find-and-replace` 가 inlineCode/code/기존 link 컨텍스트를
- * 자동 회피하므로 코드스팬 내 `[[..]]` 는 리터럴로 보존된다.
+ * 자체 remark 플러그인. 코드스팬의 내용은 텍스트 노드가 아니라 inlineCode 노드이므로 `[[..]]` 가
+ * 리터럴로 보존된다. 기존 link 컨텍스트는 자동 회피하지 않아 중첩 링크가 생길 수 있다.
  *
  * 링크 대상 해석은 주입된 `resolve(target, anchor) => { path, exists }` 가 담당하고(계약 SSOT
  * 는 derive.mjs), 플러그인은 그 결과로 `<a>` 출력 계약(class·href·data-*·label)을 조립한다.

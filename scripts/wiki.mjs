@@ -19,8 +19,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 /**
  * wiki 엔드포인트 — ref(=path, canonical) 문서 1건.
  *
- * active 문서는 본문 7키(breadcrumb·headings·html·meta·path·sources·status)를, disable 문서는
- * 아티팩트 스텁(4키)을 그대로 반환한다. 없는 path 는 null 이다.
+ * active 문서는 5키(feed·md·meta·path·status)를, disable 문서는 아티팩트 스텁(4키)을 그대로
+ * 반환한다. 없는 path 는 null 이다.
  *
  * ★ D27 — summary 아티팩트 경로는 **호출자가 소유한다**. 이 함수는 경로를 파생하지 않고 받은 것을
  * 그대로 `readArtifact` 에 넘긴다(`feeds.mjs:136` 이 `--out` 을 다루는 형태와 같다). 파생이 남으면

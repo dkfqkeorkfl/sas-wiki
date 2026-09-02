@@ -536,34 +536,27 @@ active 문서는 10키다.
 
 `--path` 가 무엇을 가리키느냐에 따라 셋 중 하나다.
 
-**① active 문서 — 8키.**
+**① active 문서 — 5키.**
 
 ```jsonc
 {
   "path": "company/삼성전자",
-  "breadcrumb": ["company", "삼성전자"],
   "status": "active",
   "feed": { "items": [/* … */], "nextCursor": null },
-  "html": "<h2 id=\"개요\">개요</h2>\n<p>…</p>",
-  "headings": [
-    { "anchor": "개요", "level": 2, "text": "개요" },
-    { "anchor": "사업-부문", "level": 2, "text": "사업 부문" },
-    { "anchor": "메모리-로드맵", "level": 2, "text": "메모리 로드맵" },
-  ],
+  "md": "## 개요\n\n…",
   "meta": { "ticker": "005930", "sector": "반도체", "exchange": "KOSPI" },
-  "sources": [{ "label": "…", "text": "…" }],
 }
 ```
 
-| 키         | 설명                                                                         |
-| ---------- | ---------------------------------------------------------------------------- |
-| `feed`     | 이 문서를 가리키는 발행 이력과 다음 커서. 이력 0건이면 `items` 는 `[]`       |
-| `html`     | 렌더 완료된 본문. 위키링크는 `<a class="wiki-link" data-path="…">` 로 나온다 |
-| `headings` | 목차·앵커 검증용. `anchor` 는 URL 슬러그, `text` 는 표시용 원문              |
-| `meta`     | frontmatter 의 자유 필드 — 인포박스에 그대로 쓰인다                          |
-| `sources`  | 본문의 **각주 정의**(`[^라벨]: 내용`)를 모은 것. 없으면 `[]`                 |
+| 키       | 설명                                                                    |
+| -------- | ----------------------------------------------------------------------- |
+| `feed`   | 이 문서를 가리키는 발행 이력과 다음 커서. 이력 0건이면 `items` 는 `[]`  |
+| `md`     | 마크다운 본문 원문. HTML·목차·각주 정의 렌더링은 소비자가 담당한다       |
+| `meta`   | frontmatter 의 자유 필드 — 인포박스에 그대로 쓰인다                     |
+| `path`   | 요청한 문서의 canonical 경로                                             |
+| `status` | active 문서의 상태                                                       |
 
-마크다운 원문(`md`)·백링크는 계약에 없다. 소비처가 없어서 뺐다.
+백링크는 계약에 없다. 마크다운 원문(`md`)은 그대로 전달하며 렌더는 소비자가 한다.
 
 **주의**: 이 응답에는 `id` 가 없다. 문서 id 가 필요하면 summary 의 `docs[]` 에서 `breadcrumb` 으로 찾는다.
 
@@ -572,6 +565,23 @@ active 문서는 10키다.
 **③ 없는 경로 — `null`.** 에러가 아니라 `null` 이 stdout 에 찍히고 exit 0 이다.
 
 <!-- /contract:wiki-payload -->
+
+### 벌크 body 원소
+
+<!-- contract:body-payload -->
+
+summary 벌크 아티팩트의 body 원소는 렌더 산출 4키를 유지한다.
+
+```jsonc
+{
+  "headings": [{ "anchor": "개요", "level": 2, "text": "개요" }],
+  "html": "<h2 id=\"개요\">개요</h2>\n<p>…</p>",
+  "meta": { "ticker": "005930", "sector": "반도체", "exchange": "KOSPI" },
+  "sources": [{ "label": "spec", "text": "CXL Consortium, CXL 3.1 Specification (2023)" }],
+}
+```
+
+<!-- /contract:body-payload -->
 
 ---
 
@@ -621,7 +631,7 @@ git commit -m "chore: CXL 문서 추가"
 
 ### 각주 = 출처
 
-본문에 마크다운 각주 정의를 쓰면 wiki 응답의 `sources[]` 가 된다. frontmatter 가 아니라 본문이다.
+본문에 마크다운 각주 정의를 쓰면 벌크 body 원소의 `sources[]` 가 된다. frontmatter 가 아니라 본문이다. wiki 응답에서는 `md` 원문에 포함되며 소비자가 처리한다.
 
 ```markdown
 자세한 규격은 공개 문서에 있다[^spec].
@@ -629,7 +639,7 @@ git commit -m "chore: CXL 문서 추가"
 [^spec]: CXL Consortium, CXL 3.1 Specification (2023)
 ```
 
-각주 정의 줄은 `sources[]` 로 **복사될 뿐 `html` 에서 제거되지 않는다.** 마커(`[^spec]`)와 정의 줄이 렌더된 본문에 그대로 남으므로, 정의는 본문 맨 아래에 모아 두고 표시는 소비자 쪽에서 처리하는 것을 전제로 한다.
+벌크 렌더에서는 각주 정의 줄이 `sources[]` 로 **복사될 뿐 `html` 에서 제거되지 않는다.** 마커(`[^spec]`)와 정의 줄이 렌더된 본문에 그대로 남으므로, 정의는 본문 맨 아래에 모아 두고 표시는 소비자 쪽에서 처리하는 것을 전제로 한다.
 
 ### 위키링크
 
@@ -645,10 +655,10 @@ git commit -m "chore: CXL 문서 추가"
 >
 > | 어디                                     | 무엇                                                     | 만드는 곳                    |
 > | ---------------------------------------- | -------------------------------------------------------- | ---------------------------- |
-> | [wiki 반환값](#wiki-반환값) `headings[]` | 문서 heading 의 URL 슬러그 — 목차 항목이 가리키는 목적지 | `slugifyHeading` (md → html) |
+> | [벌크 body 원소](#벌크-body-원소) `headings[]` | 문서 heading 의 URL 슬러그 — 목차 항목이 가리키는 목적지 | `slugifyHeading` (md → html) |
 > | 위키링크 `[[대상#앵커]]`                 | 다른 문서의 특정 heading 으로 가는 링크                  | 같은 슬러그 함수 (lockstep)  |
 >
-> 렌더된 본문의 `<h2 id="…">` 와 `headings[].anchor` 는 **같은 함수로 만들어져** 항상 일치한다. 반면 **피드**(`feeds` 의 `docs[]`)는 문서만 가리키고 위치는 가리키지 않는다 — 거기엔 앵커가 없다.
+> 벌크 body의 렌더된 본문 `<h2 id="…">` 와 `headings[].anchor` 는 **같은 함수로 만들어져** 항상 일치한다. 반면 **피드**(`feeds` 의 `docs[]`)는 문서만 가리키고 위치는 가리키지 않는다 — 거기엔 앵커가 없다.
 
 ---
 
