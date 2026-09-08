@@ -66,19 +66,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 /**
  * 트립와이어(RD11) 전용 — 소스를 **읽기만** 한다.
  *
- * P5 에서 좌표가 옮겨졌다(의도 불변) — OQ-P5-1=A 로 `runSummaryGenerator`(생성기 본체)가
- * `scripts/summary.mjs` 에서 `scripts/lib/generator.mjs` 로 옮겨갔다. pin 의 의도("생성기가 아티팩트
- * 읽기를 손수 만들지 않고 단일 불신 함수를 쓴다")는 그대로다 — 관측 대상만 실제로 그 로직이 사는
- * 파일로 따라간다.
- *
- * 🔴 v3 P1(§4.10 「조용한 통과」 RD11 · 메인 세션 판정 5): 관측 대상이 **또 한 번** 옮겨간다.
- *   Task 5 가 `generator.mjs` 에서 skip 블록과 신선도 세트 독자를 걷어내면 그 파일은 `readArtifact` 를
- *   **아예 부르지 않게** 되어 짝 앵커(`toContain('readArtifact')`)가 red 가 되고, 그 앵커를 지우는
- *   순간 남은 두 부재 단언이 **영구 공허**가 된다(무엇에 대고 부재를 말하는지가 사라진다).
- *   그래서 명제를 바꾼다 — 「독자가 하나다」 → **「독자 *함수* 는 하나(`readArtifact`)이고
- *   `feeds.mjs`·`wiki.mjs` 가 그것을 통과한다」**. 두 서빙 스크립트는 plan Task 6 이 아티팩트
- *   **소비 전용**으로 만드는 자리라 `readArtifact` 가 거기서 살아남는다. 케이스를 폐기하지 않는다.
+ * **승계가 아니라 대체**다. 이전 앵커는 서빙 스크립트가 `readArtifact`를 배선해 단일 독자 경로를
+ * 유지하는지 지켰다. 이제 feeds와 wiki 모두 아티팩트를 읽지 않아 그 배선은 사라졌고, 새 앵커는
+ * `lib/artifact.mjs`가 단일 독자 함수를 계속 export하는지 지킨다. 이 양성 앵커가 있어야 아래의 생성기
+ * 호출·직접 파일 읽기 부재 단언이 「관련 코드를 전부 지우면 통과」하는 공허한 가드가 되지 않는다.
  */
+const ARTIFACT_SOURCE = path.resolve(HERE, '..', 'artifact.mjs')
 const SERVING_SOURCES = {
   'feeds.mjs': path.resolve(HERE, '..', '..', 'feeds.mjs'),
   'wiki.mjs': path.resolve(HERE, '..', '..', 'wiki.mjs'),
@@ -351,20 +344,14 @@ describe('픽스처 ↔ 코드 상수 대조 (RD10 · 🔴RED 미구현)', () =>
   })
 })
 
-describe('독자 단일화 트립와이어 (RD11 · 🔴RED 서빙 2스크립트가 생성기를 문다)', () => {
-  it('RD11: `feeds.mjs`·`wiki.mjs` 의 독자가 `readArtifact` **하나**다', () => {
-    // D-E "독자가 둘이 되지 않게". 독자가 둘이면 한쪽만 불신을 갖추고 다른 쪽은 옛 파일을 그대로
-    //   믿는 상태가 조용히 성립한다. 두 서빙 스크립트는 plan Task 6 이 **소비 전용**으로 만드는
-    //   자리이므로, 「독자 함수는 하나」가 실제로 관측되는 곳이 여기다.
+describe('독자 함수 보존과 서빙 경로 부재 트립와이어 (RD11)', () => {
+  it('RD11: `readArtifact` export는 남고 feeds·wiki는 생성기나 파일 읽기를 직접 호출하지 않는다', () => {
+    const artifactSource = readFileSync(ARTIFACT_SOURCE, 'utf8')
     const feedsSource = readFileSync(SERVING_SOURCES['feeds.mjs'], 'utf8')
     const wikiSource = readFileSync(SERVING_SOURCES['wiki.mjs'], 'utf8')
 
-    // 앵커(규범 B): 부재 단언 앞에 **존재** 단언 — 단일 독자가 실제로 배선돼 있다.
-    // ★ v3 P2 — 앵커가 `wiki.mjs` **한 파일**로 좁아진다. `feeds.mjs` 의 조회 경로가 아티팩트 읽기에서
-    //   **라이브 커서 워크**로 교체되면서(PU4·PU6b) 그 파일에는 읽을 아티팩트가 없다 — 「독자가 하나」의
-    //   대상 자체가 사라진 것이지 규율이 약해진 것이 아니다. 아래 부재 3종은 **두 파일 모두**에 그대로
-    //   남는다(그것이 이 케이스의 본 축이고, feeds 쪽은 "직접 파일을 열지 않는다" 가 계속 유효하다).
-    expect(wikiSource).toContain('readArtifact')
+    // 양성 앵커: 독자 함수 자체를 지워 아래 부재 단언만 공허하게 통과시키는 변경을 막는다.
+    expect(artifactSource).toMatch(/^export function readArtifact\(/mu)
 
     // 🔴 부재 ①: 조회 경로가 **생성기를 부르지 않는다**. 부르면 판정·재생성이라는 두 번째 읽기
     //   경로가 서빙 안에 되살아나고, 그것이 정확히 이 phase 가 없애는 lazy 재생성이다.

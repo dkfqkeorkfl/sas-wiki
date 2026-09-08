@@ -82,8 +82,10 @@ process.stdout.write(JSON.stringify({ byKind, counts, generationsSeen: generatio
 
 /**
  * 생성기 자식 N개를 **동시에** 띄운다(라운드마다 반복). 선택적으로 소비자 자식을 함께 돌린다.
+ * 각 자식은 기본적으로 `--vault <vault>`를 앞에 받는다. `prefixVault: false`만 그 프리픽스를 끄며,
+ * 옵션을 생략한 기존 호출자의 argv는 그대로 유지된다.
  *
- * @param {{ children: {args: string[], script: string}[], env: string, onRound?: (round: number) => void,
+ * @param {{ children: {args: string[], prefixVault?: boolean, script: string}[], env: string, onRound?: (round: number) => void,
  *           rounds?: number, timeoutMs?: number, vault: string, withConsumer?: boolean }} input
  * @returns {Promise<{ artifacts: {file: string, generatedAt: string|null, kind: string,
  *                                  parsed: object|null, sourceCommit: string|null}[],
@@ -143,7 +145,7 @@ export async function runGeneratorRace({
         const started = children.map((child) =>
           runChild(
             path.join(SCRIPTS_DIR, child.script),
-            ['--vault', vault, ...child.args],
+            child.prefixVault === false ? [...child.args] : ['--vault', vault, ...child.args],
             timeoutMs,
           ),
         )

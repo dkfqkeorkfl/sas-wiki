@@ -49,8 +49,8 @@ const LEGACY_FILENAME = 'summary.json'
 
 // ★ v3 P4 · D27(tdd §4.3 · 규범 L — 삭제는 GREEN 원자) — **AR1 은 여기서 삭제됐다.**
 //   AR1 은 `artifactPath(vaultDir, env)` 의 env 분리 성질을 물었는데, 그 함수가 사라졌다: summary
-//   아티팩트 좌표는 이제 파생이 아니라 **호출자가 넘기는 `--summary` 인자**다(`wiki.mjs`). 케이스를
-//   남겨 둘 대상 자체가 없으므로 약화가 아니라 소멸이다. 살아남은 두 헬퍼(`feedsArtifactPath` ·
+//   summary 아티팩트 좌표는 생성 CLI의 `--out`이 소유하고, wiki CLI는 파일을 직접 읽어 그 좌표를
+//   알지 못한다. 케이스를 남겨 둘 대상 자체가 없으므로 약화가 아니라 소멸이다. 살아남은 두 헬퍼(`feedsArtifactPath` ·
 //   `reportPath`)의 같은 성질은 **PL9**(`__tests__/build.p5-plumbing.test.mjs`)가 정확 형태로 물고,
 //   `cache/summary.<env>.json` 이라는 슬롯 형태는 PL9 의 비충돌 단언과 README `contract:artifacts`
 //   표(`PT1`)가 함께 진다.

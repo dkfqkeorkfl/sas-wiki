@@ -18,20 +18,18 @@
 // 비공허성(vacuity 방지): 각 단언은 tdd.md "무엇을 깨면 red" 를 반영한다 — status 만이 아니라
 //   페이로드 실질(docs.length>0 · id 포함/제외 · null · sourceCommit 동일 · throw)을 확인한다.
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 
 // 순수 함수는 직접 import 로 격리 단언한다(C5) — vault 기본값이 없음을(= undefined 흡수 안 함) 확인.
 import { feeds } from '../feeds.mjs'
 // summary 는 P4 에서 `lib/summary-endpoint.mjs` 로 옮겼다 — `summary.mjs` 는 생성기 CLI 전용이 되고
 //   판정 경로가 렌더 툴체인을 정적 import 하지 않게 하려면 이 export 가 그 파일에 있으면 안 된다(D-A).
 import { summary } from '../lib/summary-endpoint.mjs'
-import { wiki } from '../wiki.mjs'
 
-import { summaryArtifactPath } from './helpers/prebuild-artifacts.mjs'
 import { cleanup, commit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -40,7 +38,6 @@ const REPO_ROOT = path.resolve(HERE, '..', '..') // /…/sas-wiki (기본값이 
 
 const SUMMARY = path.join(SCRIPT_DIR, 'summary.mjs')
 const FEEDS = path.join(SCRIPT_DIR, 'feeds.mjs')
-const WIKI = path.join(SCRIPT_DIR, 'wiki.mjs')
 const VALIDATE = path.join(SCRIPT_DIR, 'validate.mjs')
 const PACKAGE_JSON = path.join(REPO_ROOT, 'package.json')
 
@@ -125,46 +122,16 @@ const ABSENT_VAULT = path.join(ABSENT_BASE, 'no-such-vault')
 
 afterAll(() => cleanup(...tmps))
 
-// 실 repo(REPO_ROOT) 산출물 프리빌드 — `--vault` 생략 경로(C1·C4a·C6)가 읽을 아티팩트를 만든다.
-//   "앞서 누가 만들어 뒀는지" 에 기대지 않으려면 이 파일이 스스로 만들어야 한다.
-//
-// ★ **in-process 프리빌드를 쓰지 않는다.** `vitest.config.js` 가 `GIT_CONFIG_GLOBAL=/dev/null` 로 git
-//   설정을 의도적으로 격리하는데(개발자 `~/.gitconfig` 가 identity 를 몰래 공급하는 것 차단 — 이
-//   격리는 옳다), 이 컨테이너의 실 repo 는 러너와 소유자가 달라 격리된 git 이 `safe.directory` 예외를
-//   못 보고 **dubious ownership 으로 거부**한다. 러너 프로세스 안에서 생성기를 부르면 그 자리에서
-//   `beforeAll` 이 죽고 **이 파일 19케이스가 통째로 가려진다**(suite 레벨 실패 · 실측).
-//   위 `runCli`(:52-89)는 자식 env 에 `safe.directory`(REPO_ROOT)를 주입하는 **이 파일이 이미 채택한
-//   관례**라, 프리빌드를 그 통로에 태우면 같은 방어를 그대로 받는다(환경 우회를 새로 심는 것이 아니다).
-//
-// ★ `--out <경로>` 로 산출물을 명시해서 쓴다. OT1 이 _"`--out` 미지정 실행은 어떤 파일도 만들지
-//   않는다"_ 를 계약으로 세우므로, `--out` 없이는 이 프리빌드가 애초에 아무것도 쓰지 않는다 — 그
-//   상태에서 산출물 존재만 확인하면 **이전 로컬 실행이 남긴 stale 캐시**(`cache/` 는 gitignore 라
-//   지워지지 않는다)에 기대는 것과 구별되지 않는다. 그래서 먼저 지우고, `--out` 을 준 뒤, exit 0 과
-//   **산출물 실재**를 함께 문다 — 프리빌드가 실패하거나 이번 실행이 아무것도 갱신하지 못하면 여기서
-//   크게 터진다.
-beforeAll(() => {
-  const artifactPath = summaryArtifactPath(REPO_ROOT, 'dev')
-  rmSync(artifactPath, { force: true })
-
-  const prebuilt = runCli(SUMMARY, ['--vault', REPO_ROOT, '--env', 'dev', '--out', artifactPath])
-
-  expect(prebuilt.status, prebuilt.stderr).toBe(0)
-  expect(existsSync(artifactPath), '프리빌드가 exit 0 인데 산출물이 없다').toBe(true)
-}, 300_000)
-
-// ── C1: 3 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.
+// ── C1: 2 스크립트 parametrize — --vault 생략 + --env dev(cwd=repo) → exit0 · 유효 JSON · 페이로드 실질.
 //    RED 단계에서는 `if(!vault) throw` 존치 → exit1 → status 단언 실패. (docs.length>0 는 REPO_ROOT
-//       오파생(`wiki` 부재 → 빈 docs)까지 잡는다 — 단순 exit0 이 아니다.)
+//       오파생까지 잡는다 — 단순 exit0 이 아니다.)
 const C1_CASES = [
   { assert: (p) => expect(p.docs.length).toBeGreaterThan(0), args: ['--env', 'dev'], name: 'summary', script: SUMMARY }, // prettier-ignore
   // ★ v3 P2 · D15(§4.5-③ arm 갱신) — `--count` 는 CLI 필수다. 안 실으면 이 arm 의 red 사유가
   //   「기본 vault 파생이 틀렸다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P).
   { assert: (p) => expect(Array.isArray(p.items)).toBe(true), args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS }, // prettier-ignore
-  // ★ v3 P4 · D27(§4.1 arm 갱신) — `--summary` 는 CLI 필수다. 안 실으면 이 arm 의 사유가
-  //   「기본 vault 파생이 틀렸다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P · 위 feeds 와 같다).
-  //   ★ **상대 경로**를 준다 — 그래야 `--vault` 기본값(REPO_ROOT) 파생이 이 arm 의 판정에 계속 걸린다
-  //     (기본값이 틀리면 아티팩트를 못 읽어 exit 1 이다). 이 케이스가 무는 것은 기본 vault 파생이다.
-  { assert: (p) => expect(p).toBeNull(), args: ['--env', 'dev', '--path', 'no/such', '--summary', 'cache/summary.dev.json'], name: 'wiki', script: WIKI }, // prettier-ignore
+  // wiki에는 기본 vault가 없어 이 arm의 대상 자체가 사라졌다. 정상 `--file` 호출은
+  // `wiki.file-arg.test.mjs` C-1이 이어받는다.
 ]
 
 describe('C1 — 기본 vault(REPO_ROOT) · --vault 생략 (RED 단계 회귀 가드)', () => {
@@ -226,8 +193,8 @@ const C4A_CASES = [
   { args: ['--env', 'dev'], name: 'summary', script: SUMMARY },
   // ★ v3 P2 · D15(§4.5-③ arm 갱신) — 같은 사유. 이 케이스가 무는 것은 stdout 순수성이지 인자 개수가 아니다.
   { args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS },
-  // ★ v3 P4 · D27(§4.1 arm 갱신) — 같은 사유. 이 케이스가 무는 것은 stdout 순수성이지 인자 개수가 아니다.
-  { args: ['--env', 'dev', '--summary', 'cache/summary.dev.json'], name: 'wiki', script: WIKI },
+  // wiki의 stdout 순수성과 파싱 가능성은 새 프로세스 계약을 직접 실행하는
+  // `wiki.file-arg.test.mjs` C-1이 이어받는다.
 ]
 
 describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)', () => {
@@ -253,7 +220,8 @@ describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)'
 const C4B_CASES = [
   { name: 'summary', script: SUMMARY },
   { name: 'feeds', script: FEEDS },
-  { name: 'wiki', script: WIKI },
+  // wiki에는 `--vault` 오류 경로가 없다. 파일 부재의 exit 1·stderr·stdout 침묵은
+  // `wiki.file-arg.test.mjs` C-5가 이어받는다.
 ]
 
 describe('C4b — 에러는 stderr, stdout 무오염 (🟢 회귀)', () => {
@@ -270,7 +238,7 @@ describe('C4b — 에러는 stderr, stdout 무오염 (🟢 회귀)', () => {
 })
 
 // ── C5: 순수 함수 격리 불변식 — 직접 호출은 vault 기본값으로 흡수하지 않고 **throw**. 🟢 green(대조).
-//    무엇을 깨면 red: GREEN 이 순수 summary/feeds/wiki 에 `vault = vault ?? REPO_ROOT` 를 부여하면
+//    무엇을 깨면 red: GREEN 이 순수 summary/feeds 에 `vault = vault ?? REPO_ROOT` 를 부여하면
 //    undefined 가 흡수돼 throw 안 함 → red. (기본값은 오직 main()/validate parseArgs 의 imperative shell.)
 describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격리 불변) (🟢 대조)', () => {
   // **seam 가드 — 이 케이스는 실제로 한 번 조용히 공허해졌다.** P4 가 `summary` 를
@@ -278,28 +246,23 @@ describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격�
   //   named export 를 link error 가 아니라 **`undefined`** 로 준다. 그래서 `summary(...)` 가
   //   "undefined 를 호출해서" TypeError 를 냈고 `toThrow()` 는 **통과**했다 — collection error 조차
   //   나지 않아 red 로 드러나지도 않았다. 아래 세 줄이 그 상태를 다시 만들 수 없게 한다.
-  it('세 순수 함수가 실제로 함수로 로드됐다 (import 드리프트 방지)', () => {
+  it('두 순수 함수가 실제로 함수로 로드됐다 (import 드리프트 방지)', () => {
     expect(typeof summary).toBe('function')
     expect(typeof feeds).toBe('function')
-    expect(typeof wiki).toBe('function')
   })
 
   it('summary(undefined, "dev") → throw', () => {
     expect(() => summary(undefined, 'dev')).toThrow()
   })
 
-  // P5 · §4 원장 ㉖-a — `feeds`·`wiki` 가 async 가 됐다(신선도 확보가 `runSummaryGenerator` 재사용이라
-  //   async 다). 동기 `toThrow()` 는 `rejects.toThrow()` 로 번역한다 — **의도·강도는 무변경**(vault
-  //   기본값 미흡수 격리 불변식). 규범 C10 seam 가드를 함께 둔다(모듈이 죽어서 통과하는 모양 배제).
+  // `feeds`는 async이므로 동기 `toThrow()` 대신 `rejects.toThrow()`로 vault 기본값 미흡수를 확인한다.
   it('feeds(undefined, "dev") → reject', async () => {
     expect(typeof feeds).toBe('function')
     await expect(feeds(undefined, 'dev')).rejects.toThrow()
   })
 
-  it('wiki(undefined, "dev", "") → reject', async () => {
-    expect(typeof wiki).toBe('function')
-    await expect(wiki(undefined, 'dev', '')).rejects.toThrow()
-  })
+  // wiki에는 vault 개념이 없어 `wiki(undefined, "dev", "")` 거부 케이스의 대상 자체가 사라졌다.
+  // 필수 `--file` 미지정의 프로세스 계약은 `wiki.file-arg.test.mjs` C-2가 이어받는다.
 })
 
 // ── C6: 기본값이 import.meta.url 파생(≠ cwd) 임을 증명 — cwd=os.tmpdir() 에서도 REPO_ROOT 를 읽는다.
@@ -364,10 +327,9 @@ describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)'
     //   `pnpm run feeds` 가 exit 2 로 죽지 않는다. CQ4 가 「`--count` 를 싣는다」를 성질로 물고,
     //   여기서는 **정확 문자열**로 못박는다(소비자가 파일명을 spawn 하므로 형태가 계약이다).
     expect(pkg.scripts.feeds).toBe('node scripts/feeds.mjs --count 40')
-    // ★ v3 P4 · D27 — `--summary` 가 필수 인자가 됐다(D-P4-1 flip). 사람용 스크립트도 그것을 실어야
-    //   `pnpm run wiki` 가 exit 2 로 죽지 않는다. 위 `feeds` 줄과 **같은 사유·같은 형태**다 —
-    //   SUM-1 이 「미지정은 exit 2」를 성질로 물고, 여기서는 **정확 문자열**로 못박는다
-    //   (소비자가 파일명을 spawn 하므로 형태가 계약이다).
+    // wiki는 `--file` 하나만 받고 그 인자가 필수다. 사람용 스크립트도 파일을 명시해야
+    // `pnpm run wiki`가 exit 2로 죽지 않는다. 필수 인자 성질은 `wiki.file-arg.test.mjs` C-2가,
+    // 여기서는 소비자가 실제로 실행하는 package script의 정확 문자열이 계약을 고정한다.
     expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --file wiki/KOSPI/삼성전자.md')
     expect(pkg.scripts.validate).not.toContain('--vault')
   })

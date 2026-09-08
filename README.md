@@ -534,35 +534,38 @@ active 문서는 10키다.
 
 <!-- contract:wiki-payload -->
 
-`--path` 가 무엇을 가리키느냐에 따라 셋 중 하나다.
+호출 형태는 하나다.
 
-**① active 문서 — 5키.**
+```bash
+node scripts/wiki.mjs --file /absolute/path/to/wiki/company/삼성전자.md
+```
+
+`--file`에는 절대 경로를 넘긴다. 옛 인자 `--vault`·`--path`·`--env`·`--summary`·`--ignore`는
+더 이상 없다.
+
+**① 정상 문서 — exit 0, 정확히 3키.**
 
 ```jsonc
 {
-  "path": "company/삼성전자",
-  "status": "active",
-  "feed": { "items": [/* … */], "nextCursor": null },
   "md": "## 개요\n\n…",
   "meta": { "ticker": "005930", "sector": "반도체", "exchange": "KOSPI" },
+  "status": "active",
 }
 ```
 
-| 키       | 설명                                                                    |
-| -------- | ----------------------------------------------------------------------- |
-| `feed`   | 이 문서를 가리키는 발행 이력과 다음 커서. 이력 0건이면 `items` 는 `[]`  |
-| `md`     | 마크다운 본문 원문. HTML·목차·각주 정의 렌더링은 소비자가 담당한다       |
-| `meta`   | frontmatter 의 자유 필드 — 인포박스에 그대로 쓰인다                     |
-| `path`   | 요청한 문서의 canonical 경로                                             |
-| `status` | active 문서의 상태                                                       |
+| 키       | 설명                                      |
+| -------- | ----------------------------------------- |
+| `md`     | 마크다운 본문 원문                        |
+| `meta`   | frontmatter의 `meta` 객체. 없으면 빈 객체 |
+| `status` | frontmatter의 문서 상태                   |
 
-백링크는 계약에 없다. 마크다운 원문(`md`)은 그대로 전달하며 렌더는 소비자가 한다.
+**② 머리말이 없는 파일 — `null`, exit 0.** `null`이 stdout에 한 줄로 찍힌다.
 
-**주의**: 이 응답에는 `id` 가 없다. 문서 id 가 필요하면 summary 의 `docs[]` 에서 `breadcrumb` 으로 찾는다.
+**③ 실패 — 파일 부재는 exit 1, 인자 계약 위반은 exit 2.** 알 수 없는 인자나 필수 `--file` 누락은
+사용법 오류이므로 stderr에 이유를 쓰고 exit 2로 끝난다.
 
-**② disable 문서 — summary 스텁 4키 그대로.** `id`·`breadcrumb`·`title`·`status`.
-
-**③ 없는 경로 — `null`.** 에러가 아니라 `null` 이 stdout 에 찍히고 exit 0 이다.
+응답의 나머지 `feed`·`path` 2키와 비활성 문서 스텁 4키는 소비자(서버 층)가 얹는 값이며, 이 CLI의
+계약이 아니다.
 
 <!-- /contract:wiki-payload -->
 

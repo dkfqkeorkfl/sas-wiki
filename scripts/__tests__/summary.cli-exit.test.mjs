@@ -67,14 +67,13 @@ const ACTIVE_DOC_KEYS = [
  */
 const CLI_SPAWN_TIMEOUT_MS = 120_000
 
-function runCli(script, args) {
-  // ★ 좁힘 대상 — `safe.directory` 값은 `'*'`(전 경로 허용)가 아니라 이 호출이 실제로 겨냥하는
-  //   vault 다. 이 파일의 모든 호출부가 `['--vault', vault, ...]` 형태로 args 를 넘기므로(전수
-  //   확인) vault 는 여기서 유도한다 — 새 호출부가 그 관례를 깨면 조용히 `'*'` 로 되돌아가지 않고
-  //   여기서 즉시 크게 실패한다.
+function runCli(script, args, safeDirectory) {
+  // `safe.directory` 값은 `'*'`가 아니라 호출이 겨냥하는 vault다. 기존 CLI는 `--vault`에서 유도하고,
+  // `--file`만 받는 wiki는 호출자가 별도 인자로 같은 범위를 명시한다. 둘 다 없으면 크게 실패한다.
   const vaultIndex = args.indexOf('--vault')
-  if (vaultIndex === -1 || args[vaultIndex + 1] === undefined) {
-    throw new Error('runCli 호출에 --vault 가 없다 — safe.directory 좁힘 대상을 알 수 없다')
+  const vault = safeDirectory ?? (vaultIndex === -1 ? undefined : args[vaultIndex + 1])
+  if (vault === undefined) {
+    throw new Error('runCli 호출에 --vault 또는 명시적 safe.directory 좁힘 대상이 없다')
   }
   const result = spawnSync(process.execPath, [script, ...args], {
     encoding: 'utf8',
@@ -82,7 +81,7 @@ function runCli(script, args) {
       ...process.env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'safe.directory',
-      GIT_CONFIG_VALUE_0: args[vaultIndex + 1],
+      GIT_CONFIG_VALUE_0: vault,
       SOURCE_DATE_EPOCH: '1700000000',
     },
     timeout: CLI_SPAWN_TIMEOUT_MS,
@@ -499,10 +498,13 @@ describe('중복 id vault 가 서빙을 죽이지 않는다 (PC4 · 🔴RED(flip
       await prebuildArtifacts(vault, 'dev')
 
       const summaryResult = runCli(SUMMARY, ['--vault', vault, '--env', 'dev'])
-      // ★ v3 P4 · D27(§4.1 arm 갱신) — `--summary` 가 필수다. 안 실으면 exit 2 가 되어 이 케이스의
-      //   사유가 「중복 id 가 서빙을 죽인다」에서 「인자가 모자라다」로 조용히 바뀐다(규범 P).
-      //   경로는 **리터럴 조립**이다(규범 A · 이 파일 `:95` 주석의 관례).
-      const wikiResult = runCli(WIKI, ['--vault', vault, '--env', 'dev', '--path', 'company/정상', '--summary', path.join(vault, 'cache', 'summary.dev.json')]) // prettier-ignore
+      // wiki 자식은 아티팩트와 vault 인자를 받지 않고 정상 문서의 절대 경로만 읽는다. 세 번째
+      // 인자는 자식 argv가 아니라 이 테스트 드라이버의 git safe.directory 범위를 유지한다.
+      const wikiResult = runCli(
+        WIKI,
+        ['--file', path.join(vault, 'wiki', 'company/정상.md')],
+        vault,
+      )
 
       expect(summaryResult.status, summaryResult.stderr).toBe(0)
       expect(wikiResult.status, wikiResult.stderr).toBe(0)

@@ -543,7 +543,7 @@ function topLevelReturnKeys(returnBlock) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────
-// WP — wiki 반환값 ↔ `single-doc.mjs` (양방향) + 벌크 `body.schema.json` 분리 앵커 · AN1 의 짝
+// WP — wiki CLI 반환값 ↔ `wiki.mjs` (양방향) + 벌크 `body.schema.json` 분리 앵커 · AN1 의 짝
 // ────────────────────────────────────────────────────────────────────────────────────────────
 describe('결속 — wiki 반환값 (WP · pin)', () => {
   // ★ WP0′ 축 교체 — 두 번째 단언의 관측 토큰이 `"headings"` → `"md"` 로 바뀐다.
@@ -554,7 +554,7 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
   //   부재」와 「예시 갱신됨」을 구분하지 못한 채 red 가 되어 red 의 사유가 뒤바뀐다.
   it('WP0′: README 에 `contract:wiki-payload` 마커가 열림/닫힘 각 1개이고 구간이 비어 있지 않다', () => {
     // 마커를 두는 것은 ① AN1(부재)의 짝에 권위 있는 구간을 주고 ② 같은 계열의 재발을 대칭으로 막기
-    //   위해서다. (구간의 **값**은 WP1″ 가 5키로 대조한다 — 축 교체 사유는 그 케이스 위 문단 참조.)
+    //   위해서다. (구간의 **값**은 WP1″ 가 3키로 대조한다 — 축 교체 사유는 그 케이스 위 문단 참조.)
     const { extractMarkerBlock } = markdownHelpers()
     const block = extractMarkerBlock(readme(), 'wiki-payload')
 
@@ -562,72 +562,24 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
     expect(block.join('\n'), 'wiki 응답 예시가 본문 원문 키(`"md"`)를 보여줘야 한다').toContain('"md"') // prettier-ignore
   })
 
-  // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
-  //    (선례 형식: `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462` · 부모 리포)
-  //
-  //    WP1 은 **코드(`single-doc.mjs` 마지막 return 블록) ↔ 스키마(`body.schema.json`) ↔ 문서(README
-  //    `contract:wiki-payload` 예시)** 3자를 양방향으로 묶는 트립와이어였고, 옛 기대는 「봉투 3키 +
-  //    본문 4키 = **정확 7키**」였다. 그 7키는 「wiki 응답에 **이력 필드가 없다**」는 아카이브 결정
-  //    **D-H②** 의 물질화였다 — _"있으면 게이트가 하나 더 필요하다는 뜻(회귀 감지)"_.
-  //
-  //    🔴 news-convention-migration **Phase 2(doc-history-assembly)** 가 정확히 그 조건을 실현한다:
-  //    문서 응답이 그 문서의 발행 이력을 `feed: { items, nextCursor }` 로 동봉한다(D-P2-9 — 이력이
-  //    0건이어도 **항상** 싣는다. 조건부로 넣으면 응답 계약이 둘로 갈린다). 그래서 이 케이스는
-  //    **7키 pin 을 8키 pin 으로 교체**한다. 숫자만 고쳐 통과시키는 것이 아니라 **무엇을 지키던
-  //    가드가 무엇을 지키게 되었는지**를 여기 남긴다: 「이력 필드가 없다」 → 「이력 필드가 **여기
-  //    한 곳에만** 있고 본문 4키(`body.schema.json` · `additionalProperties:false`)는 무손상이다」.
-  //
-  //    🔴 함정 둘(둘 다 red 가 **엉뚱한 곳**을 가리키게 만든다):
-  //      ① `topLevelReturnKeys` 는 **정적 텍스트 스캔**이다 — 반환 블록에 spread(`...`)를 쓰면
-  //         _"WP1 파서를 갱신하라"_ 로 명시 throw 한다. 키를 하나씩 나열하라.
-  //      ② `feed` 를 `wiki.mjs` 에서 스프레드로 얹으면 이 파서는 **7키인 채 green** 이고 README
-  //         대조만 red 가 된다. 부착 지점은 `projectSingleDoc` 의 **마지막 `return {`** 블록이다.
-  //
-  //    🔴 README 갱신은 이 축 교체의 **일부**다(tdd §5-A(2)③): `sas-wiki/README.md` 의
-  //    `contract:wiki-payload` 구간(「7키」 문면 · JSONC 예시 · 키 설명 표)에 `feed` 를 더하지 않으면
-  //    마지막 양방향 대조가 계속 red 다. **그 갱신은 GREEN 단계 소관**이다(이 RED 커밋은 테스트만 만진다).
-  // ★★ **두 번째 대체(WP1′ → WP1″) — 「승계」가 아니라 「대체」이고, 이번에는 **유도식 자체가
-  //    성립하지 않는다**. 이 문단을 지우면 다음 독자가 «3자 결속이 2자로 약해졌다»고 읽는다.
-  //
-  //    WP1′ 의 형태는 「**본문 4키**(`body.schema.json` 의 `wikiDocBody`) + 봉투 4키 = 정확 8키」였다.
-  //    그 유도가 성립한 전제는 **wiki 엔드포인트가 벌크 원소의 본문 4키를 그대로 실어 보낸다**는
-  //    것이었다 — 그래서 스키마 파일이 없는 서빙 조립물(봉투)까지 스키마에 간접 결속됐다.
-  //
-  //    🔴 md 컷오버가 그 전제를 깬다. 엔드포인트는 이제 `md` 원문을 싣고 `html`·`headings`·`sources`
-  //    를 싣지 않는다 ⇒ **벌크 4키 중 응답에 남는 것은 `meta` 하나**다. 「본문 4키를 전부 싣는다」는
-  //    유도는 거짓이 되고, 숫자만 8 → 5 로 고치면 그 거짓 유도가 그대로 남는다.
-  //
-  //    ⇒ 새 형태는 **2자 양방향 + 분리 앵커**다.
-  //      ⓐ **코드 ↔ README 양방향**: `projectSingleDoc` 마지막 return 의 5키 == README 예시 5키.
-  //      ⓑ 🔴 **분리 앵커** — 벌크 원소 계약(`wikiDocBody.required`)은 **함께 무너지지 않았다**:
-  //         여전히 정확히 4키이고, 응답과의 교집합이 `['meta']` **정확 1개**다. 이 줄이 없으면
-  //         「응답을 md 로 바꾸는 김에 벌크까지 md 로 바꿨다」가 이 파일 어디에서도 안 잡힌다
-  //         (벌크 아티팩트는 이 컷오버에서 **무수정이 정답**이다).
-  //
-  //    지키던 것 → 지키게 된 것: 「응답은 벌크 본문을 전부 싣는다(스키마가 응답을 간접 지배한다)」
-  //    → **「응답과 벌크는 이제 갈라섰다 — 그 분기점이 `meta` 하나이고, 갈라섰다는 사실 자체를
-  //    여기서 못박는다」**.
-  //
-  //    🔴 함정 둘(둘 다 red 가 **엉뚱한 곳**을 가리키게 만든다):
-  //      ① `topLevelReturnKeys` 는 **정적 텍스트 스캔**이다 — 반환 블록에 spread(`...`)를 쓰면
-  //         _"WP1 파서를 갱신하라"_ 로 명시 throw 한다. 키를 하나씩 나열하라.
-  //      ② 키를 `wiki.mjs` 쪽에서 스프레드로 얹으면 이 파서는 **옛 키인 채 green** 이고 README
-  //         대조만 red 가 된다. 부착 지점은 `projectSingleDoc` 의 **마지막 `return {`** 블록이다.
-  //
-  //    🔴 README 갱신은 이 축 교체의 **일부**다: `contract:wiki-payload` 구간(「8키」 문면 · JSONC
-  //    예시 · 키 설명표)을 5키로 옮기지 않으면 ⓐ 가 계속 red 다. **그 갱신은 GREEN 단계 소관**이다
-  //    (이 RED 커밋은 테스트만 만진다).
-  it('WP1″: active 문서 예시의 키 == 코드 반환 **5키**(양방향) · 벌크와의 교집합은 `meta` 하나 (🔴재작성)', () => {
-    // ⓐ 코드 축 — `single-doc.mjs` 의 **마지막** return 블록(정적 텍스트 스캔).
-    const source = readSource('scripts/lib/single-doc.mjs')
-    const returnBlock = source.slice(source.lastIndexOf('  return {'))
+  // **승계가 아니라 대체**다. 이전 축은 서버 응답 5키가 README의 5키 예시와 같은지 지켰다.
+  // 이제 이 저장소가 소유하는 계약은 wiki CLI가 내는 3키와 README가 문서화한 CLI 3키의 일치다.
+  // 나머지 `feed`·`path`는 소비자 서버가 얹으므로 이 저장소의 CLI 계약이 아니다. 벌크 4키 계약과
+  // 교집합 `meta` 하나를 함께 고정해, CLI 축 교체가 벌크 스키마 변경으로 번지는 것도 막는다.
+  // `topLevelReturnKeys`는 마지막 `return {`를 정적으로 읽으며 spread를 만나면 명시적으로 실패한다.
+  it('WP1″: CLI 예시의 키 == 코드 반환 **3키**(양방향) · 벌크와의 교집합은 `meta` 하나', () => {
+    // ⓐ 코드 축 — `wiki.mjs` 의 **마지막** return 블록(정적 텍스트 스캔).
+    const source = readSource('scripts/wiki.mjs')
+    const returnStart = source.lastIndexOf('  return {')
+    const returnEnd = source.indexOf('\n  }\n}', returnStart)
+    const returnBlock = source.slice(returnStart, returnEnd + '\n  }'.length)
     const projection = topLevelReturnKeys(returnBlock)
 
     // 리터럴 축(규범 A) + 앵커 겸용: 파서가 죽어 빈 배열을 냈다면 이 정확 일치가 즉시 red 다.
-    expect(projection, 'wiki 응답 계약은 정확히 5키다(옛 렌더 산출 키가 남았는지 함께 본다)').toEqual(['feed', 'md', 'meta', 'path', 'status']) // prettier-ignore
+    expect(projection, 'wiki CLI 응답 계약은 정확히 3키다').toEqual(['md', 'meta', 'status']) // prettier-ignore
 
     // ⓑ 분리 앵커 — 벌크 원소 계약은 **무손상**이고 응답과 갈라섰다.
-    //   🔴 `md`·`feed` 를 `body.schema.json` 의 `wikiDocBody` 에 넣지 마라 — 그것은 벌크 아티팩트
+    //   🔴 `md` 를 `body.schema.json` 의 `wikiDocBody` 에 넣지 마라 — 그것은 벌크 아티팩트
     //   원소 타입이고 _"정확히 4키"_ + `additionalProperties:false` 다.
     const bodyKeys = sorted(readSchema('body.schema.json').definitions.wikiDocBody.required)
     expect(bodyKeys, '벌크 원소 계약이 함께 흔들렸다(이 컷오버에서 벌크는 무수정이 정답이다)').toEqual(['headings', 'html', 'meta', 'sources']) // prettier-ignore
@@ -637,7 +589,7 @@ describe('결속 — wiki 반환값 (WP · pin)', () => {
     const scope = docScope('wiki-payload')
     const documented = sorted(Object.keys(exampleObject(scope, 'wiki-payload', '"md"')))
 
-    expect(documented, `wiki active 문서 예시(${scope.via}) — 실제 응답 5키와 대조`).toEqual(projection) // prettier-ignore
+    expect(documented, `wiki CLI 예시(${scope.via}) — 실제 응답 3키와 대조`).toEqual(projection) // prettier-ignore
   })
 
   // ★★ **재설계(WP2 → WP2′) — 「승계」가 아니라 「대체」다. 이 문단을 지우면 AN1 이 조용히

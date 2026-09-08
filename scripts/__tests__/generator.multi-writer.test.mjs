@@ -219,15 +219,19 @@ describe('세 엔드포인트 동시 트리거 (MW3 · 🔴RED feeds 아티팩�
       })
       expect([arrangedSummary.exitCode, arrangedFeeds.exitCode]).toEqual([0, 0])
 
+      // wiki 조회 자식은 파일을 직접 파싱해 더 이상 아티팩트를 읽지 않으므로 경합 대상이 아니다.
+      // 이 arm이 지키는 범위는 「경합 중에도 조회 CLI가 죽지 않는다」로 좁아졌고, 아티팩트 조회
+      // 경합은 feeds 조회 자식이 계속 담당한다.
       const race = await runGeneratorRace({
         children: [
           SUMMARY_GENERATOR,
           FEEDS_GENERATOR,
           { args: ['--env', 'dev', '--count', '5'], script: 'feeds.mjs' },
-          // ★ v3 P4 · D27(§4.1 arm 갱신) — `--summary` 가 필수다. 안 실으면 이 조회 자식이 exit 2 로
-          //   죽어 「경합 중에도 조회가 200 을 낸다」는 이 케이스의 사유가 조용히 뒤바뀐다(규범 P).
-          //   상대 경로는 헬퍼가 붙이는 `--vault` 기준으로 풀린다.
-          { args: ['--env', 'dev', '--path', REL_A, '--summary', 'cache/summary.dev.json'], script: 'wiki.mjs' }, // prettier-ignore
+          {
+            args: ['--file', path.join(vault, 'wiki', `${REL_A}.md`)],
+            prefixVault: false,
+            script: 'wiki.mjs',
+          },
         ],
         env: 'dev',
         vault,
