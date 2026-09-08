@@ -111,7 +111,7 @@ beforeAll(async () => {
   //   「히트 경로가 git 을 안 부른다」에서 「인자가 모자란다」로 조용히 바뀐다 —
   //   **이 케이스가 무는 것은 git 호출 프로파일이지 인자 개수가 아니다.**
   //   ★ 위 `summaryOut` 이 바로 그 파일이다(warm 실행이 방금 발행했다) — 히트 arm 이므로 **실재**한다.
-  hitWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL, '--summary', summaryOut], { vault: control.vault }) // prettier-ignore
+  hitWiki = runCliWithLoadLog('wiki.mjs', ['--file', path.join(control.vault, 'wiki', `${DRIFT_REL}.md`)], { cwd: control.vault }) // prettier-ignore
 
   // 콜드 arm — 아티팩트가 **없는** vault. 오늘은 "재생성 경로가 무엇을 하는가" 의 대조군이고,
   //   Task 6 이후에는 **fail-loud 가 실제로 일어나는가**(PU6)의 관측 대상이 된다.
@@ -122,7 +122,7 @@ beforeAll(async () => {
   //   PU6 가 무는 사유가 「아티팩트 부재(exit 1 · 「빌드」 어휘)」에서 「인자 미지정(exit 2)」으로
   //   **뒤바뀐다** — `not.toBe(0)` 이라 숫자로는 구분되지 않아 조용히 통과한다. 이 vault 에는
   //   `cache/` 산출물이 하나도 없으므로 아래 경로는 **실제로 없는 파일**이다(리터럴 조립 · 규범 A).
-  coldWiki = runCliWithLoadLog('wiki.mjs', ['--env', 'dev', '--path', DRIFT_REL, '--summary', path.join(cold.vault, 'cache', 'summary.dev.json')], { vault: cold.vault }) // prettier-ignore
+  coldWiki = runCliWithLoadLog('wiki.mjs', ['--file', path.join(cold.vault, 'wiki', `${DRIFT_REL}.md`)], { cwd: cold.vault }) // prettier-ignore
 }, 420_000)
 
 const countUrls = (observation, fragment) =>

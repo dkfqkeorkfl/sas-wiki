@@ -368,7 +368,7 @@ describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)'
     //   `pnpm run wiki` 가 exit 2 로 죽지 않는다. 위 `feeds` 줄과 **같은 사유·같은 형태**다 —
     //   SUM-1 이 「미지정은 exit 2」를 성질로 물고, 여기서는 **정확 문자열**로 못박는다
     //   (소비자가 파일명을 spawn 하므로 형태가 계약이다).
-    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --summary cache/summary.prod.json')
+    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --file wiki/KOSPI/삼성전자.md')
     expect(pkg.scripts.validate).not.toContain('--vault')
   })
 })

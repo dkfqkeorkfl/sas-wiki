@@ -185,7 +185,7 @@ describe('소비자 spawn 경로 결속 (PL12 · 🟢pin)', () => {
     //   않는다. 값이 `prod` 인 것은 `wiki.mjs` 의 `env` 기본값이 prod 라 **기본 짝이 맞기** 때문이고,
     //   dev 는 `--env dev --summary cache/summary.dev.json` 을 덧붙이면 뒤가 이긴다(parseArgs 계약).
     //   결속의 주제(파일명·경로)는 그대로다.
-    expect(scripts.wiki).toBe('node scripts/wiki.mjs --summary cache/summary.prod.json')
+    expect(scripts.wiki).toBe('node scripts/wiki.mjs --file wiki/KOSPI/삼성전자.md')
     expect(scripts.validate).toBe('node scripts/validate.mjs --env dev')
     for (const name of ['summary.mjs', 'feeds.mjs', 'wiki.mjs', 'validate.mjs']) {
       expect(existsSync(path.join(SCRIPTS_DIR, name))).toBe(true)
