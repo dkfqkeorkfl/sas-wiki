@@ -6,12 +6,10 @@
 //   Task 9 로 소멸하지만 그것이 지키려던 것("서빙이 문서당 git 을 팔지 않는다")은 더 강한 형태로
 //   남는다 — **히트 경로의 git 호출 multiset === `[]`**. 삭제가 아니라 교체다.
 //
-// ★ 정정 2차(news-convention-migration Phase 2 · 케이스 본문 PU4·PU5 대조): 이 "조회는 아티팩트만
-//   읽는다 — git 을 한 번이라도 부르면 판정 경로가 되살아났다는 신호"는 **이제 어느 쪽에도 참이 아니다**.
-//   `feeds.mjs`(PU4)가 v3 P2 에서 커서 기반 라이브 워크로 뒤집혔고, `wiki.mjs`(PU5)도 Phase 2 에서
-//   **이력 조달을 `feeds()` 내부 호출로** 하면서 같은 전환을 겪는다(`LIVE_WALK_VERBS` 절 참고).
-//   ⇒ 두 조회 도구 모두 판정 대상이 "0건" 이 아니라 **"그 동사 집합이 반드시 난다"** 로 바뀌었다.
-//   **빈 multiset 동치 계약은 더 이상 남아 있지 않다** — 대체 사유는 PU5 케이스 위 문단이 소유한다.
+// ★ 조회 도구의 git 계약은 분리되었다. `feeds.mjs` 는 커서 기반 라이브 워크를 직접
+//   수행하므로 `rev-parse`·`rev-list` 양성이 정답이지만, `wiki.mjs` 는 절대경로로 지정된 마크다운
+//   파일 하나만 파싱하므로 git 호출 0건이 정답이다. 양성 계약은 PU4, 0건 계약과 관측기
+//   생존 대조는 PU5 케이스가 각각 지킨다.
 //
 // ★ 규범 G(이 phase 신설): "열지 않았다" 는 정적 그래프가 아니라 **실행에서** 관측한다. 재생성 분기가
 //   `await import()` 라서 정적 게이트(FC1·WK8)가 green 인 채로 툴체인이 로드되는 상태가 성립한다
@@ -53,16 +51,15 @@ const SCRIPTS_DIR = path.resolve(HERE, '..')
  * 「이 둘이 반드시 있다」인 이유: 워크는 문서 해석을 위해 `log`·`show` 도 내므로 전량을 리터럴로
  * 박으면 GREEN 의 내부 분해에 결속되어 깨지기 쉬운 가드가 된다(규범 A 의 취지).
  *
- * ★★ **news-convention-migration Phase 2 로 `wiki.mjs`(PU5)도 이 집합을 쓴다.** 예전 이 자리에는
- * `READ_ONLY_GIT_CALLS = []`(빈 multiset) 상수와 _"지우지 마라 — PU5 가 쓴다"_ 는 경고가 있었다.
- * 그 상수는 **소비처가 0 이 되어 함께 제거**했다 — 「승계」가 아니라 「대체」이므로 사유는 사라지지
- * 않고 PU5 케이스 위 문단으로 **옮겨 갔다**(그 문단을 지우지 마라).
+ * `wiki.mjs` 는 이 집합의 소비처가 아니다. 같은 git shim 에서 `feeds.mjs` 호출을 양성 대조로
+ * 삼아, `wiki.mjs` 의 0건이 관측기 사망이 아니라 실제 비용 계약임을 구분한다.
  */
 const LIVE_WALK_VERBS = ['rev-list', 'rev-parse']
 
 /** 로드 관측 좌표 — 경로 조각 리터럴. */
 const RENDER = '/lib/render.mjs'
 const DERIVE = '/lib/derive.mjs'
+const PARSE = '/lib/parse.mjs'
 const PARSE_VAULT = '/lib/parse-vault.mjs'
 const GIT_WALK = '/lib/git-walk.mjs'
 const NODE_MODULES = '/node_modules/'
@@ -106,22 +103,17 @@ beforeAll(async () => {
   //   안 부른다」에서 「인자가 모자란다」로 조용히 바뀐다 — 규범 P 가 막으려는 사유 뒤바뀜이다.
   //   오늘은 `--count` 가 옵셔널이라 이 한 줄이 **현재 판정을 바꾸지 않는다**(피드 2건 < 5).
   hitFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: control.vault })
-  // ★★ v3 P4 · §4.1 arm 갱신(D27) — `wiki.mjs --summary` 가 **필수**가 되므로 PU5 가 관측하는 이
-  //   arm 이 그것을 실어야 한다. 안 실으면 C4 착륙 즉시 exit 2(summary 누락)가 되어 PU5 의 사유가
-  //   「히트 경로가 git 을 안 부른다」에서 「인자가 모자란다」로 조용히 바뀐다 —
-  //   **이 케이스가 무는 것은 git 호출 프로파일이지 인자 개수가 아니다.**
-  //   ★ 위 `summaryOut` 이 바로 그 파일이다(warm 실행이 방금 발행했다) — 히트 arm 이므로 **실재**한다.
+  // `wiki.mjs` 는 `--file <절대경로>` 하나만 받는다. PU5·TR5′ 가 인자 오류가 아니라 정상
+  // 실행의 git 호출·로드 프로파일을 물 수 있도록 실재하는 문서의 절대경로를 넘긴다.
   hitWiki = runCliWithLoadLog('wiki.mjs', ['--file', path.join(control.vault, 'wiki', `${DRIFT_REL}.md`)], { cwd: control.vault }) // prettier-ignore
 
-  // 콜드 arm — 아티팩트가 **없는** vault. 오늘은 "재생성 경로가 무엇을 하는가" 의 대조군이고,
-  //   Task 6 이후에는 **fail-loud 가 실제로 일어나는가**(PU6)의 관측 대상이 된다.
+  // 콜드 arm — 발행 아티팩트가 없는 vault. `feeds.mjs` 의 라이브 워크와 `wiki.mjs` 의
+  // 단일 문서 파싱은 아티팩트에 의존하지 않으므로, 히트 arm 과 같은 성공 경로를 사용한다.
   const cold = seedControlVault()
   tmps.push(cold.vault)
   coldFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: cold.vault })
-  // ★★ v3 P4 · §4.1 arm 갱신(D27) — 여기서는 **반드시 「부재 경로」를 명시**한다. 유효 경로를 주면
-  //   PU6 가 무는 사유가 「아티팩트 부재(exit 1 · 「빌드」 어휘)」에서 「인자 미지정(exit 2)」으로
-  //   **뒤바뀐다** — `not.toBe(0)` 이라 숫자로는 구분되지 않아 조용히 통과한다. 이 vault 에는
-  //   `cache/` 산출물이 하나도 없으므로 아래 경로는 **실제로 없는 파일**이다(리터럴 조립 · 규범 A).
+  // 콜드 vault 에서도 실재하는 마크다운의 절대경로를 넘긴다. `wiki.mjs` 는 캐시 여부를
+  // 판정하지 않으므로, 이 arm 도 히트 arm 과 같은 단일 문서 파싱 경로를 탄다.
   coldWiki = runCliWithLoadLog('wiki.mjs', ['--file', path.join(cold.vault, 'wiki', `${DRIFT_REL}.md`)], { cwd: cold.vault }) // prettier-ignore
 }, 420_000)
 
@@ -238,73 +230,57 @@ describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip) v3 P2: 조회가 
   })
 
   // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
-  //    (선례 형식: 부모 리포 `scripts/wiki-dev-server/__tests__/plugin.p5.contract.test.ts:452-462`.
-  //     같은 파일이 **PU4**(`feeds.mjs`)에 대해 v3 P2 에서 이미 같은 전환을 겪었다 — 그 서술을 따른다.)
   //
-  //    옛 기대는 `hitWiki.gitCalls` **=== 빈 multiset** 이었고, 그 근거는 `wiki.mjs:2-5` 가 선언한
-  //    비용 계약 _"히트 경로의 비용 계약은 «아티팩트 읽기 + 단일 문서 렌더» 이며 git 호출은 없다"_ 였다.
-  //    즉 「git 을 한 번이라도 부르면 그 자체가 «판정이 남아 있다»는 신호」라는 **탐지기**였다.
-  //
-  //    🔴 news-convention-migration **Phase 2(doc-history-assembly)** 가 그 계약을 **의도적으로**
-  //    바꾼다: 문서 응답이 그 문서의 발행 이력을 동봉해야 하고, 그 이력의 조달은 **`feeds()` 내부
-  //    호출**(= 라이브 git 커서 워크)이다. 아티팩트(`cache/feeds.<env>.json`) 직독으로 git 을 피하는
-  //    안은 **2차 정정이 명시적으로 철회**했다 — ⓐ 기존 두 조달 경로 어느 쪽도 아닌 세 번째 경로를
-  //    발명해 재사용성 요구를 깨고 ⓑ PRD 가 이미 기각한 「캐시 없으면 이력 없음」·「지평 200건에
-  //    갇힘」을 되살리기 때문이다. 라이브 워크 비용은 **알고 받는 수용된 리스크**다(D-P2-1).
-  //
-  //    🔴 그래서 처분은 「가드를 지우거나 `toBe(0)` 을 느슨하게 만드는 것」이 **아니다**. 관측 대상을
-  //    **0건 → 「반드시 나는 동사 집합」** 으로 바꾼다(PU4 와 같은 형식). 방어는 약해지지 않는다 —
-  //    「조달이 실제로 일어났는가」를 이제 이 케이스가 문다. 🔴 **다시 0건으로 돌아가면** 그것은
-  //    「이력 조달이 사라졌거나 아티팩트 직독으로 우회했다」는 신호이므로 여기가 red 여야 한다.
-  it('PU5(구 TR2): `wiki.mjs` 히트 실행이 이력 조달 때문에 `rev-parse`·`rev-list` 를 **각각 1회 이상** 낸다 (🔴축 교체)', () => {
+  //    지키던 것 → 지키게 된 것: 「`wiki.mjs` 가 문서 응답의 이력을 조달하려고
+  //    `rev-parse`·`rev-list` 를 반드시 부른다」 → **「절대경로로 받은 마크다운 파일 하나만
+  //    파싱하며 git 을 한 번도 부르지 않는다」**. 이력 조달과 문서 응답 조립은 소비자 층으로
+  //    옮겨 갔으므로, 예전의 양성 단언을 삭제하지 않고 **0건 단언으로 반전**해 이관 성과를 문다.
+  //    같은 PATH shim 에서 `feeds.mjs` 가 git 을 실제로 부른다는 양성 대조를 두어, 빈 배열이
+  //    관측기 사망이 아니라 `wiki.mjs` 자체의 계약임을 구분한다.
+  it('PU5(구 TR2): `wiki.mjs` 히트 실행은 git 을 **한 번도 부르지 않는다** (🔴축 교체)', () => {
     // 앵커 ⓐ: 인자 계약 위반(exit 2)으로 죽은 것이 아니다 — 사유 뒤바뀜 방지(규범 P).
     expect(hitWiki.exitCode, hitWiki.stderr).toBe(0)
-    // 앵커 ⓑ: 관측기(PATH shim)가 살아 있다 — 0건이면 아래 집합 단언이 사유를 못 가른다.
-    expect(hitWiki.gitCalls.length, `git 호출 0건 (exit=${hitWiki.exitCode})`).toBeGreaterThan(0)
+    // 앵커 ⓑ: 같은 하네스의 PATH shim 이 `feeds.mjs` 실행에서는 git 을 실제로 관측한다.
+    expect(
+      hitFeeds.gitCalls.length,
+      `feeds git 호출 0건 (exit=${hitFeeds.exitCode})`,
+    ).toBeGreaterThan(0)
 
-    // 규범 N — 개수 단독 금지: **정렬 verb 집합 동등** + verb 별 개수 하한. 잉여 동사(`log`·`show`
-    //   등 문서 해석 계층)는 PU4 와 같은 이유로 걸러 낸다 — 「이 동사들만 난다」는 참이 아니다.
-    const observedVerbs = [...new Set(hitWiki.gitCalls.map((argv) => gitVerb(argv)))]
-      .filter((verb) => LIVE_WALK_VERBS.includes(verb))
-      .sort()
-    expect(observedVerbs, `관측된 git 호출: ${JSON.stringify(gitVerbs(hitWiki))}`).toEqual(
-      [...LIVE_WALK_VERBS].sort(),
-    )
-    expect(verbCount(hitWiki, 'rev-parse')).toBeGreaterThanOrEqual(1)
-    expect(verbCount(hitWiki, 'rev-list')).toBeGreaterThanOrEqual(1)
+    expect(hitWiki.gitCalls).toHaveLength(0)
   })
 })
 
-describe('생성기 결속 0 — 정적 그래프 (PU1 · 🔴RED 미구현)', () => {
+describe('생성기 결속 0 — 정적 그래프 (PU1)', () => {
   it('PU1: `feeds.mjs`·`wiki.mjs` 의 정적 import 폐포에 `lib/generator.mjs` 가 **0회**다', async () => {
-    // 🔴 두 조회 도구가 오늘은 `runSummaryGenerator` 를 **정적으로** 물고 있다(`feeds.mjs:13`·
-    //   `wiki.mjs:13`). 런타임 관측(PU2)과 층이 다르다 — 정적 결속이 남아 있으면 "지금은 안 부른다"
-    //   가 한 줄 수정으로 되살아난다.
     const { staticImportClosure } = await import(
       new URL('./helpers/static-import-graph.mjs', import.meta.url).href
     )
     const generator = path.join(SCRIPTS_DIR, 'lib', 'generator.mjs')
 
-    for (const entry of ['feeds.mjs', 'wiki.mjs']) {
-      const closure = staticImportClosure(path.join(SCRIPTS_DIR, entry))
+    // ★★ **「승계」가 아니라 「대체」다 — 앵커 강도가 바뀌었음을 명시한다.**
+    //
+    //    지키던 것 → 지키게 된 것: 「`feeds.mjs`·`wiki.mjs` 모두의 폐포가 `cli-env.mjs`·
+    //    `head-state.mjs` 두 실재 모듈을 담는다」 → **「`feeds.mjs` 는 기존 두 앵커를 그대로 담고,
+    //    `wiki.mjs` 는 유일한 의존성 `parse.mjs` 를 담는다」**. `wiki.mjs` 의 정적 폐포는 자기 자신과
+    //    `parse.mjs` 정확히 2파일이라 `length > 1` 은 여유 0으로 통과하고, 비공허성 보증도
+    //    `toContain(parse.mjs)` 한 줄로 줄었다. 따라서 기존 강도로 읽으면 안 되며, 이 양성 앵커가
+    //    읽기 실패로 빈 폐포가 된 상태와 생성기 부재를 구분한다.
+    const feedsClosure = staticImportClosure(path.join(SCRIPTS_DIR, 'feeds.mjs'))
+    expect(feedsClosure.files.length, 'feeds.mjs').toBeGreaterThan(1)
+    expect(feedsClosure.files, 'feeds.mjs').toContain(path.join(SCRIPTS_DIR, 'lib', 'cli-env.mjs'))
+    expect(feedsClosure.files, 'feeds.mjs').toContain(
+      path.join(SCRIPTS_DIR, 'lib', 'head-state.mjs'),
+    )
+    expect(feedsClosure.files, 'feeds.mjs 가 생성기를 정적으로 문다').not.toContain(generator)
 
-      // ★ 앵커: 폐포가 비어 있지 않고 **살아남는 모듈 2종을 실제로 담는다**.
-      //   `helpers/static-import-graph.mjs:50-51` 이 _"읽을 수 없는 파일은 폐쇄에서 조용히 빠진다"_
-      //   를 자인하므로, 크기와 실재를 함께 못박지 않으면 부재 단언이 파서 사망과 구분되지 않는다.
-      //   ★ v3 P2 — 앵커 모듈이 `artifact.mjs` → `cli-env.mjs` 로 바뀐다. `feeds.mjs` 의 조회 경로가
-      //   라이브 커서 워크로 교체되면서 **아티팩트를 읽지 않게 됐고**(PU6b) 그 import 가 사라졌기
-      //   때문이다. 이 두 줄은 「폐포 파서가 살아 있다」를 증명하는 앵커이지 그 두 모듈에 대한
-      //   요구가 아니므로, 두 CLI 가 **여전히 공유하는** 모듈로 재조준한다.
-      expect(closure.files.length, entry).toBeGreaterThan(1)
-      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'cli-env.mjs'))
-      expect(closure.files, entry).toContain(path.join(SCRIPTS_DIR, 'lib', 'head-state.mjs'))
-
-      expect(closure.files, `${entry} 가 생성기를 정적으로 문다`).not.toContain(generator)
-    }
+    const wikiClosure = staticImportClosure(path.join(SCRIPTS_DIR, 'wiki.mjs'))
+    expect(wikiClosure.files.length, 'wiki.mjs').toBeGreaterThan(1)
+    expect(wikiClosure.files, 'wiki.mjs').toContain(path.join(SCRIPTS_DIR, 'lib', 'parse.mjs'))
+    expect(wikiClosure.files, 'wiki.mjs 가 생성기를 정적으로 문다').not.toContain(generator)
   })
 })
 
-describe('런타임 로드 관측 — 규범 G (TR3′·TR5′ · 🔴RED 오늘 wiki 가 렌더를 연다 · CX-J′·CX-K)', () => {
+describe('런타임 로드 관측 — 규범 G (TR3′·TR5′ · CX-J′·CX-K)', () => {
   // ★ v3 P1 에서 이 케이스가 **PU2**(§3.9)를 겸한다 — 계약도 관측 기법도 그대로이고, 달라지는 것은
   //   "왜 로드하지 않는가" 의 사유뿐이다(오늘: 히트 스킵 / Task 6 이후: **생성기를 아예 안 부른다**).
   //   짝(PU3)의 대상이 `coldFeeds` → `summary.mjs` 로 옮겨간 것이 이 절의 유일한 구조 변경이다.
@@ -339,54 +315,25 @@ describe('런타임 로드 관측 — 규범 G (TR3′·TR5′ · 🔴RED 오늘
     expect(countUrls(hitFeeds, NODE_MODULES)).toBe(0)
   })
 
-  // ★★ **「승계」가 아니라 「대체」다 — 이 문단을 지우면 다음 독자가 «방어가 약해졌다»고 읽는다.**
+  // ★★ **「승계」가 아니라 「대체」다 — 반전된 단언이 책임 이관의 성과를 직접 문다.**
   //
-  //    옛 기대는 `git-walk` **0건**이었고, 그것은 「`wiki` 는 커밋 워크를 타지 않는다」(D-F)의 런타임
-  //    짝이었다(정적 짝은 `wiki.single-doc.test.mjs` 의 **WK8**). news-convention-migration
-  //    **Phase 2** 가 `wiki.mjs` 에 `feeds()` 내부 호출을 더하면서 `feeds.mjs:26` 의 `lib/git-walk.mjs`
-  //    가 **실제로 열린다** ⇒ 그 0건 기대는 참이 아니게 된다.
-  //
-  //    🔴 **그러나 `derive` 0건은 그대로 green 이 정답이다** — 축을 뭉뚱그려 셋 다 고치지 마라.
-  //    착수 전 실측: `feeds.mjs` 의 정적 체인(`git-walk`→`feed`·`git`·`feed-survival`·`head-state`
-  //    ·`parse` / `head-state`→`doc-gate`·`draft`·`git`·`parse`·`schema-validator` /
-  //    `feed-cursor`→`git`·`ignore`→`schema-validator`)은 **어느 경로도 `derive.mjs` 에 닿지 않는다**
-  //    (`derive.mjs` 를 무는 것은 `parse-vault.mjs:1`·`validate.mjs:15` 뿐). 즉 「전 문서 파생을 타지
-  //    않는다」는 D-F 의 핵심 성질은 **무손상**이고, 이 케이스는 그 성질을 계속 지킨다.
-  //
-  //    🔴 **층 경계 주의**: `git-walk` 유입은 **`wiki.mjs` 의 폐쇄**에서만 허용된다.
-  //    `single-doc.mjs` 로 조달을 내리면 **WK8** 이 red 가 된다 — 가드를 고칠 신호가 아니라
-  //    조달을 잘못된 층에 두었다는 신호다(tdd T2 GREEN 계약 4).
-  // ★★ **두 번째 축 교체(TR5 → TR5′) — 「승계」가 아니라 「대체」다.**
-  //
-  //    바로 위 문단이 기록한 교체(`git-walk` 0건 → 실재)에 이어, 이번에는 **`render` 축이 뒤집힌다.**
-  //    옛 기대는 `countUrls(hitWiki, RENDER) > 0` 이었고 그 근거는 이 파일이 못박아 둔 문장
-  //    _"D-F 의 비대칭이 **의도**임을 못박는다 — `wiki` 는 본문 HTML 이 실제로 필요하다"_ 였다.
-  //    md 컷오버가 **그 의도 자체를 뒤집는다**: 서버는 본문을 렌더하지 않고 마크다운 원문만 싣는다
-  //    ⇒ 히트 실행이 렌더 툴체인을 **한 번도 열지 않는 것이 정답**이 된다.
-  //
-  //    지키던 것 → 지키게 된 것: 「wiki 는 렌더가 실제로 필요하다(비대칭은 의도다)」 →
-  //    **「wiki 히트 경로에는 렌더 툴체인이 없다 — 렌더 책임이 서버를 떠났다」**. 되돌아가 `render`
-  //    로드가 다시 관측되면 그것은 「서버가 렌더를 되살렸다」는 신호이므로 여기가 red 여야 한다.
-  //
-  //    🔴 **축을 뭉뚱그려 셋 다 고치지 마라.** 이 케이스의 나머지 두 줄은 **무변경 green 이 정답**이다:
-  //      · `DERIVE` 0건 — 전 문서 파생은 원래도 타지 않았고 지금도 안 탄다(위 문단의 정적 체인 실측).
-  //      · `GIT_WALK` > 0 — 이력 조달(`feeds()` 내부 호출)은 이 컷오버와 무관하게 그대로다.
-  //
-  //    🔴 **앵커 필수**: `toBe(0)` 로 바꾸는 순간 이 줄은 **관측기 사망과 구분되지 않는다**(로드 로그가
-  //    통째로 비어도 0이다). 그래서 같은 케이스 안에 `hitWiki.loadedUrls.length > 0` 을 둔다 —
-  //    「그 실행이 무언가를 실제로 로드했다」가 먼저 서야 「그 중에 render 는 없다」가 정보를 갖는다.
-  //    (`GIT_WALK > 0` 도 양성 축이지만 그것은 **이력 조달**의 증거이지 관측기 생존의 증거가 아니다 —
-  //     조달 배선이 바뀌면 함께 죽으므로 관측기 앵커를 그것에 얹지 않는다.)
-  it('TR5′: `wiki.mjs` 히트 실행은 `render`·`derive` 를 안 열고 **`git-walk` 는 연다** (🔴축 교체)', () => {
+  //    지키던 것 → 지키게 된 것: 「`wiki.mjs` 가 문서 이력을 조달하려고 `git-walk.mjs` 를
+  //    실제로 연다」 → **「지정된 마크다운을 `parse.mjs` 로 파싱할 뿐 `git-walk.mjs` 를 열지
+  //    않는다」**. 이력 조달과 5키 응답 조립은 소비자 층으로 옮겨 갔고, `wiki.mjs` 자체는
+  //    `{md, meta, status}` 3키를 만드는 단일 문서 파서가 되었다. 그러므로 `GIT_WALK > 0` 을
+  //    삭제하는 것이 아니라 **`GIT_WALK === 0` 으로 반전**한다. `loadedUrls.length > 0` 은 로드
+  //    관측기가 살아 있음을, `PARSE > 0` 은 「아무것도 안 열었다」가 아니라 「git-walk 만
+  //    안 열었다」는 것을 각각 증명한다. `render`·`derive` 0건 계약도 그대로 유지한다.
+  it('TR5′: `wiki.mjs` 히트 실행은 `parse` 만 열고 `render`·`derive`·`git-walk` 는 **안 연다** (🔴축 교체)', () => {
     // 앵커: 이 실행의 로드 관측이 살아 있다(빈 로그로 아래 0건이 참이 되는 것을 배제).
     expect(hitWiki.loadedUrls.length).toBeGreaterThan(0)
 
-    // 🔴 축 반전 — 서버는 더 이상 본문을 렌더하지 않는다.
+    // 양성 축: 지정된 단일 문서는 실제로 파싱한다.
+    expect(countUrls(hitWiki, PARSE)).toBeGreaterThan(0)
+
     expect(countUrls(hitWiki, RENDER)).toBe(0)
-    // 🟢 무변경 — 전 문서 파생은 여전히 타지 않는다(위 문단의 정적 체인 실측이 근거다).
     expect(countUrls(hitWiki, DERIVE)).toBe(0)
-    // 🟢 무변경 — 이력 조달(`feeds()` → 커서 워크)이 실제로 일어났다는 **런타임 증거**다.
-    expect(countUrls(hitWiki, GIT_WALK)).toBeGreaterThan(0)
+    expect(countUrls(hitWiki, GIT_WALK)).toBe(0)
   })
 })
 
@@ -404,32 +351,13 @@ describe('짝 가드 — 생성 경로는 반대 방향이다 (PU3 · 🟩pair)'
   })
 })
 
-describe('캐시 부재 — 판정 주체가 갈린다 (PU6 · PU6b · v3 P2 이월)', () => {
-  // ★★ **삭제도 `.skip` 도 아니다 — arm 을 가르고 한쪽 기대를 뒤집는다**(tdd §4.2 · P2 배정).
-  //   「캐시 부재 시 무엇을 할지」의 **판정 주체가 스크립트 → 서버로 옮겨간다**(D21).
-  //   feeds 부재 폴백·summary 부재 fail 의 분기는 **파이프라인 P3** 가 소유한다.
-  //   그래서 여기서는 두 CLI 의 기대가 갈린다:
-  //     · `wiki.mjs`  — 여전히 fail-loud 다(파이프라인 **P4** 까지 참 · 아래 PU6 그대로 유지)
-  //     · `feeds.mjs` — v3 P2 에서 조회가 **라이브 커서 워크**가 되므로 캐시 부재가 실패 사유가
-  //       아니게 된다. 기대를 뒤집어 **PU6b** 로 옮긴다.
-  it('PU6: 아티팩트가 없는 vault 에서 `wiki.mjs` 가 죽고 stdout 을 흘리지 않는다', () => {
-    // ★ 이 상태는 **오늘 성립하지 않는다** — 재생성이 먼저라 부재가 관측될 수 없었다. Task 6 이
-    //   그 폴백을 끊으면서 「캐시 부재」가 처음으로 실재한다. plan Task 6 은 _"fail-loud throw 는
-    //   유지하되 메시지를 바꾼다"_ 로만 적었고 **그것을 무는 케이스가 없었다**.
-    // 앵커: 같은 CLI 가 **아티팩트가 있으면 exit 0 이고 파싱 가능한 JSON 을 낸다**(PU4·TR2 의 arm).
-    expect(hitWiki.exitCode, hitWiki.stderr).toBe(0)
-
-    // 진단 변수 오귀속 정정: 이 실패 메시지는 이 assert 의 대상(`coldWiki` · `cold.vault`)이
-    //   아니라 **다른 vault**(`control.vault`)에서 만든 `warmFeeds.exitCode` 를 보여주고 있었다 —
-    //   coldWiki 가 예상과 달리 exit 0 이 나도 그 메시지는 coldWiki 자신에 대해 아무것도 말해 주지
-    //   않는다. 이 파일의 기존 관례(`expect(x.exitCode, x.stderr)`)를 따라 coldWiki 자신의 stderr 로
-    //   교정한다.
-    expect(coldWiki.exitCode, coldWiki.stderr).not.toBe(0)
-    expect(coldWiki.stdout).toBe('')
-    // 메시지가 **무엇을 하라는지** 말한다 — "실패했다" 만으로는 사람이 다음 행동을 모른다.
-    expect(coldWiki.stderr).toMatch(/빌드|build/i)
-  })
-
+describe('캐시 부재 — 판정 주체가 갈린다 (PU6 이동 · PU6b)', () => {
+  // ★★ **「승계」가 아니라 「이동」이다 — 계약이 약해진 것이 아니라 주체가 옮겨 갔다.**
+  //
+  //   이 자리가 지키던 「발행 아티팩트가 없으면 500으로 실패하고 진단에 「빌드」 어휘를
+  //   남긴다」는 계약은 아티팩트를 읽는 소비자(부모 서버) 층으로 옮겨 갔다. `wiki.mjs` 는
+  //   절대경로로 받은 마크다운 파일만 파싱하여 아티팩트 부재를 판정할 수 없으므로, 기존
+  //   PU6 케이스는 여기서 소멸하고 `wiki.doc-serving.contract.test.ts` 의 **P-6** 이 그 계약을 인수한다.
   it('PU6b: 아티팩트가 없어도 `feeds.mjs` 는 라이브 워크로 exit 0 이고 파싱 가능한 JSON 을 낸다', () => {
     // 앵커: 아티팩트가 **있는** 실행도 exit 0 + 파싱 가능 JSON 이다(둘이 같은 계산 경로를 탄다).
     expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
