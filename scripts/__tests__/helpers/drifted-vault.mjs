@@ -35,7 +35,7 @@ export const ID_REUSED = '0192e000-0000-7000-8000-0000000000e4'
 export const ID_DRAFT = '0192e000-0000-7000-8000-0000000000e5'
 
 // ── 경로(canonical path = breadcrumb.join('/')) 와 리포 상대 posix 경로 ────────────────────────
-export const HEALTHY_REL = 'company/정상문서'
+const HEALTHY_REL = 'company/정상문서'
 export const HEALTHY_PATH = 'wiki/company/정상문서.md'
 export const DRIFT_REL = 'company/알파'
 export const DRIFT_PATH = 'wiki/company/알파.md'
@@ -47,8 +47,8 @@ export const DRAFT_REL = 'dev/실험문서'
 export const DRAFT_PATH = 'wiki/dev/실험문서.md'
 
 // ── 본문 마커 — "이 문서의 본문이 실제로 렌더됐는가" 를 스펙이 문자열로 관측하는 좌표 ───────────
-export const HEALTHY_MARKER = '정상본문마커'
-export const DRIFT_MARKER = '드리프트본문마커'
+const HEALTHY_MARKER = '정상본문마커'
+const DRIFT_MARKER = '드리프트본문마커'
 export const REUSE_MARKER = '재사용본문마커'
 export const DRAFT_MARKER = '초안본문마커'
 

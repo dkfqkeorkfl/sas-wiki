@@ -170,8 +170,8 @@ describe('머리말이 깨진 파일은 `null` 이다 — 던지지 않는다 (C
   it('C-3: exit 0 이고 stdout 이 `null` 이다', () => {
     // ★ 「없는 문서」와 **같은 실패 형태**다. 이 갈래를 접지 않으면 본문 접근이 TypeError 로 던져
     //   exit 1 이 되고, 소비자에서는 404 여야 할 것이 500 으로 나간다.
-    // ★ 오늘 이 판정은 소멸하는 순수부 모듈(`lib/single-doc.mjs`)에 있다 — 그 모듈이 사라져도
-    //   **이 성질은 남아야 한다**. 그것이 이 케이스가 존재하는 이유다.
+    // ★ 머리말 파손을 `null` 로 접는 성질은 삭제된 순수부 모듈(`lib/single-doc.mjs`)에서
+    //   자식 CLI 로 승계됐고, 이 케이스가 현재 계약을 지킨다.
     const broken = runCli(['--file', BROKEN])
 
     expect(broken.status).toBe(0)

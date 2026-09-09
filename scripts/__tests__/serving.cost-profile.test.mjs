@@ -71,7 +71,6 @@ const tmps = []
 afterAll(() => cleanup(...tmps))
 
 let coldFeeds
-let coldWiki
 let hitFeeds
 let hitWiki
 let warm
@@ -107,14 +106,13 @@ beforeAll(async () => {
   // 실행의 git 호출·로드 프로파일을 물 수 있도록 실재하는 문서의 절대경로를 넘긴다.
   hitWiki = runCliWithLoadLog('wiki.mjs', ['--file', path.join(control.vault, 'wiki', `${DRIFT_REL}.md`)], { cwd: control.vault }) // prettier-ignore
 
-  // 콜드 arm — 발행 아티팩트가 없는 vault. `feeds.mjs` 의 라이브 워크와 `wiki.mjs` 의
-  // 단일 문서 파싱은 아티팩트에 의존하지 않으므로, 히트 arm 과 같은 성공 경로를 사용한다.
+  // `wiki.mjs` 콜드 arm 을 제거해도 무감시가 되는 자식 계약은 없다. 아티팩트 부재 계약은 부모
+  // `wiki.doc-serving.contract.test.ts` P-6 이 관측하고, 자식은 절대경로 문서만 파싱한다.
+  // 콜드 arm — 발행 아티팩트가 없는 vault. `feeds.mjs` 의 라이브 워크는 아티팩트에 의존하지
+  // 않으므로, 히트 arm 과 같은 성공 경로를 사용한다.
   const cold = seedControlVault()
   tmps.push(cold.vault)
   coldFeeds = runCliWithLoadLog('feeds.mjs', ['--env', 'dev', '--count=5'], { vault: cold.vault })
-  // 콜드 vault 에서도 실재하는 마크다운의 절대경로를 넘긴다. `wiki.mjs` 는 캐시 여부를
-  // 판정하지 않으므로, 이 arm 도 히트 arm 과 같은 단일 문서 파싱 경로를 탄다.
-  coldWiki = runCliWithLoadLog('wiki.mjs', ['--file', path.join(cold.vault, 'wiki', `${DRIFT_REL}.md`)], { cwd: cold.vault }) // prettier-ignore
 }, 420_000)
 
 const countUrls = (observation, fragment) =>
