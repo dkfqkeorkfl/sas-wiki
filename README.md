@@ -21,7 +21,7 @@ pnpm install                 # 최초 1회 (런타임 의존성: unified/remark/
 pnpm run build-dev           # validate → summary 아티팩트 → feeds 아티팩트
 pnpm run summary --env dev   # 화면 뼈대(문서 목록·폴더 트리·태그), stdout 전용
 pnpm run feeds --env dev --count 20
-pnpm run wiki --env dev --path 'company/삼성전자'
+pnpm run wiki                # 마크다운 1건 파싱 — 대상 파일은 package.json 이 고정한다
 pnpm run validate            # vault 무결성 검사 — --env dev 고정, JSON 대신 exit code 로 말한다
 ```
 
@@ -47,7 +47,7 @@ wiki/**/*.md            문서 원본. 폴더 구조가 곧 위키의 계층이�
 scripts/
   summary.mjs           엔드포인트 겸 생성기 — 화면 뼈대 + summary 아티팩트
   feeds.mjs             엔드포인트 겸 생성기 — 뉴스 피드 + feeds 아티팩트
-  wiki.mjs              엔드포인트 — 문서 1건 본문
+  wiki.mjs              엔드포인트 — 마크다운 파일 1건 파싱(판정 없음)
   validate.mjs          무결성 검사 CLI (엔드포인트 아님 — JSON 을 안 낸다)
   lib/                  순수 함수 부품 (파싱·git 워크·렌더·불변식)
   schema/               JSON Schema 6종 — 아래 산출물 참고
@@ -244,24 +244,26 @@ node scripts/feeds.mjs --env dev --count 2 --after 4eb6ee1c9d6b
 
 ### wiki
 
-문서 1건. 본문은 여기서만 나온다(지연 로드).
+마크다운 파일 **1건을 파싱해** 원문과 머리말 투영만 낸다. 🔴 **어느 문서를 서빙할지 가르는 판정은 이
+CLI 에 없다** — 명부 조회(있는 문서인가) · 비활성 스텁 · 발행 이력 조립은 전부 **호출자(서버 층)** 가
+소유한다. 이 CLI 는 호출자가 이미 판정해 넘긴 파일 경로를 그대로 믿는다.
 
 ```bash
-node scripts/wiki.mjs [--vault <dir>] [--env dev|prod] --path <경로>
-                      --summary <file> [--ignore <절대경로>]
+node scripts/wiki.mjs --file <경로>
 ```
 
-| 플래그      | 기본값   | 의미                                                                              |
-| ----------- | -------- | --------------------------------------------------------------------------------- |
-| `--summary` | **필수** | summary 아티팩트 경로. 누락이면 [exit 2](#종료-코드) · 상대 경로는 `--vault` 기준 |
-| `--ignore`  | 없음     | 피드 억제 목록의 절대 경로                                                        |
+| 플래그   | 기본값   | 의미                                                     |
+| -------- | -------- | -------------------------------------------------------- |
+| `--file` | **필수** | 파싱할 마크다운 파일 경로. 누락이면 [exit 2](#종료-코드) |
 
-`--path` 는 `breadcrumb.join('/')` 형태다 — 확장자도, `wiki/` 접두사도 붙이지 않는다.
+🔴 `--vault` · `--env` · `--path` · `--summary` · `--ignore` 는 **없다.** 넘기면 `Unknown option` 으로
+exit 2 다. vault·env 개념이 사라진 것은 이 CLI 가 더 이상 명부를 읽지 않기 때문이고, `--summary` 가
+사라진 것은 아티팩트를 읽는 주체가 호출자로 옮겨갔기 때문이다.
 
-`--summary` 에 기본값이 없는 것은 의도다. 나머지 3 CLI 가 전부 경로를 명시 인자로 받는데(`summary --out` · `feeds --out` · `validate --out`) wiki 만 경로를 스스로 유추하면, 그 파생을 호출자마다 복제해야 하고 두 벌이 갈리는 순간 조용히 어긋난다.
+산출 3키와 갈래별 종료 코드는 [wiki 반환값](#wiki-반환값) 절이 소유한다.
 
 ```bash
-node scripts/wiki.mjs --env dev --path 'company/삼성전자' --summary cache/summary.dev.json
+node scripts/wiki.mjs --file "$PWD/wiki/KOSPI/삼성전자.md"
 ```
 
 ### validate
@@ -379,7 +381,7 @@ node scripts/validate.mjs [--vault <dir>] [--env dev|prod] [--schema <dir>]
 
 ## 반환 데이터형
 
-세 엔드포인트의 반환값을 하나씩 본다. 예시는 이 리포의 예제 vault 를 `--env dev` 로 돌린 **실제 출력**이며, 길면 `…` 로 줄였다. (한 곳만 예외 — wiki 의 `sources` 는 예제 vault 에 각주가 하나도 없어 실제로는 `[]` 라, 거기만 형상 예시다.)
+세 엔드포인트의 반환값을 하나씩 본다. `summary`·`feeds` 예시는 이 리포의 예제 vault 를 `--env dev` 로 돌린 **실제 출력**이며, 길면 `…` 로 줄였다. `wiki` 는 `--env` 를 받지 않으므로 `--file` 로 예제 문서 1건을 돌린 출력이다. (한 곳만 예외 — **벌크 body 원소**의 `sources` 는 예제 vault 에 각주가 하나도 없어 실제로는 `[]` 라, 거기만 형상 예시다.)
 
 summary 와 feeds 는 같은 `sourceCommit`(= 그 응답을 만든 커밋의 40자 해시, **세대 식별자**)을 가질 때만 한 세트다. 세대가 섞이면 참조가 조용히 깨지므로 소비자는 반드시 같은 세대끼리 묶어 쓴다. wiki 응답에는 `sourceCommit` 이 없으므로 세대 대조는 summary·feeds 로 한다.
 
@@ -656,10 +658,10 @@ git commit -m "chore: CXL 문서 추가"
 
 > **앵커가 나오는 자리는 둘뿐이고, 둘 다 문서 안쪽을 가리킨다.**
 >
-> | 어디                                     | 무엇                                                     | 만드는 곳                    |
-> | ---------------------------------------- | -------------------------------------------------------- | ---------------------------- |
+> | 어디                                           | 무엇                                                     | 만드는 곳                    |
+> | ---------------------------------------------- | -------------------------------------------------------- | ---------------------------- |
 > | [벌크 body 원소](#벌크-body-원소) `headings[]` | 문서 heading 의 URL 슬러그 — 목차 항목이 가리키는 목적지 | `slugifyHeading` (md → html) |
-> | 위키링크 `[[대상#앵커]]`                 | 다른 문서의 특정 heading 으로 가는 링크                  | 같은 슬러그 함수 (lockstep)  |
+> | 위키링크 `[[대상#앵커]]`                       | 다른 문서의 특정 heading 으로 가는 링크                  | 같은 슬러그 함수 (lockstep)  |
 >
 > 벌크 body의 렌더된 본문 `<h2 id="…">` 와 `headings[].anchor` 는 **같은 함수로 만들어져** 항상 일치한다. 반면 **피드**(`feeds` 의 `docs[]`)는 문서만 가리키고 위치는 가리키지 않는다 — 거기엔 앵커가 없다.
 
@@ -803,7 +805,7 @@ draft 문서는 검증·파생·데드링크 검사보다 **먼저** 제거된�
 dev → prod 승격은 어떤 신호로 숨겼느냐에 따라 다르다.
 
 - **플래그로 숨긴 문서** — `draft` 를 지우면 끝이다. id 도 경로도 바뀌지 않는다.
-- **`dev/` 폴더로 숨긴 문서** — 폴더 밖으로 옮겨야 한다. id 는 그대로지만 **경로가 바뀐다**(= URL 과 wiki `--path` 가 바뀐다). 이동은 `git mv` 로 커밋한다(rename 으로 기록돼야 id 가 산다).
+- **`dev/` 폴더로 숨긴 문서** — 폴더 밖으로 옮겨야 한다. id 는 그대로지만 **경로가 바뀐다**(= URL 과 서버가 조회하는 명부 경로가 바뀐다). 이동은 `git mv` 로 커밋한다(rename 으로 기록돼야 id 가 산다).
 
 **개발용 예제 문서는 `wiki/dev/` 아래에 모은다.** 이 리포에 들어 있는 6건이 그것이고, 새로 만드는 예제도 거기에 둔다. 폴더만 봐도 샘플인지 알 수 있게 하려는 컨벤션이며, 그 문서들은 frontmatter `draft` 플래그도 함께 달고 있다 — 두 신호가 OR 로 겹치는 것이 정상이고, 어느 한쪽을 지워도 여전히 숨는다.
 
