@@ -11,15 +11,18 @@
 //   통과한다(Spark PERMISSIVE 붕괴 조건 — corrupt 컬럼이 없으면 drop). 이 파일이 green 이라고 해서
 //   Task 2 를 건너뛴 것이 아닌지는 `build.doc-exclusion.test.mjs`(PG2·PG4)가 별도로 증명한다.
 //
+// ★ 현재 상태(원 RED 이후): `wiki` 축은 이 층을 떠났다 — 그 CLI 는 호출자가 지정한 마크다운 파일
+//   1건을 파싱할 뿐이고, 어느 문서를 서빙할지 가르는 명부 게이트는 소비자(서버 층)가 진다. 그래서
+//   이 파일이 무는 것은 **`summary`·`feeds` 두 엔드포인트의 생존**과 **명부가 제외를 반영하는가**다
+//   (SR2 문단 참조).
+//
 // 왜 3 엔드포인트를 다 무는가: 세 함수는 같은 파싱 엔진을 공유하지만 **소비 형태가 다르다**(전체
 //   payload / 단건 조회 / 피드 창). 하나만 고치고 나머지가 여전히 죽는 상태를 배제한다.
-import path from 'node:path'
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { feeds } from '../feeds.mjs'
 import { summary } from '../lib/summary-endpoint.mjs'
-import { wiki } from '../wiki.mjs'
 import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import {
@@ -33,18 +36,6 @@ import {
   TWIN_B_REL,
   TWIN_FEED_TITLE,
 } from './helpers/polluted-vault.mjs'
-
-/** summary 아티팩트 경로 — **리터럴 조립**(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
-const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
-
-/**
- * ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
- *
- * 이 파일이 무는 것은 **서빙 경로가 오염 vault 에서 죽지 않는다**(그리고 제외 문서는 null 이다)
- * 이지 인자 개수가 아니다. 주제는 그대로 두고 호출 인자만 갱신한다. 오늘도 green 이다 —
- * JS 는 여분 위치 인자를 무시한다. 규범 D: 헬퍼에 `expect` 를 두지 않는다.
- */
-const askWiki = (vault, env, ref) => wiki(vault, env, ref, summaryFile(vault, env))
 
 const tmps = []
 afterAll(() => cleanup(...tmps))
@@ -71,15 +62,27 @@ describe('서빙 경로 — 오염 vault 에서 죽지 않는다 (SR1~SR3 · �
     expect(payload.docs.map((doc) => doc.id)).not.toContain(ID_DUP)
   })
 
-  it('SR2: `wiki` 로 제외 문서를 조회하면 **null** 이다 (대조군은 조회된다)', async () => {
-    // `null` 을 못박아 "빈 객체" 표현을 배제한다 — 소비자(webfront)가 `?? null` 로 뭉개면 부재 문서
-    //   화면(P4)이 영원히 안 나온다.
-    // P5 · §4 원장 ㉖-c — `wiki()` 가 async 가 됐다(D-F). 단언 내용은 무변경 — `await` 만 붙는다.
-    const control = await askWiki(polluted.vault, 'dev', CONTROL_REL)
-    expect(control).not.toBeNull() // 앵커: 조회 자체는 동작한다
+  // ★★ **SR2 축 교체 — 「승계」가 아니라 「대체」다. 이 문단을 지우면 다음 독자가 «제외 문서가
+  //    서빙된다는 것을 아무도 안 본다»고 읽는다.**
+  //
+  //    옛 SR2 는 자식 `wiki(vault, env, ref)` 로 제외 문서를 조회해 `null` 인지 봤다. 그 함수는 이제
+  //    **호출자가 지정한 마크다운 파일 1건을 파싱하는 것**이고, 어느 문서를 서빙할지 가르는 명부
+  //    게이트는 소비자(서버 층)로 옮겨갔다.
+  //
+  //    지키던 것 → 지키게 된 것: 「제외 문서를 조회하면 `null` 이다」 → **「제외 문서의 **경로**가
+  //    발행 명부에 아예 없다」**. 소비자의 게이트는 명부의 `breadcrumb` 를 키로 조회해 미스면 404 를
+  //    내므로, 경로가 명부에 없다는 것이 곧 그 문서가 서빙되지 않는다는 것이다. 종단(404) 관측은
+  //    소비자 저장소가 지고, 이 층은 **그 입력이 옳은지**를 진다.
+  //
+  //    🔴 SR1 과 겹치지 않는다 — SR1 은 **id 축**(`ID_DUP` 부재)이고 여기는 **경로 축**이다. 소비자가
+  //    조회 키로 쓰는 것은 경로이므로, id 만 보면 「id 는 빠졌는데 경로는 남았다」를 놓친다.
+  it('SR2: 제외 문서의 경로가 발행 명부에 **없다** (대조군 경로는 있다)', () => {
+    const refs = summary(polluted.vault, 'dev').docs.map((doc) => doc.breadcrumb.join('/'))
 
-    expect(await askWiki(polluted.vault, 'dev', TWIN_A_REL)).toBeNull()
-    expect(await askWiki(polluted.vault, 'dev', TWIN_B_REL)).toBeNull()
+    expect(refs).toContain(CONTROL_REL) // 앵커: 명부가 비어서 통과하는 것을 배제한다
+
+    expect(refs).not.toContain(TWIN_A_REL)
+    expect(refs).not.toContain(TWIN_B_REL)
   })
 
   it('SR3: `feeds` 가 throw 하지 않고 피드 2건을 그대로 낸다', async () => {
@@ -116,9 +119,9 @@ describe('서빙 경로 — 과잉 차단 가드 (SR5 · 대조군 vault)', () =
     expect(summaryPayload.docs.map((doc) => doc.id)).toContain(ID_A)
     expect(summaryPayload.docs).toHaveLength(3)
 
-    const doc = await askWiki(clean.vault, 'dev', CONTROL_REL)
-    expect(doc).not.toBeNull()
-    expect(doc.path).toBe(CONTROL_REL)
+    // ★ 조회 축은 이 층을 떠났다(SR2 문단 참조) — 정상 문서가 명부에 **경로로** 남아 있는지를 본다.
+    const cleanRefs = summaryPayload.docs.map((doc) => doc.breadcrumb.join('/'))
+    expect(cleanRefs).toContain(CONTROL_REL)
 
     const feedPayload = await feeds(clean.vault, 'dev', { count: 10 })
     expect(titlesOf(feedPayload.items)).toEqual([CONTROL_FEED_TITLE])

@@ -39,10 +39,7 @@ import { prebuildArtifacts } from './helpers/prebuild-artifacts.mjs'
 import { cleanup } from './helpers/tmp-git-vault.mjs'
 import {
   DRIFT_FEED_TITLE,
-  DRIFT_MARKER,
   DRAFT_FEED_TITLE,
-  HEALTHY_MARKER,
-  HEALTHY_REL,
   ID_ORIGINAL,
   seedControlVault,
   seedDraftRefVault,
@@ -51,7 +48,6 @@ import {
 } from './helpers/drifted-vault.mjs'
 
 const feedsModule = await import(new URL('../feeds.mjs', import.meta.url).href)
-const wikiModule = await import(new URL('../wiki.mjs', import.meta.url).href)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
@@ -63,23 +59,12 @@ const DELETED_ID_REUSE = 'DELETED_ID_REUSE'
 /** 위키 루트 접두사 — 리터럴이다. 드리프트 감지는 기존 트립와이어(PR5)가 담당한다. */
 const WIKI_ROOT_PREFIX = 'wiki/'
 
-/** summary 아티팩트 경로 — **리터럴 조립**(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
-const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
-
 const tmps = []
 afterAll(() => cleanup(...tmps))
 
 const feeds = (vault, env, window = {}) => {
   if (typeof feedsModule.feeds !== 'function') throw new Error('[RED] feeds export 가 없다')
   return feedsModule.feeds(vault, env, window)
-}
-// ★★ v3 P4 · §4.2 arm 갱신(D27) — `wiki()` 가 summary 경로를 **4번째 위치 인자**로 받는다.
-//   이 파일이 무는 것은 **드리프트 서빙 극성**(제외 문서를 서빙하지 않는다)이지 인자 개수가 아니다.
-//   호출부 4곳(DR3·DR6)은 무변경이고 **이 래퍼 한 줄만** 갱신한다. 오늘도 green 이다 — JS 는 여분
-//   위치 인자를 무시한다. 규범 D: 헬퍼에 `expect` 를 두지 않는다.
-const wiki = (vault, env, ref) => {
-  if (typeof wikiModule.wiki !== 'function') throw new Error('[RED] wiki export 가 없다')
-  return wikiModule.wiki(vault, env, ref, summaryFile(vault, env))
 }
 
 const track = (seeded) => {
@@ -154,32 +139,21 @@ describe('B7 반전 — 피드는 살되 제외 문서를 가리키지 않는다
   })
 })
 
-// ★ DR3′ 축 교체 — 관측 좌표만 `doc.html`(렌더 산출)에서 `doc.md`(본문 원문)로 옮긴다.
-//   본문 서빙이 렌더된 HTML 이 아니라 마크다운 원문으로 바뀌었기 때문이다. **두 앵커의 역할은
-//   무손상**이다: ① 대조 vault 에서는 같은 path 가 본문을 준다(= 그 문서가 애초에 없어서 null 인
-//   것이 아니다) ② 같은 드리프트 vault 의 정상 문서는 여전히 본문을 준다(= 전부 null 을 내는
-//   구현 배제). 좌표를 안 옮기면 컷오버 후 `undefined.toContain` 으로 red 가 되고, 그 red 를
-//   「앵커를 지우자」로 처분하면 마지막 `toBeNull()` 이 두 공허 통과를 다시 허용한다.
-describe('B8 반전 — 제외 문서의 본문을 서빙하지 않는다 (DR3′ · 🔴RED 축 교체)', () => {
-  it('DR3′: 드리프트 문서 조회가 `null` 이고 대조 vault 의 같은 path 는 본문을 준다', async () => {
-    const drifted = track(seedTamperedVault())
-    const control = track(seedControlVault())
-    await prebuildArtifacts(drifted.vault, 'dev')
-    await prebuildArtifacts(control.vault, 'dev')
-
-    // 앵커 ①: 대조 vault 의 같은 path 는 non-null 이고 본문 마커가 있다.
-    const controlDoc = await wiki(control.vault, 'dev', drifted.tamperedRel)
-    expect(controlDoc).not.toBeNull()
-    expect(controlDoc.md).toContain(DRIFT_MARKER)
-
-    // 앵커 ②: 같은 드리프트 vault 의 **정상 문서**는 여전히 non-null(전부 null 인 구현 배제).
-    const healthy = await wiki(drifted.vault, 'dev', HEALTHY_REL)
-    expect(healthy).not.toBeNull()
-    expect(healthy.md).toContain(HEALTHY_MARKER)
-
-    expect(await wiki(drifted.vault, 'dev', drifted.tamperedRel)).toBeNull()
-  })
-})
+// ★★ **DR3′ 소멸 — 「승계」가 아니라 「대체」다. 이 문단을 지우면 다음 독자가 «B8 반전이 통째로
+//    사라졌다»고 읽는다.**
+//
+//    DR3′ 은 「제외 문서의 본문을 서빙하지 않는다」를 자식 `wiki(vault, env, ref)` 로 관측했다.
+//    그 함수는 이제 **호출자가 지정한 마크다운 파일 1건을 파싱하는 것**이고, 어느 문서를 서빙할지
+//    가르는 명부 게이트는 소비자(서버 층)로 옮겨갔다 — 이 층에는 그 계약을 관측할 대상이 없다.
+//
+//    지키던 것 → 지키게 된 것(두 축이 나눠 진다):
+//      ① **명부 축** — 「드리프트 문서가 발행 명부에서 빠지고 대조 vault 에는 있다」는 바로 위
+//         **DR1** 이 깊은 티어 wire 로 그대로 문다. 소비자의 게이트는 그 명부를 읽어 판정하므로,
+//         DR1 이 red 가 되면 서빙 극성도 함께 무너진다.
+//      ② **종단 축** — 「드리프트 문서 요청이 404 이고 대조 vault 의 같은 경로는 200 이다」는
+//         소비자 저장소의 **실 spawn 종단 가드**가 두 vault 를 실제로 빌드해 대조한다.
+//
+//    ⇒ 이 케이스를 이 층에 되살리려면 자식에 명부 판정을 되돌려야 하고, 그것이 이 이관이 없앤 것이다.
 
 // DR4(§4.5 ㉒ 예고분) — 재홈 완료. "동시대 증거 — 얕은 참조 경로는 아직 그 문서를 담는다" 는 P5
 //   Task 9(D-I)가 얕은 판정 스위치를 제거하며 성립 자체가 불가능해졌다(`buildWirePayload` 삭제 —
@@ -232,6 +206,8 @@ describe('두 번째 깊은 사유도 같은 반전 (DR6 · 🔴RED flip)', () =
     expect(item, `feedId=${reuse.feedId} 를 찾지 못함 — items=${JSON.stringify(page.items.map((entry) => entry.id))}`).toBeDefined() // prettier-ignore
     expect(docIdsOf(item)).toEqual([])
 
-    expect(await wiki(reuse.vault, 'dev', reuse.reusedRel)).toBeNull()
+    // ★ 문서 조회 축은 이 층을 떠났다 — 자식 `wiki()` 는 파일 1건 파서가 되어 제외 판정을 하지
+    //   않는다. 「제외된 id 재사용 문서를 서빙하지 않는다」의 관측은 발행 명부(DR1 과 같은 축)와
+    //   소비자 층의 종단 가드가 나눠 진다. 이 케이스가 계속 지는 것은 **피드 축**이다.
   })
 })
