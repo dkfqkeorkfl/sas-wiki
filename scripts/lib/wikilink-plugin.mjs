@@ -8,8 +8,11 @@ import { findAndReplace } from 'mdast-util-find-and-replace'
  * 링크 대상 해석은 주입된 `resolve(target, anchor) => { path, exists }` 가 담당하고(계약 SSOT
  * 는 derive.mjs), 플러그인은 그 결과로 `<a>` 출력 계약(class·href·data-*·label)을 조립한다.
  * 실제 속성 이스케이프는 rehype-stringify 가 수행한다(수동 escape 불요).
+ *
+ * ReDoS 방어를 위해 각 절의 반복에 `{1,300}` 상한을 둔다 — 안 닫힌 `[[` 뒤에 텍스트가 이어지면
+ * 무제한 `+` 는 문서 길이의 제곱에 비례해 느려지지만, 상한을 두면 시도당 되추적 범위가 고정된다.
  */
-const WIKILINK_RE = /\[\[([^\]#|]+)?(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g
+const WIKILINK_RE = /\[\[([^\]#|]{1,300})?(?:#([^\]|]{1,300}))?(?:\|([^\]]{1,300}))?\]\]/g
 
 function hrefOf(path, anchor) {
   const base = `#/wiki/${encodeURIComponent(path)}`
