@@ -86,4 +86,26 @@ describe('renderMarkdownToHtml — 위키링크 <a> 계약 (급소①)', () => {
     expect(html).toContain('<code>[[HBM]]</code>')
     expect(html).not.toContain('wiki-link')
   })
+
+  it('안 닫힌 [[ 뒤에 50만자 텍스트가 붙어도 짧은 상한 안에 끝난다 (ReDoS 회귀, 이슈 #73)', () => {
+    // 실측(수정 전 WIKILINK_RE, 무제한 `+`): "[[word " 를 반복해 안 닫힌 `[[` 를 문서 전역에
+    //   흩뿌리면 시도마다 문자열 끝까지 되추적하는 실패가 누적돼 텍스트 길이의 **제곱**에 비례해
+    //   느려진다(50만자 기준 초 단위, 문서 길이가 늘수록 더 벌어진다). 각 절을 `{1,300}` 상한으로
+    //   고치면 시도당 되추적 범위가 문서 길이와 무관하게 고정돼 선형에 가까워진다.
+    //
+    // renderMarkdownToHtml 전체(파싱·sanitize·stringify 포함)로 재는 것은 이 파일의 기존 스타일과
+    //   일치시키기 위해서다 — 그 고정 비용까지 포함해도 패치본은 500,000자 기준 1초 미만이고,
+    //   수정 전 규모(초 단위, 문서가 커질수록 급격히 벌어짐)와는 자릿수가 다르다.
+    const unit = '[[word '
+    const reps = Math.ceil(500_000 / unit.length)
+    const markdown = unit.repeat(reps)
+
+    const start = performance.now()
+    const html = renderMarkdownToHtml(markdown, resolve)
+    const elapsed = performance.now() - start
+
+    expect(html).not.toContain('wiki-link')
+    // 여유를 두고 3,000ms 를 상한으로 잠근다(CI 변동 흡수, 여전히 회귀를 확실히 잡는다).
+    expect(elapsed).toBeLessThan(3000)
+  })
 })
