@@ -2,8 +2,9 @@
 # 아직 push 하지 않은 로컬 커밋이라 되돌려 고칠 수 있다.
 node scripts/validate.mjs --env dev || {
   echo '[wiki] pre-push: validate 가 실패해 push 를 멈췄습니다. 위 사유를 고친 뒤 다시 push 하세요.' >&2
-  echo '  중복 id(DUPLICATE_ID)라면: push 하지 않은 커밋을 git reset --soft @{upstream} 로 되돌리고' >&2
-  echo '  (처음 push 하는 브랜치면 origin/main), 복사한 문서의 id 줄을 지운 뒤 다시 커밋하세요.' >&2
-  echo '  커밋 훅이 새 id 를 채웁니다.' >&2
+  echo '  중복 id(DUPLICATE_ID)라면 push 하지 않은 커밋을 브랜치가 갈라진 지점으로 되돌려 고칩니다:' >&2
+  echo '    git reset --soft "$(git merge-base HEAD @{upstream})"' >&2
+  echo '    (처음 push 하는 브랜치면 @{upstream} 대신 origin/main)' >&2
+  echo '  복사한 문서의 id: 줄을 지우고 git add 한 뒤 다시 커밋하면 커밋 훅이 새 id 를 채웁니다.' >&2
   exit 1
 }

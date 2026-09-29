@@ -6,7 +6,7 @@
 //   실 vault 로 드리프트를 검증하려는 시도는 전부 공허하다.
 //
 // 무엇이 드리프트인가: 깊은 티어(생성기·validate)만 내리는 판정 **둘**이다(tdd B6).
-//   · `ID_TAMPERED`      — 생성 시점 blob 의 id ≠ 지금 frontmatter 의 id
+//   · `ID_TAMPERED`      — id 줄을 마지막으로 바꾼 커밋의 바로 전 id ≠ 지금 frontmatter 의 id
 //   · `DELETED_ID_REUSE` — 삭제된 문서의 id 를 살아 있는 문서가 재사용
 //   얕은 티어(오늘의 서빙)는 둘 다 못 보므로 **제외되지 않은 채 서빙된다** — 그것이 B7·B8 결함이다.
 //

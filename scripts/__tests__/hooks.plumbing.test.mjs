@@ -44,7 +44,10 @@ describe('git 훅 배선', () => {
 
     expect(commands[0]).toBe('node scripts/validate.mjs --env dev || {')
     expect(commands.at(-2)).toBe('exit 1')
-    expect(commands.join('\n')).toContain('git reset --soft')
+    // 원격 끝이 아니라 갈라진 지점으로 되돌린다 — 원격 끝으로 soft reset 하면 그사이 남이 올린 변경이
+    //   되돌리는 변경으로 스테이징돼 다음 커밋이 그것을 지운다.
+    expect(commands.join('\n')).toContain('git reset --soft "$(git merge-base HEAD @{upstream})"')
+    expect(commands.join('\n')).toContain('git add')
   })
 
   it('uuid 는 훅 전용 개발 도구다(devDependency)', () => {

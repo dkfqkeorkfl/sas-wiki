@@ -24,8 +24,11 @@ describe('CI 워크플로', () => {
     expect(workflow).toMatch(/^\s{2}push:\n\s{4}branches: \[main\]/mu)
   })
 
-  it('전체 이력으로 체크아웃한다(fetch-depth: 0)', () => {
-    expect(lines).toContain('fetch-depth: 0')
+  it('전체 이력으로 체크아웃한다(checkout 단계의 fetch-depth: 0)', () => {
+    // 파일 어딘가에 있는 것만으로는 부족하다 — 다른 단계의 `with:` 에 있으면 checkout 은 얕게 받는다.
+    expect(workflow).toMatch(
+      /uses: actions\/checkout@[0-9a-f]{40}[^\n]*\n\s+with:\n(?:\s+#[^\n]*\n)*\s+fetch-depth: 0$/mu,
+    )
   })
 
   it('모든 action 을 전체 커밋 SHA 로 고정한다', () => {
@@ -35,8 +38,9 @@ describe('CI 워크플로', () => {
     for (const line of uses) expect(line).toMatch(/@[0-9a-f]{40}(\s+#\s+v\d+\.\d+\.\d+)?$/u)
   })
 
-  it('토큰 권한은 읽기 전용이다', () => {
+  it('토큰 권한은 읽기 전용이다(job 단위로 넓히지 않는다)', () => {
     expect(workflow).toMatch(/^permissions:\n\s{2}contents: read$/mu)
+    expect(workflow.match(/^\s*permissions:/gmu)).toHaveLength(1)
   })
 
   it('git 훅을 설치하지 않는다(HUSKY=0)', () => {

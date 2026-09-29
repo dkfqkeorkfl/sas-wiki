@@ -2,9 +2,9 @@
 //
 // P1(통합) · R5 — 불변 게이트: id 줄의 마지막 변경 직전 id ≠ 현재 id 면 build fail — tdd §3 Task 3
 //
-// RED 사유: 현행 build 에는 불변 게이트가 **없다**. 게다가 현행은 frontmatter id 를 무시하고 git-hash
-//   를 주입하므로, frontmatter id 를 사후 변조해도 build 가 조용히 성공한다. → 생성 커밋 blob 의 id 와
-//   HEAD frontmatter id 를 대조해 다르면 실패시키는 게이트를 build 에 추가해야 green.
+// RED 사유(작성 당시): build 에 불변 게이트가 **없었고**, frontmatter id 를 무시하고 git-hash 를
+//   주입했으므로 frontmatter id 를 사후 변조해도 build 가 조용히 성공했다. → id 줄을 마지막으로 바꾼
+//   커밋의 바로 전 id 와 지금 id 를 대조해 다르면 실패시키는 게이트(ID_TAMPERED)가 green 조건이다.
 //
 // 경계(false-fail 금지 · anti-over-fire): 직전 값이 유효한 id 가 아닌 문서(처음 등록)는 반드시
 //   **PASS** — 비교할 기준이 없다. 게이트가 처음 등록을 "차이"로 오판하면 id 를 처음 넣는 커밋이

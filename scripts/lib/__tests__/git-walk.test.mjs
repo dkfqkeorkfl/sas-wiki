@@ -4,7 +4,7 @@
 //
 // RED 사유: `scripts/lib/git-walk.mjs` **부재** → 아래 지연 import 가 "Cannot find module" 로 throw →
 //   이 파일 전체가 로드 실패로 RED 다(유효 RED · 의도한 미구현). 정적 import 로 적으면 ESM 링크가
-//   커밋 단계에서 파일을 죽이므로 해석을 런타임으로 미룬다(전례: git.read-id-at-creation.test.mjs).
+//   커밋 단계에서 파일을 죽이므로 해석을 런타임으로 미룬다.
 //
 // 계약(GREEN 이 구현 — **순서가 계약**): walkFeeds(vault, { from, to, count, after }) 파이프라인
 //   ① git rev-list --author-date-order <tip> -- wiki --max-count=count*K 청크
