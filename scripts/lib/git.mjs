@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
-import { parseFrontmatterYaml } from './parse.mjs'
+import { DOC_ID_FIELD } from './doc-id.mjs'
+import { extractFrontmatterField, findFrontmatterFieldLine } from './parse.mjs'
 
 // `--name-status` 의 상태줄. rename/copy 는 `R100\told\tnew`(탭 2개), A/M/D 는 `M\tpath`(탭 1개).
 // 커밋 헤더줄(`<hash>\t<date>`)은 소문자 hex 로 시작하므로 이 패턴에 걸리지 않는다.
@@ -146,9 +147,9 @@ export function collectDeletedDocEvents(runGit, { isDocPath }) {
 /**
  * 삭제 **직전** blob 의 frontmatter id — 즉 *지워진 그 문서* 의 id.
  *
- * `readIdAtCreation` 을 쓰면 안 된다: 그것은 `getFileHistory` 를 타고, 그 함수는 생성 커밋에서
- * 끊으므로 **삭제 후 재생성된 경로에서는 새 문서의 id** 를 돌려준다(의도된 동작 — 재생성은 새
- * 문서다). 삭제된 쪽의 id 를 알아야 하는 이 게이트에는 정반대 값이다.
+ * 현재 경로의 이력(`getFileHistory` · blame)으로 읽으면 안 된다: 둘 다 문서가 생긴 커밋에서 끊기므로
+ * **삭제 후 재생성된 경로에서는 새 문서의 id** 를 본다(의도된 동작 — 재생성은 새 문서다). 삭제된
+ * 쪽의 id 를 알아야 하는 이 게이트에는 정반대 값이다.
  *
  * @returns {string|null} id. frontmatter·id 가 없으면 null(pre-id era).
  */
@@ -163,10 +164,7 @@ export function readIdAtDeletion(runGit, { path: relFilePath, sha }) {
       cause: error,
     })
   }
-  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
-  if (!match) return null
-  const id = parseFrontmatterYaml(match[1], relFilePath).id
-  return id === undefined ? null : id
+  return extractFrontmatterField(blob, DOC_ID_FIELD) ?? null
 }
 
 export function collectGitLog(runGit) {
@@ -323,38 +321,71 @@ export function getFileHistory(runGit, relFilePath) {
 }
 
 /**
- * 문서의 **생성 커밋 blob** frontmatter 에서 id 를 읽는다 — 불변 게이트 원자재.
+ * frontmatter 필드 한 개의 [전, 후] — 문서 id 변경 판별의 재료다(`judgeDocId`).
  *
- * HEAD 가 아니라 생성 시점 blob 을 본다(사후 삽입·변조 무시). 생성 blob 에 id 가 없으면
- * (pre-id era — 마이그레이션 전 생성분) `null` 을 돌려준다. 그래야 불변 게이트가 pre-id 문서를
- * "차이"로 오판해 마이그레이션 전 전 문서를 false-fail 시키는 일이 없다.
+ * - **후**: `contents`(작업 트리나 인덱스의 문서 내용)에서 읽은 값.
+ * - **전**: 그 필드 줄을 마지막으로 바꾼 커밋의 **바로 전** 값. `git blame --contents -` 로 그 줄의
+ *   마지막 변경을 찾고, porcelain 출력의 `previous <커밋> <경로>`(변경 직전 부모와 그때의 경로)에서
+ *   값을 읽는다. 아직 커밋하지 않은 변경은 그 자체가 마지막 변경이라 `previous` 가 HEAD 다. 그 줄이
+ *   문서가 생길 때부터 있었으면 `previous` 가 없고 전도 없다(`undefined`).
+ * - 필드 줄이 `contents` 에 없으면 blame 할 줄이 없다. 이때 전은 HEAD 의 값이다 — 줄이 지워진
+ *   변경이 아직 커밋 전이면 그것이 마지막 변경이기 때문이다.
+ * - HEAD·인덱스 어디에도 없는 문서, 커밋이 없는 저장소는 이력이 없어 전이 없다.
  *
- * @returns {null | string} 생성 blob frontmatter 의 id, 없으면 null
+ * blame 은 파일 이름 변경을 따라가고(`git-blame(1)`: _"The origin of lines is automatically
+ * followed across whole-file renames"_), 비교는 줄 글자가 아니라 해석한 값으로 한다 — 따옴표나
+ * 공백만 바꾼 커밋은 전과 후가 같은 값이 된다.
+ *
+ * @param {(args: string[], options?: { input?: string }) => string} runGit
+ * @param {string} relFilePath 리포 상대 posix 경로
+ * @param {{ contents: string, pattern: RegExp }} options `pattern` 은 `extractFrontmatterField` 규약
+ * @returns {[unknown, unknown]} [전, 후]
  */
-export function readIdAtCreation(runGit, relFilePath) {
-  const history = getFileHistory(runGit, relFilePath)
-  if (history.length === 0) return null
-  const creation = history.find((entry) => isCreation(entry)) ?? history.at(-1)
-  let blob
+export function readFrontmatterFieldChange(runGit, relFilePath, { contents, pattern }) {
+  const after = extractFrontmatterField(contents, pattern)
+  const line = findFrontmatterFieldLine(contents, pattern)
+  if (line === undefined) {
+    const head = readHeadFile(runGit, relFilePath)
+    return [head === undefined ? undefined : extractFrontmatterField(head, pattern), after]
+  }
+
+  let porcelain
   try {
-    blob = runGit([...QUOTEPATH_OFF, 'show', `${creation.sha}:${creation.pathAtCommit}`])
+    porcelain = runGit(
+      [
+        ...QUOTEPATH_OFF,
+        'blame',
+        '--porcelain',
+        // 저장소 설정 `blame.ignoreRevsFile` 은 지정한 커밋을 건너뛰어 변경 커밋을 숨긴다. 이 옵션이
+        //   설정의 목록까지 비운다(`--ignore-revs-file ""` 는 설정한 파일이 없으면 오히려 실패한다).
+        '--no-ignore-revs-file',
+        '--contents',
+        '-',
+        '-L',
+        `${line},${line}`,
+        '--',
+        relFilePath,
+      ],
+      { input: contents },
+    )
   } catch (error) {
-    // 생성 blob 을 못 읽으면 **멈춘다**. null 은 호출부(validate.mjs)에서 "pre-id era 문서 = 불변
-    //   검사 면제" 를 뜻하므로, 여기서 null 을 돌려주면 *조회 실패* 가 *면제* 로 둔갑해 제품 핵심
-    //   보증(생성 시점 id 불변)이 조용히 꺼진다. presence 는 스키마가 잡지만 **불변은 여기뿐**이다.
+    if (isNoHistoryBlame(error)) return [undefined, after]
     const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`생성 blob 을 읽지 못했습니다(${relFilePath} @ ${creation.sha}): ${message}`, {
+    const stderr = typeof error?.stderr === 'string' && error.stderr ? `\n${error.stderr}` : ''
+    throw new Error(`필드 줄의 변경 이력을 읽지 못했습니다(${relFilePath}): ${message}${stderr}`, {
       cause: error,
     })
   }
-  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
-  if (!match) return null
-  const id = parseFrontmatterYaml(match[1], relFilePath).id
-  return id === undefined ? null : id
+
+  const previous = parseBlamePrevious(porcelain)
+  if (previous === null) return [undefined, after]
+  const blob = runGit(['cat-file', 'blob', `${previous.sha}:${previous.path}`])
+  return [extractFrontmatterField(blob, pattern), after]
 }
 
 /**
  * vault 를 cwd 로 고정한 git 러너. 비0 종료는 **throw** 다(`execFileSync` 극성 그대로).
+ * 두 번째 인자 `{ input }` 을 주면 그 문자열을 git 의 stdin 으로 넘긴다.
  *
  * ★ **`timeoutMs` 가 D23 의 spawn 타임아웃 자리다**(v3 P2). 미지정이면 옵션 자체를 붙이지 않아
  * 오늘과 **바이트 동일한 동작**이다 — Node `child_process` 의 `timeout` 기본값이 `undefined` 이고
@@ -372,14 +403,95 @@ export function readIdAtCreation(runGit, relFilePath) {
  * @param {{ timeoutMs?: number }} [options]
  */
 export function makeGitRunner(cwd, { timeoutMs } = {}) {
-  return (args) =>
+  return (args, { input } = {}) =>
     execFileSync('git', args, {
       cwd,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      ...(input === undefined
+        ? { stdio: ['ignore', 'pipe', 'pipe'] }
+        : { input, stdio: ['pipe', 'pipe', 'pipe'] }),
       ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     })
+}
+
+/**
+ * HEAD 의 파일 내용. HEAD 가 없거나(커밋 0건) HEAD 에 그 경로가 없으면 `undefined`.
+ */
+function readHeadFile(runGit, relFilePath) {
+  try {
+    runGit(['rev-parse', '-q', '--verify', 'HEAD'])
+  } catch (error) {
+    // `-q --verify` 는 ref 가 없으면 출력 없이 exit 1 로 끝난다(`git-rev-parse(1)` `--quiet`).
+    if (error?.status === 1 && !error?.stderr) return undefined
+    throw error
+  }
+  const entry = runGit([
+    ...QUOTEPATH_OFF,
+    'ls-tree',
+    '-z',
+    'HEAD',
+    '--',
+    `:(literal)${relFilePath}`,
+  ])
+  if (entry === '') return undefined
+  return runGit(['cat-file', 'blob', `HEAD:${relFilePath}`])
+}
+
+/** blame 할 이력이 없어 실패했는가 — HEAD·인덱스 모두에 없는 경로, 또는 커밋 0건 저장소. */
+function isNoHistoryBlame(error) {
+  if (error?.status !== 128 || typeof error?.stderr !== 'string') return false
+  return /^fatal: (?:no such path '.*' in HEAD|no such ref: HEAD)$/mu.test(error.stderr)
+}
+
+/**
+ * `git blame --porcelain` 한 줄 출력의 `previous <커밋> <경로>`. 없으면 null.
+ *
+ * 경로는 `core.quotepath=false` 여도 `"`·`\\`·제어문자가 들어 있으면 C 식으로 따옴표를 친다.
+ */
+function parseBlamePrevious(porcelain) {
+  for (const line of porcelain.split('\n')) {
+    if (line.startsWith('\t')) break
+    if (!line.startsWith('previous ')) continue
+    const rest = line.slice('previous '.length)
+    const space = rest.indexOf(' ')
+    return { path: unquoteGitPath(rest.slice(space + 1)), sha: rest.slice(0, space) }
+  }
+  return null
+}
+
+/** git 의 C 식 경로 따옴표를 푼다(`quote.c` `unquote_c_style`: `\\a` 류 이스케이프와 3자리 8진 바이트). */
+function unquoteGitPath(text) {
+  if (!text.startsWith('"')) return text
+  const escapes = {
+    '"': 0x22,
+    '\\': 0x5c,
+    a: 0x07,
+    b: 0x08,
+    f: 0x0c,
+    n: 0x0a,
+    r: 0x0d,
+    t: 0x09,
+    v: 0x0b,
+  }
+  const bytes = []
+  for (let index = 1; index < text.length - 1; index += 1) {
+    const char = String.fromCodePoint(text.codePointAt(index))
+    if (char !== '\\') {
+      bytes.push(...Buffer.from(char, 'utf8'))
+      index += char.length - 1
+      continue
+    }
+    const next = text[index + 1]
+    if (/[0-3]/u.test(next)) {
+      bytes.push(Number.parseInt(text.slice(index + 1, index + 4), 8))
+      index += 3
+    } else {
+      bytes.push(escapes[next])
+      index += 1
+    }
+  }
+  return Buffer.from(bytes).toString('utf8')
 }
 
 /**

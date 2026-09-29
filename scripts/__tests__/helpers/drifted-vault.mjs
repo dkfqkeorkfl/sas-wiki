@@ -25,9 +25,9 @@ import { commit, feedCommit, git, initVault, writeDoc } from './tmp-git-vault.mj
 // ── 문서 정체성(유효 UUIDv7 리터럴 — wiki-doc.schema.json pattern 준수) ────────────────────────
 /** 대조군 문서 — 어느 vault 에서도 **반드시 살아남는다**(드리프트가 전면 확산되지 않았다는 앵커). */
 export const ID_HEALTHY = '0192e000-0000-7000-8000-0000000000e1'
-/** 드리프트 문서의 **생성 시점** id — 변조 전 값이자 대조 vault 의 최종 값이다. */
+/** 드리프트 문서의 **처음** id — 변조 전 값이자 대조 vault 의 최종 값이다. */
 export const ID_ORIGINAL = '0192e000-0000-7000-8000-0000000000e2'
-/** 사후 변조로 갈아끼운 id — 생성 시점 id 와 다르므로 깊은 티어가 `ID_TAMPERED` 로 잡는다. */
+/** 사후 변조로 갈아끼운 id — 바꾸기 바로 전 id 와 다르므로 깊은 티어가 `ID_TAMPERED` 로 잡는다. */
 export const ID_TAMPERED_NOW = '0192e000-0000-7000-8000-0000000000e3'
 /** 삭제된 문서의 id — 살아 있는 다른 경로가 이것을 재사용한다(`DELETED_ID_REUSE`). */
 export const ID_REUSED = '0192e000-0000-7000-8000-0000000000e4'
@@ -70,7 +70,7 @@ const DRAFT_BODY_V1 = `## 정의\n\n초안 문서다. 아직 공개하지 않는
 const DRAFT_BODY_V2 = `## 정의\n\n${DRAFT_MARKER} — 초안을 갱신했다. 여전히 dev 폴더 아래에 있다.\n`
 
 /**
- * **TAMPERED** — 생성 시점 id 와 현재 id 가 어긋난 문서 1건 + 정상 문서 1건 + 그 드리프트 문서를
+ * **TAMPERED** — 처음 id 가 사후에 바뀐 문서 1건 + 정상 문서 1건 + 그 드리프트 문서를
  * 가리키는 `feed:` 1건.
  *
  * ```text

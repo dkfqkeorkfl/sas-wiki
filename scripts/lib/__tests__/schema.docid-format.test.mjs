@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
+import { DOC_ID_PATTERN } from '../doc-id.mjs'
 import { validateItem } from '../schema-validator.mjs'
 
 const UUIDV7_A = '0192f0c0-8000-7000-8000-0123456789ab'
@@ -45,14 +46,24 @@ function accepts(owner, value) {
   return validateItem(value, patternOf(owner)).length === 0
 }
 
-describe('R1 doc-id 형식 — UUIDv7 수락 / 12-hex 거부 (4 pattern)', () => {
-  const docIdOwners = {
-    'feeds.docRef.id': feedsSchema.definitions.docRef.properties.id,
-    'summary.activeDoc.id': summarySchema.definitions.activeDoc.properties.id,
-    'summary.disableStub.id': summarySchema.definitions.disableStub.properties.id,
-    'wiki-doc.id': wikiDocSchema.properties.id,
-  }
+const docIdOwners = {
+  'feeds.docRef.id': feedsSchema.definitions.docRef.properties.id,
+  'summary.activeDoc.id': summarySchema.definitions.activeDoc.properties.id,
+  'summary.disableStub.id': summarySchema.definitions.disableStub.properties.id,
+  'wiki-doc.id': wikiDocSchema.properties.id,
+}
 
+describe('doc-id pattern 단일 출처 — 스키마 JSON 은 doc-id.mjs 의 DOC_ID_PATTERN 과 같은 문자열이다', () => {
+  // JSON 스키마는 JS 상수를 import 할 수 없어 같은 pattern 문자열을 따로 적는다. 한쪽만 고치면
+  // 코드(isDocId)와 스키마 검증이 서로 다른 id 를 받아들이게 되므로 여기서 문자열 일치를 강제한다.
+  for (const [label, owner] of Object.entries(docIdOwners)) {
+    it(`${label}.pattern === DOC_ID_PATTERN`, () => {
+      expect(owner.pattern).toBe(DOC_ID_PATTERN)
+    })
+  }
+})
+
+describe('R1 doc-id 형식 — UUIDv7 수락 / 12-hex 거부 (4 pattern)', () => {
   for (const [label, owner] of Object.entries(docIdOwners)) {
     it(`${label} 이 UUIDv7 을 수락한다`, () => {
       expect(accepts(owner, UUIDV7_A)).toBe(true)

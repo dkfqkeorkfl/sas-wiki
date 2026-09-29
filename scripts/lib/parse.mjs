@@ -64,6 +64,60 @@ export function parseFrontmatterYaml(yamlText, filePath = '') {
   return result
 }
 
+/**
+ * frontmatter 필드 한 개의 값 — `pattern` 에 맞는 **마지막** 줄의 값을 `parseFrontmatterYaml` 과
+ * 같은 스칼라 규칙으로 해석한다(같은 키가 반복되면 뒤의 값이 이기는 것도 같다).
+ *
+ * frontmatter 가 `parseFrontmatterYaml` 로 해석될 때만 읽는다 — 검증기가 문서로 인정하지 않는
+ * frontmatter 의 값은 그 문서의 값이 아니다(닫는 `---` 가 빠지면 블록 끝이 본문의 가로줄로 밀려 본문
+ * 예시가 필드처럼 보인다). 해석이 안 되면 throw 하지 않고 `undefined` 를 준다 — 과거 blob 을 훑는
+ * 호출부가 깨진 한 시점 때문에 멈추지 않게 하기 위해서다.
+ * 한 줄짜리 스칼라 필드 전용이다 — 들여쓴 하위 블록은 보지 않는다.
+ *
+ * @param {string} markdown frontmatter 를 포함한 문서 전체 텍스트
+ * @param {RegExp} pattern 필드 줄 하나에 맞고 캡처 그룹 1 이 콜론 뒤 원시 값인 비전역 정규식
+ * @returns {unknown} 해석된 값. frontmatter 가 없거나 해석되지 않거나 필드 줄이 없으면 `undefined`
+ */
+export function extractFrontmatterField(markdown, pattern) {
+  const target = findFieldLine(markdown, pattern)
+  return target?.match ? parseScalar(target.match[1]) : undefined
+}
+
+/**
+ * `extractFrontmatterField` 가 읽는 필드 줄의 번호(1 부터). git 처럼 `\n` 만 줄 끝으로 센다.
+ *
+ * @param {string} markdown
+ * @param {RegExp} pattern `extractFrontmatterField` 와 같은 규약의 필드 줄 정규식
+ * @returns {number | undefined} 필드 줄이 없거나 frontmatter 가 없거나 해석되지 않으면 `undefined`
+ */
+export function findFrontmatterFieldLine(markdown, pattern) {
+  const target = findFieldLine(markdown, pattern)
+  if (!target?.match) return undefined
+  return markdown.slice(0, target.start).split('\n').length
+}
+
+/**
+ * frontmatter 필드 한 줄을 `line` 으로 바꾼다. 필드 줄이 없으면 frontmatter 첫 줄로 넣는다.
+ * 대상 줄 밖은 바이트 그대로 둔다.
+ *
+ * 필드가 반복되면 `extractFrontmatterField` 가 읽는 마지막 줄을 바꾼다 — 쓴 값이 곧 읽히는 값이다.
+ *
+ * @param {string} markdown
+ * @param {RegExp} pattern `extractFrontmatterField` 와 같은 규약의 필드 줄 정규식
+ * @param {string} line 넣을 줄(줄끝 제외)
+ * @returns {string | null} 바뀐 문서. frontmatter 가 없거나 해석되지 않으면 `null`
+ */
+export function upsertFrontmatterField(markdown, pattern, line) {
+  const target = findFieldLine(markdown, pattern)
+  if (target === null) return null
+  if (target.match) {
+    return markdown.slice(0, target.start) + line + markdown.slice(target.end)
+  }
+  return (
+    markdown.slice(0, target.blockStart) + line + target.eol + markdown.slice(target.blockStart)
+  )
+}
+
 export function slugifyHeading(text) {
   return String(text)
     .trim()
@@ -185,6 +239,36 @@ export function parseMarkdownFile(filePath) {
     frontmatter: parseFrontmatterYaml(yamlText, filePath),
     raw,
   }
+}
+
+const FRONTMATTER_BLOCK_RE = /^---(\r?\n)([\s\S]*?)\r?\n---/u
+
+/**
+ * frontmatter 블록 안에서 `pattern` 에 맞는 마지막 줄의 위치.
+ *
+ * @returns {null | { blockStart: number, eol: string, match: RegExpExecArray | null,
+ *   start: number, end: number }} 블록이 없거나 해석되지 않으면 null. 맞는 줄이 없으면 `match` 가
+ *   null 이다.
+ */
+function findFieldLine(markdown, pattern) {
+  const block = FRONTMATTER_BLOCK_RE.exec(markdown)
+  if (!block) return null
+  const [, eol, yamlText] = block
+  try {
+    parseFrontmatterYaml(yamlText)
+  } catch {
+    return null
+  }
+  const blockStart = '---'.length + eol.length
+  let found = { blockStart, end: blockStart, eol, match: null, start: blockStart }
+  let offset = blockStart
+  for (const rawLine of yamlText.split('\n')) {
+    const text = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    const match = pattern.exec(text)
+    if (match) found = { blockStart, end: offset + text.length, eol, match, start: offset }
+    offset += rawLine.length + 1
+  }
+  return found
 }
 
 function indentOf(line) {

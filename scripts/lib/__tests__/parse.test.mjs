@@ -13,9 +13,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   derivePathAndBreadcrumb,
+  extractFrontmatterField,
+  findFrontmatterFieldLine,
   parseFrontmatterYaml,
   parseMarkdownFile,
   slugifyHeading,
+  upsertFrontmatterField,
 } from '../parse.mjs'
 
 const WIKI_DIR = path.join('/repo', 'wiki')
@@ -141,5 +144,137 @@ describe('parseMarkdownFile — body 선행 공백은 빈 줄만 제거하고 �
 
     expect(parsed.body.startsWith('    들여쓰기 본문.')).toBe(true)
     expect(raw.split('\n')[parsed.bodyLineOffset]).toBe('    들여쓰기 본문.')
+  })
+})
+
+// 필드 패턴은 테스트 로컬 리터럴이다(캡처 그룹 1 = 콜론 뒤 원시 값).
+const ID_LINE = /^id[ \t]*:(.*)$/u
+const TITLE_LINE = /^title[ \t]*:(.*)$/u
+const ID = '0192f0c0-8000-7000-8000-0123456789ab'
+const OTHER_ID = '0192f0c1-0000-7000-b000-000000000003'
+
+describe('extractFrontmatterField — 패턴으로 지정한 frontmatter 필드 한 개의 값', () => {
+  it('parseFrontmatterYaml 과 같은 스칼라 규칙으로 값을 해석한다(따옴표 제거)', () => {
+    const md = `---\nid: '${ID}'\ntitle: "삼성전자"\n---\n\n본문\n`
+
+    expect(extractFrontmatterField(md, ID_LINE)).toBe(ID)
+    expect(extractFrontmatterField(md, TITLE_LINE)).toBe('삼성전자')
+  })
+
+  it('따옴표 모양만 다른 같은 값은 같은 값으로 읽힌다', () => {
+    const single = extractFrontmatterField(`---\nid: '${ID}'\n---\n`, ID_LINE)
+    const double = extractFrontmatterField(`---\nid: "${ID}"\n---\n`, ID_LINE)
+    const bare = extractFrontmatterField(`---\nid: ${ID}\n---\n`, ID_LINE)
+
+    expect(new Set([single, double, bare])).toEqual(new Set([ID]))
+  })
+
+  it('값이 비었거나 null 표기면 null 이다', () => {
+    expect(extractFrontmatterField('---\nid:\ntitle: x\n---\n', ID_LINE)).toBeNull()
+    expect(extractFrontmatterField("---\nid: ''\n---\n", ID_LINE)).toBe('')
+    expect(extractFrontmatterField('---\nid: ~\n---\n', ID_LINE)).toBeNull()
+  })
+
+  it('필드 줄이 없거나 frontmatter 자체가 없으면 undefined 다', () => {
+    expect(extractFrontmatterField('---\ntitle: x\n---\n', ID_LINE)).toBeUndefined()
+    expect(extractFrontmatterField(`id: ${ID}\n\n본문\n`, ID_LINE)).toBeUndefined()
+  })
+
+  it('본문의 같은 모양 줄은 무시한다(frontmatter 블록 안만 본다)', () => {
+    const md = `---\ntitle: x\n---\n\nid: ${ID}\n`
+
+    expect(extractFrontmatterField(md, ID_LINE)).toBeUndefined()
+  })
+
+  it('같은 키가 두 번 나오면 뒤의 값을 쓴다(parseFrontmatterYaml 의 덮어쓰기 규칙)', () => {
+    const md = `---\nid: ${ID}\ntitle: x\nid: ${OTHER_ID}\n---\n`
+
+    expect(extractFrontmatterField(md, ID_LINE)).toBe(OTHER_ID)
+    expect(parseFrontmatterYaml(`id: ${ID}\ntitle: x\nid: ${OTHER_ID}`).id).toBe(OTHER_ID)
+  })
+
+  it('CRLF 줄끝도 읽는다', () => {
+    expect(extractFrontmatterField(`---\r\nid: '${ID}'\r\ntitle: x\r\n---\r\n`, ID_LINE)).toBe(ID)
+  })
+
+  it('frontmatter 가 parseFrontmatterYaml 로 해석되지 않으면 필드를 읽지 않는다(throw 하지 않는다)', () => {
+    // 검증기가 문서로 인정하지 않는 frontmatter 에서 뽑은 값은 그 문서의 값이 아니다.
+    const md = `---\nid: ${ID}\n  broken-indent: 1\n콜론 없는 줄\n---\n`
+
+    expect(() => parseFrontmatterYaml(`id: ${ID}\n  broken-indent: 1\n콜론 없는 줄`)).toThrow()
+    expect(extractFrontmatterField(md, ID_LINE)).toBeUndefined()
+  })
+
+  it('닫는 --- 가 빠진 문서에서 본문의 id: 예시를 frontmatter 값으로 읽지 않는다', () => {
+    // 블록 끝을 본문의 가로줄(---)로 잘못 잡으면 본문 코드 예시가 frontmatter 안으로 들어온다.
+    const md = `---\ntitle: x\n\n## 예시\n\n\`\`\`yaml\nid: ${OTHER_ID}\n\`\`\`\n\n---\n\n본문\n`
+
+    expect(extractFrontmatterField(md, ID_LINE)).toBeUndefined()
+  })
+})
+
+describe('findFrontmatterFieldLine — 필드 줄의 1 부터 세는 줄 번호', () => {
+  // git blame `-L <n>,<n>` 에 그대로 넘기는 값이다. git 은 `\n` 만 줄 끝으로 센다.
+  it('extractFrontmatterField 가 읽는 줄(반복되면 마지막 줄)의 번호다', () => {
+    const md = `---\ntitle: x\nid: ${ID}\ntype: t\nid: ${OTHER_ID}\n---\n\n본문\n`
+
+    expect(findFrontmatterFieldLine(md, ID_LINE)).toBe(5)
+    expect(findFrontmatterFieldLine(md, TITLE_LINE)).toBe(2)
+  })
+
+  it('CRLF 문서도 `\\n` 기준으로 센다', () => {
+    expect(findFrontmatterFieldLine(`---\r\ntitle: x\r\nid: ${ID}\r\n---\r\n`, ID_LINE)).toBe(3)
+  })
+
+  it('필드 줄이 없거나 frontmatter 가 해석되지 않으면 undefined 다', () => {
+    expect(findFrontmatterFieldLine('---\ntitle: x\n---\n', ID_LINE)).toBeUndefined()
+    expect(
+      findFrontmatterFieldLine(`---\nid: ${ID}\n  broken: 1\n콜론 없음\n---\n`, ID_LINE),
+    ).toBeUndefined()
+    expect(findFrontmatterFieldLine(`id: ${ID}\n`, ID_LINE)).toBeUndefined()
+  })
+})
+
+describe('upsertFrontmatterField — frontmatter 필드 한 줄을 바꾸거나 넣는다', () => {
+  it('필드 줄이 없으면 frontmatter 첫 줄로 넣고 나머지는 바이트 그대로 둔다', () => {
+    const md = '---\ntitle: x\ntype: concept\n---\n\n본문\n'
+
+    expect(upsertFrontmatterField(md, ID_LINE, `id: '${ID}'`)).toBe(
+      `---\nid: '${ID}'\ntitle: x\ntype: concept\n---\n\n본문\n`,
+    )
+  })
+
+  it('필드 줄이 있으면 그 줄만 바꾼다', () => {
+    const md = "---\ntitle: x\nid: ''\ntype: concept\n---\n\n본문\n"
+
+    expect(upsertFrontmatterField(md, ID_LINE, `id: '${ID}'`)).toBe(
+      `---\ntitle: x\nid: '${ID}'\ntype: concept\n---\n\n본문\n`,
+    )
+  })
+
+  it('같은 키가 여러 줄이면 읽을 때 쓰이는 마지막 줄을 바꾼다', () => {
+    const md = '---\nid: a\nid: b\n---\n'
+    const next = upsertFrontmatterField(md, ID_LINE, `id: '${ID}'`)
+
+    expect(next).toBe(`---\nid: a\nid: '${ID}'\n---\n`)
+    expect(extractFrontmatterField(next, ID_LINE)).toBe(ID)
+  })
+
+  it('CRLF 파일에는 CRLF 로 넣는다', () => {
+    const md = '---\r\ntitle: x\r\n---\r\n'
+
+    expect(upsertFrontmatterField(md, ID_LINE, `id: '${ID}'`)).toBe(
+      `---\r\nid: '${ID}'\r\ntitle: x\r\n---\r\n`,
+    )
+  })
+
+  it('frontmatter 가 없으면 null 이다(쓸 자리가 없다)', () => {
+    expect(upsertFrontmatterField('# 제목\n\n본문\n', ID_LINE, `id: '${ID}'`)).toBeNull()
+  })
+
+  it('frontmatter 가 해석되지 않으면 null 이다(깨진 블록에 쓰지 않는다)', () => {
+    const md = '---\ntitle: x\n  broken-indent: 1\n---\n'
+
+    expect(upsertFrontmatterField(md, ID_LINE, `id: '${ID}'`)).toBeNull()
   })
 })

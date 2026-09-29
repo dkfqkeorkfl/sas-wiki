@@ -1,3 +1,4 @@
+import { DOC_ID_FIELD } from './doc-id.mjs'
 import { parseCommitForFeed } from './feed.mjs'
 import {
   anyMarkdown,
@@ -10,7 +11,7 @@ import {
 } from './git.mjs'
 import { judgeFeedSurvival } from './feed-survival.mjs'
 import { loadHeadDocState } from './head-state.mjs'
-import { parseFrontmatterYaml } from './parse.mjs'
+import { extractFrontmatterField } from './parse.mjs'
 
 // ★ P5 Task 9(D-I) — 독립 실행형 피드 워크(수집+페이지 합성)는 `scripts/__tests__/helpers/`로
 //   옮겼다(테스트 전용 참조 구현이라는 그 성격 자체는 P1 부터 그대로다 — 자리만 프로덕션 스캔
@@ -237,7 +238,7 @@ function resolveDocRef(
   },
 ) {
   for (const ref of refsForStatus(sha, status)) {
-    const id = readBlobId(runGit, ref, status.path)
+    const id = readBlobId(runGit, ref)
     if (id && headIds.has(id)) return { id, reason: null }
     if (id && invalidIds.has(id)) {
       stats.invalidExcludedRefs.push({ path: status.path, sha })
@@ -285,7 +286,7 @@ function isMissingBlobRef(error) {
   return /does not exist in|exists on disk, but not in|invalid object name/iu.test(text)
 }
 
-function readBlobId(runGit, ref, filePath) {
+function readBlobId(runGit, ref) {
   let blob
   try {
     blob = runGit(['-c', 'core.quotepath=false', 'show', ref])
@@ -299,14 +300,8 @@ function readBlobId(runGit, ref, filePath) {
       cause: error,
     })
   }
-  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
-  if (!match) return null
-  try {
-    const id = parseFrontmatterYaml(match[1], filePath).id
-    return typeof id === 'string' ? id : null
-  } catch {
-    return null
-  }
+  const id = extractFrontmatterField(blob, DOC_ID_FIELD)
+  return typeof id === 'string' ? id : null
 }
 
 function refsForStatus(sha, status) {

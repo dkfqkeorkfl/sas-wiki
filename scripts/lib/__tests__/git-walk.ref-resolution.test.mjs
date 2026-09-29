@@ -129,7 +129,7 @@ describe('walkFeeds — blob 조회 실패는 "id 없음"으로 삼켜지지 않
   it('RX4: 실제로 존재하는 참조에서 git show 가 비-benign 실패를 내면 조용히 넘어가지 않고 throw 한다', () => {
     const vault = initVault()
     try {
-      // 생성 커밋과 feed 커밋을 **분리**한다 — 같은 sha 로 합치면 `readIdAtCreation`(head-state 구성)의
+      // 생성 커밋과 feed 커밋을 **분리**한다 — 같은 sha 로 합치면 id 변경 판별(head-state 구성)의
       //   조회와 실패 주입 대상이 겹쳐 어느 쪽이 죽였는지 구분되지 않는다.
       writeDoc(vault, 'concept/피해자', { id: ID_VICTIM, wikiRoot: 'wiki' })
       commit(vault, 'chore: 피해자 생성')
@@ -139,7 +139,7 @@ describe('walkFeeds — blob 조회 실패는 "id 없음"으로 삼켜지지 않
       const failingArgs = ['-c', 'core.quotepath=false', 'show', failingRef].join(',')
 
       const real = makeGitRunner(vault)
-      const hostileRunGit = (args) => {
+      const hostileRunGit = (args, options) => {
         if (args.join(',') === failingArgs) {
           const error = new Error(`Command failed: git show ${failingRef}`)
           // 실 git 이 정상 부재에 쓰는 어휘(`does not exist in`·`invalid object name` 등)를 **일부러
@@ -148,7 +148,7 @@ describe('walkFeeds — blob 조회 실패는 "id 없음"으로 삼켜지지 않
           error.status = 128
           throw error
         }
-        return real(args)
+        return real(args, options)
       }
 
       expect(

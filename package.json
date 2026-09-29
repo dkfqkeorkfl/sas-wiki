@@ -22,7 +22,7 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.8",
     "prettier": "^3.8.3",
-    "uuid": "^14.0.1",
+    "uuid": "^14.0.2",
     "vitest": "^4.1.8"
   },
   "dependencies": {

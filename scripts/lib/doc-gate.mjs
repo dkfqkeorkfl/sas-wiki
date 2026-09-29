@@ -1,6 +1,12 @@
 import path from 'node:path'
 
-import { anyMarkdown, collectDeletedDocEvents, readIdAtCreation, readIdAtDeletion } from './git.mjs'
+import { DOC_ID_FIELD, findDuplicateIds, isDocId, judgeDocId } from './doc-id.mjs'
+import {
+  anyMarkdown,
+  collectDeletedDocEvents,
+  readFrontmatterFieldChange,
+  readIdAtDeletion,
+} from './git.mjs'
 import { validateItem } from './schema-validator.mjs'
 
 export const REASON_CODES = [
@@ -43,14 +49,11 @@ export function judgeDocs(parsedDocs, ctx) {
     }
   }
 
-  for (const [id, group] of groupsBy(docs, (doc) => doc.frontmatter?.id)) {
-    if (typeof id !== 'string' || group.length < 2) continue
-    const idLooksValid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(id)
+  for (const [id, group] of findDuplicateIds(docs, (doc) => doc.frontmatter?.id)) {
     // 무효 id 를 공유하는 그룹은 대표 하나만 SCHEMA_VIOLATION 을 유지하고 나머지를 DUPLICATE_ID 로
     // 낮춘다. 대표는 **입력 배열 위치가 아니라 docPath 정렬**로 고른다 — `index === 0` 이면 같은
     // 문서 집합을 순서만 바꿔 넣었을 때 어떤 문서가 대표가 되는지도 뒤바뀐다(순서 의존, 재현됨).
-    const representative = idLooksValid
+    const representative = isDocId(id)
       ? null
       : group.toSorted((a, b) =>
           docPath(a, wikiPrefix).localeCompare(docPath(b, wikiPrefix), 'ko'),
@@ -68,14 +71,14 @@ export function judgeDocs(parsedDocs, ctx) {
   if (typeof ctx.runGit === 'function') {
     for (const doc of docs) {
       if (issues.has(doc)) continue
-      const idAtCreation = readIdAtCreation(ctx.runGit, docPath(doc, wikiPrefix))
-      if (idAtCreation !== null && idAtCreation !== doc.frontmatter.id) {
-        setIssue(
-          issues,
-          doc,
-          'ID_TAMPERED',
-          `id 사후 변조: 생성 시점 id(${idAtCreation}) ≠ 현재 frontmatter id(${doc.frontmatter.id})`,
-        )
+      // 커밋 훅과 같은 판단(`judgeDocId`)이다. id 가 비었거나 형식이 틀린 경우(미등록·훼손)는 위
+      //   스키마 검사가 이미 SCHEMA_VIOLATION 으로 걸렀으므로, 여기서 남는 판단은 정상·변경뿐이다.
+      const [before, after] = readFrontmatterFieldChange(ctx.runGit, docPath(doc, wikiPrefix), {
+        contents: doc.raw,
+        pattern: DOC_ID_FIELD,
+      })
+      if (judgeDocId([before, after]) === 'changed') {
+        setIssue(issues, doc, 'ID_TAMPERED', `id 변경: 원래 id(${before}) ≠ 현재 id(${after})`)
       }
     }
 

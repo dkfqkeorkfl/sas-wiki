@@ -37,9 +37,9 @@ function recordingRunner(vault) {
   const real = makeGitRunner(vault)
   return {
     calls,
-    run(args) {
+    run(args, options) {
       calls.push([...args])
-      return real(args)
+      return real(args, options)
     },
   }
 }

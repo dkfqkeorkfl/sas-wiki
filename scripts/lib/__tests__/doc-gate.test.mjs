@@ -69,8 +69,8 @@ const ID_B = '0192b000-0000-7000-8000-0000000000bb'
 const ID_C = '0192c000-0000-7000-8000-0000000000cc'
 const ID_DUP = '0192d000-0000-7000-8000-0000000000dd'
 const ID_TAMPER = '0192e000-0000-7000-8000-0000000000ee'
-/** 생성 시점 blob 에 박혀 있던(= 지금과 다른) id — 사후 변조의 증거. */
-const ID_AT_CREATION = '0192f000-0000-7000-8000-0000000000ff'
+/** id 줄을 마지막으로 바꾸기 바로 전의(= 지금과 다른) id — 사후 변경의 증거. */
+const ID_BEFORE_CHANGE = '0192f000-0000-7000-8000-0000000000ff'
 const BAD_ID = 'not-a-valid-uuid'
 
 /** 위키 루트 접두사 **리터럴** — `WIKI_PREFIX` 를 import 하지 않는다(규범 A). */
@@ -78,11 +78,14 @@ const WIKI_PREFIX = 'wiki/'
 
 /** `parseMarkdownFile` + `derivePathAndBreadcrumb` 결과의 최소 형태(리터럴 조립). */
 function doc(relPath, frontmatter) {
+  const body = '## 정의\n\n본문 문단이다.\n'
+  const yaml = Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
   return {
-    body: '## 정의\n\n본문 문단이다.\n',
+    body,
     breadcrumb: relPath.split('/'),
     filePath: `/hermetic/vault/wiki/${relPath}.md`,
     frontmatter,
+    raw: ['---', ...yaml, '---', '', body].join('\n'),
     relPath,
   }
 }
@@ -101,18 +104,25 @@ const relPathsOf = (docs) => docs.map((entry) => entry.relPath)
 /**
  * 깊은 티어 stub — `git` CLI 흉내. **테스트 로컬 리터럴**이며 프로덕션 상수를 쓰지 않는다.
  *
- * `readIdAtCreation` 은 ① `log --follow --name-status` 로 생성 커밋을 찾고 ② `show <sha>:<경로>` 로
- * 그 시점 blob 을 읽는다. 그래서 두 질의에 각각 답한다. `--diff-filter=D`(삭제 이력)는 빈 답을 준다
- * — 이 케이스가 겨냥한 축은 ID_TAMPERED 하나다.
+ * id 변경 판별은 ① `blame --porcelain` 으로 id 줄을 마지막으로 바꾼 커밋과 그 부모(`previous`)를 찾고
+ * ② `cat-file blob <부모>:<경로>` 로 그때의 문서를 읽는다. 그래서 두 질의에 각각 답한다.
+ * `--diff-filter=D`(삭제 이력)는 빈 답을 준다 — 이 케이스가 겨냥한 축은 ID_TAMPERED 하나다.
  */
-function tamperingRunGit(idAtCreation = ID_AT_CREATION) {
+function tamperingRunGit(idBeforeChange = ID_BEFORE_CHANGE) {
   return (args) => {
     if (args.includes('--diff-filter=D')) return ''
-    if (args.includes('--follow')) {
-      return '4b825dc642cb6eb9a060e54bf8d69288fbee4904\t2026-01-01T00:00:00+00:00\nA\twiki/company/변조.md\n' // prettier-ignore
+    if (args.includes('blame')) {
+      return [
+        '1111111111111111111111111111111111111111 1 1 1',
+        'summary id 변경',
+        'previous 4b825dc642cb6eb9a060e54bf8d69288fbee4904 wiki/company/변조.md',
+        'filename wiki/company/변조.md',
+        `\tid: "${ID_TAMPER}"`,
+        '',
+      ].join('\n')
     }
-    if (args.includes('show')) {
-      return `---\ntitle: 변조\ntype: concept\nstatus: active\nid: "${idAtCreation}"\n---\n\n## 정의\n\n본문 문단이다.\n` // prettier-ignore
+    if (args.includes('cat-file')) {
+      return `---\ntitle: 변조\ntype: concept\nstatus: active\nid: "${idBeforeChange}"\n---\n\n## 정의\n\n본문 문단이다.\n` // prettier-ignore
     }
     return ''
   }
@@ -293,7 +303,7 @@ describe('judgeDocs — 중복·결정성·우선순위 (DG6~DG10 · 🔴RED 미
 const TAMPERED_DOCS = [doc('company/변조', fm(ID_TAMPER))]
 
 describe('judgeDocs — 비용 티어 (DG11·DG12 · 🔴RED 미구현)', () => {
-  it('DG11: runGit 주입 + 생성 시점 id 가 다르다 → ID_TAMPERED', () => {
+  it('DG11: runGit 주입 + id 줄의 바로 전 값이 다르다 → ID_TAMPERED', () => {
     // `validate.mjs:315`(불변 게이트) 흡수. stub 은 **리터럴 반환값을 가진 테스트 로컬 함수**다.
     const result = judge(TAMPERED_DOCS, ctx({ runGit: tamperingRunGit() }))
 
