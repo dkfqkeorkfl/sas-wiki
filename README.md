@@ -57,7 +57,6 @@ logs/                   생성 리포트(gitignore)
 ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone). 아래 피드 발행법 참고
 .husky/                 git 훅 — 커밋 직전 check-doc-ids, push 직전 validate
 .github/workflows/      CI — PR·main push 에서 포맷·테스트·validate·build
-.claude/                Claude Code 하네스 — git 훅을 건너뛰는 명령을 막는다
 ```
 
 ## 산출물
@@ -651,7 +650,7 @@ git commit -m "chore: CXL 문서 추가"
 - **커밋 훅이 막았다** — 메시지에 원래 id 가 나온다. 그 값으로 되돌려 `git add` 한 뒤 다시 커밋한다. 메시지가 "이미 이력에 있습니다" 이면 이번 커밋이 아니라 앞선 커밋(훅을 건너뛴 커밋)에서 바뀐 것이라 되돌려도 풀리지 않는다 — 아래 정정 방법을 쓴다.
 - **push 직전 검사가 중복 id 로 막았다**(대개 복사한 문서) — 아직 push 하지 않은 커밋이라 되돌려 고친다. 브랜치가 갈라진 지점으로 `git reset --soft "$(git merge-base HEAD @{upstream})"`(처음 push 하는 브랜치면 `@{upstream}` 대신 `origin/main`) 하고, 복사본의 `id:` 줄을 지워 `git add` 한 뒤 다시 커밋한다. 커밋 훅이 새 id 를 채운다. 원격 끝(`@{upstream}` 자체)으로 되돌리지 않는다 — 그사이 남이 올린 변경이 되돌리는 변경으로 스테이징돼 다음 커밋이 그것을 지운다.
 - **이미 push 한 문서의 id 를 정정해야 한다**(id 규칙 변경 등) — 두 방법이 있다.
-  1. **id 줄을 지우는 커밋 → 새 id 를 넣는 커밋.** 두 번째 커밋의 바로 전 값이 비어 있으므로 처음 등록으로 판단된다. 생성일과 과거 피드 연결이 유지된다. 첫 커밋은 커밋 훅이 "훼손"으로 막으므로 **사람이** 훅을 건너뛰어(`git commit --no-verify`) 만든다. Claude Code 는 하네스가 이 명령을 막는다.
+  1. **id 줄을 지우는 커밋 → 새 id 를 넣는 커밋.** 두 번째 커밋의 바로 전 값이 비어 있으므로 처음 등록으로 판단된다. 생성일과 과거 피드 연결이 유지된다. 첫 커밋은 커밋 훅이 "훼손"으로 막으므로 **사람이** 훅을 건너뛰어(`git commit --no-verify`) 만든다.
   2. **파일을 지우는 커밋 → `id:` 줄 없이 다시 추가하는 커밋.** 훅이 새 문서로 보고 id 를 채우므로 훅을 건너뛸 필요가 없다. 대신 생성일이 새로 잡히고, 그 문서를 가리키던 과거 피드는 끊긴다(prune). 옛 id 는 삭제된 문서의 id 로 남아 재사용할 수 없다. **다른 살아 있는 문서와 id 가 겹친 복사본에는 쓰지 않는다** — 복사본을 지우면 그 삭제 기록 때문에 원본 문서가 `DELETED_ID_REUSE` 로 제외되고, 되돌릴 수 없다. 그 경우는 1번을 쓴다.
 
 한 커밋 안에서 id 를 바로 다른 값으로 바꾸면 그 자체가 변경이라 어느 방법에도 해당하지 않는다. push 한 커밋을 amend·rebase 로 고치지 않는다(히스토리 재작성 금지).
@@ -904,14 +903,13 @@ pnpm format:check
 
 ### git 훅과 CI
 
-문서 id 는 네 겹으로 확인한다.
+문서 id 는 세 겹으로 확인한다.
 
-| 단계       | 언제                               | 하는 일                                                                         |
-| ---------- | ---------------------------------- | ------------------------------------------------------------------------------- |
-| 하네스     | Claude Code 가 셸 명령을 실행할 때 | git 훅을 건너뛰는 명령을 막는다(`.claude/settings.json`)                        |
-| pre-commit | `git commit`                       | 문서 id 를 판단한다 — 미등록이면 채우고, 훼손·변경이면 원래 id 를 알리고 막는다 |
-| pre-push   | `git push`                         | `validate` — id 형식·변경·**중복**, 스키마, 링크                                |
-| CI         | PR · main push                     | 포맷 · 테스트(커버리지) · `validate` · `build`                                  |
+| 단계       | 언제           | 하는 일                                                                         |
+| ---------- | -------------- | ------------------------------------------------------------------------------- |
+| pre-commit | `git commit`   | 문서 id 를 판단한다 — 미등록이면 채우고, 훼손·변경이면 원래 id 를 알리고 막는다 |
+| pre-push   | `git push`     | `validate` — id 형식·변경·**중복**, 스키마, 링크                                |
+| CI         | PR · main push | 포맷 · 테스트(커버리지) · `validate` · `build`                                  |
 
 **설치** — `pnpm install` 이 `prepare` 스크립트로 husky 를 설치한다(`core.hooksPath` 를 `.husky/_` 로 둔다). 그 뒤 `git commit` 마다 `.husky/pre-commit` 이 `scripts/check-doc-ids.mjs` 를, `git push` 마다 `.husky/pre-push` 가 `scripts/validate.mjs --env dev` 를 부른다.
 
@@ -937,6 +935,6 @@ CI 는 **마지막 상태만** 본다. 그래서 [id 정정 1번](#id-를-고쳐
 
 **CI 가 머지를 막으려면** GitHub 저장소 설정에서 main 에 `verify` 검사를 필수 상태 검사로 걸어야 한다. 걸지 않으면 CI 는 실패를 보여 줄 뿐 머지를 막지 않는다.
 
-**하네스** — `.claude/settings.json` 의 PreToolUse 훅이 Claude Code 의 셸 명령마다 `.claude/hooks/block-git-hook-bypass.mjs` 를 부른다. `--no-verify`(앞부분만 쓴 것 포함) · `git commit -n` · `HUSKY=0` · `core.hooksPath` 변경을 막는다. 커밋 메시지·heredoc 본문에 든 같은 글자와 `git push -n`(dry-run)은 막지 않는다. 사람은 훅을 건너뛸 수 있다(`--no-verify`, `HUSKY=0`) — 일부러 건너뛴 변경도 push·CI 의 `validate` 에서 다시 걸린다.
+git 훅은 건너뛸 수 있다(`--no-verify`, `HUSKY=0`). 건너뛴 변경도 push 직전 검사와 CI 의 `validate` 에서 다시 걸린다.
 
 git 날짜(`%aI`)는 git 2.45 부터 UTC 를 `+00:00` 대신 `Z` 로 쓴다. 스크립트가 `Z` 로 맞추므로 git 버전과 무관하게 결과가 같다.
