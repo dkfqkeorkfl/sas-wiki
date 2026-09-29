@@ -208,7 +208,7 @@ export function parseCommitRecords(raw) {
       throw new Error(`git 커밋 hash 형식이 올바르지 않습니다: ${hash}`)
     }
     records.push({
-      authorDate: tokens[index + 1],
+      authorDate: normalizeUtcOffset(tokens[index + 1]),
       body: tokens[index + 3].replace(/^\n+/, '').replace(/\s+$/u, ''),
       hash,
       subject: tokens[index + 2] || '',
@@ -317,7 +317,7 @@ export function getFileHistory(runGit, relFilePath) {
       continue
     }
     const [sha, ts] = line.split('\t')
-    header = { sha, ts }
+    header = { sha, ts: normalizeUtcOffset(ts) }
   }
   return history
 }
@@ -380,6 +380,20 @@ export function makeGitRunner(cwd, { timeoutMs } = {}) {
       stdio: ['ignore', 'pipe', 'pipe'],
       ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     })
+}
+
+/**
+ * git 이 준 strict ISO 8601 시각(`%aI`)의 UTC 표기를 `Z` 하나로 맞춘다.
+ *
+ * git 2.45 부터 이 형식은 UTC 를 `+00:00` 대신 `Z` 로 쓴다(github.com/git/git
+ * `Documentation/RelNotes/2.45.0.adoc`: _"The output format for dates "iso-strict" has been tweaked
+ * to show a time in the Zulu timezone with "Z" suffix, instead of "+00:00"."_). 이 값은 문서
+ * created/updated 와 피드 ts 에 그대로 실리므로, 맞추지 않으면 같은 커밋이라도 빌드한 컴퓨터의 git
+ * 버전에 따라 결과가 다른 글자가 된다. 최신 git 의 표기인 `Z` 로 맞추고, 다른 오프셋(`+09:00` 등)은
+ * 커밋한 시간대 그대로 둔다.
+ */
+function normalizeUtcOffset(isoDate) {
+  return isoDate.replace(/\+00:00$/u, 'Z')
 }
 
 /**
