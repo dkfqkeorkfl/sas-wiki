@@ -132,13 +132,13 @@ function assertHistoryIntegrity(runGit, vaultDir) {
 }
 
 /**
- * 성공한 조회만 캐시한다(실패는 그대로 전파 — 조용한 폴백 금지). stdin(`input`)도 결과를 바꾸므로
- * 키에 넣고 그대로 넘긴다.
+ * 성공한 조회만 캐시한다(실패는 그대로 전파 — 조용한 폴백 금지). 러너 옵션(stdin `input` ·
+ * 출력 `encoding`)도 결과를 바꾸므로 키에 넣고 그대로 넘긴다.
  */
 function memoize(runGit) {
   const cache = new Map()
   return (args, options = {}) => {
-    const key = JSON.stringify([args, options.input ?? null])
+    const key = JSON.stringify([args, options.input ?? null, options.encoding ?? null])
     if (cache.has(key)) return cache.get(key)
     const value = runGit(args, options)
     cache.set(key, value)

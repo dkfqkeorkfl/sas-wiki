@@ -1,0 +1,9 @@
+# push 전에 CI 와 같은 문서 검증(validate: id 형식·변경·중복·스키마·링크)을 돌린다. 여기서 걸리면
+# 아직 push 하지 않은 로컬 커밋이라 되돌려 고칠 수 있다.
+node scripts/validate.mjs --env dev || {
+  echo '[wiki] pre-push: validate 가 실패해 push 를 멈췄습니다. 위 사유를 고친 뒤 다시 push 하세요.' >&2
+  echo '  중복 id(DUPLICATE_ID)라면: push 하지 않은 커밋을 git reset --soft @{upstream} 로 되돌리고' >&2
+  echo '  (처음 push 하는 브랜치면 origin/main), 복사한 문서의 id 줄을 지운 뒤 다시 커밋하세요.' >&2
+  echo '  커밋 훅이 새 id 를 채웁니다.' >&2
+  exit 1
+}

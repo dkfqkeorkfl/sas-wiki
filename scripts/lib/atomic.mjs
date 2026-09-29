@@ -24,20 +24,32 @@ export function classifyFsError(code) {
  * 정상으로 보인다). 완료 증거는 이 주석의 코드-표준 대조와 대상 단독·전 스위트 green 뿐이다.
  *
  * ★ 성능 부작용 — `fsync` 는 호출마다 디스크 동기화를 강제해 비용이 있다. 이 함수의 실 호출부는
- * `cache/*.json`·`logs/*` 빌드 산출물(`generator.mjs`)뿐이라 호출 빈도가 낮다(요청마다가 아니라
- * 빌드 1회당 소수 회) — 핫 패스가 아니므로 이 비용을 durability 와 맞바꾼다.
+ * `cache/*.json`·`logs/*` 빌드 산출물(`generator.mjs`)과 커밋 훅이 id 를 채운 문서뿐이라 호출 빈도가
+ * 낮다(요청마다가 아니라 빌드·커밋 1회당 소수 회) — 핫 패스가 아니므로 이 비용을 durability 와
+ * 맞바꾼다.
+ *
+ * `mode` 를 주면 그 권한으로 쓴다. 주지 않으면 새 파일의 기본 권한(0666 & ~umask)이다 — 기존 파일을
+ * 교체할 때 원래 권한을 지키려면 호출부가 그 권한을 넘긴다.
  */
-export function writeFileAtomic(finalPath, contents, { retryBudgetMs = 500, retries = 5 } = {}) {
+export function writeFileAtomic(
+  finalPath,
+  contents,
+  { mode, retryBudgetMs = 500, retries = 5 } = {},
+) {
   const dir = path.dirname(finalPath)
   fs.mkdirSync(dir, { recursive: true })
+  // 대상 이름을 넣지 않는다 — 넣으면 한 경로 성분 길이 한도(보통 255바이트) 근처의 긴 이름에서 임시
+  //   파일부터 만들 수 없다.
   const tmp = path.join(
     dir,
-    `.tmp-${path.basename(finalPath)}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    `.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   )
 
   let fd
   try {
     fd = fs.openSync(tmp, 'wx')
+    // `open` 의 mode 인자는 umask 에 깎이므로 연 뒤에 맞춘다.
+    if (mode !== undefined) fs.fchmodSync(fd, mode)
     fs.writeFileSync(fd, contents)
     fs.fsyncSync(fd)
     fs.closeSync(fd)

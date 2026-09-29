@@ -155,7 +155,7 @@ export function cleanup(...dirs) {
  * `<wikiRoot>/<rel>.md` 를 쓴다.
  *
  * `id` 를 주면 frontmatter 에 `id: "<id>"`(따옴표 스칼라 — parse.mjs:199 분기)로 넣는다.
- * `id` 를 생략하면 **pre-id 문서**(생성 blob 에 id 부재)를 시뮬레이션한다. type/status/body 는 기본 유효.
+ * `id` 를 생략하면 id 줄이 없는 문서(id 등록 전 문서)가 된다. type/status/body 는 기본 유효.
  *
  * `wikiRoot` 는 **리터럴 기본값**이다 — `parse-vault.mjs` 의 `WIKI_PREFIX` 를 import 하지 않는다
  * (자기참조 공허성 금지 · tdd §2.3 규범 A). 드리프트 감지는 트립와이어 스펙

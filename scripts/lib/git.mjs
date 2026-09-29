@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
+import path from 'node:path'
 
 import { DOC_ID_FIELD } from './doc-id.mjs'
 import { extractFrontmatterField, findFrontmatterFieldLine } from './parse.mjs'
@@ -329,7 +331,8 @@ export function getFileHistory(runGit, relFilePath) {
  *   값을 읽는다. 아직 커밋하지 않은 변경은 그 자체가 마지막 변경이라 `previous` 가 HEAD 다. 그 줄이
  *   문서가 생길 때부터 있었으면 `previous` 가 없고 전도 없다(`undefined`).
  * - 필드 줄이 `contents` 에 없으면 blame 할 줄이 없다. 이때 전은 HEAD 의 값이다 — 줄이 지워진
- *   변경이 아직 커밋 전이면 그것이 마지막 변경이기 때문이다.
+ *   변경이 아직 커밋 전이면 그것이 마지막 변경이기 때문이다. 아직 커밋하지 않은 이동이면 HEAD 에는
+ *   옛 경로로 있으므로 `headPath` 로 그 경로를 준다.
  * - HEAD·인덱스 어디에도 없는 문서, 커밋이 없는 저장소는 이력이 없어 전이 없다.
  *
  * blame 은 파일 이름 변경을 따라가고(`git-blame(1)`: _"The origin of lines is automatically
@@ -338,14 +341,19 @@ export function getFileHistory(runGit, relFilePath) {
  *
  * @param {(args: string[], options?: { input?: string }) => string} runGit
  * @param {string} relFilePath 리포 상대 posix 경로
- * @param {{ contents: string, pattern: RegExp }} options `pattern` 은 `extractFrontmatterField` 규약
+ * @param {{ contents: string, headPath?: string, pattern: RegExp }} options `pattern` 은
+ *   `extractFrontmatterField` 규약. `headPath` 는 HEAD 에서의 경로(기본: `relFilePath`)
  * @returns {[unknown, unknown]} [전, 후]
  */
-export function readFrontmatterFieldChange(runGit, relFilePath, { contents, pattern }) {
+export function readFrontmatterFieldChange(
+  runGit,
+  relFilePath,
+  { contents, headPath = relFilePath, pattern },
+) {
   const after = extractFrontmatterField(contents, pattern)
   const line = findFrontmatterFieldLine(contents, pattern)
   if (line === undefined) {
-    const head = readHeadFile(runGit, relFilePath)
+    const head = readHeadFile(runGit, headPath)
     return [head === undefined ? undefined : extractFrontmatterField(head, pattern), after]
   }
 
@@ -384,8 +392,108 @@ export function readFrontmatterFieldChange(runGit, relFilePath, { contents, patt
 }
 
 /**
+ * 이번 커밋에 들어가는 문서 — 인덱스에서 추가(A)·수정(M)·이동(R)된 문서와 이동 전 경로. 삭제는 뺀다.
+ *
+ * `--find-renames` 를 명시한다. 사용자가 `diff.renames=false` 를 설정하면 이동이 삭제+추가로 보여
+ * 옮긴 문서가 새 문서로 판단되기 때문이다(커맨드라인 플래그가 설정을 이긴다). `-z` 로 받아 따옴표·
+ * 탭이 든 경로도 그대로 읽는다. HEAD 가 없는 첫 커밋 전에는 git 이 빈 트리와 비교하므로 전부 A 다.
+ * 일반 파일(모드 100644·100755)만 낸다 — validate 도 일반 파일만 문서로 읽는다.
+ *
+ * @returns {{ oldPath?: string, path: string, status: 'A' | 'M' | 'R' }[]} 리포 상대 posix 경로
+ */
+export function listStagedDocChanges(runGit, { isDocPath }) {
+  // `--raw -z` 한 항목: `:<옛 모드> <새 모드> <옛 blob> <새 blob> <상태>\0<경로>\0`, 이동은 경로 둘.
+  const fields = runGit([
+    'diff',
+    '--cached',
+    '--raw',
+    '-z',
+    '--find-renames',
+    '--diff-filter=AMR',
+  ]).split('\0')
+  const changes = []
+  for (let index = 0; index < fields.length - 1;) {
+    const [, newMode, , , statusField] = fields[index].split(' ')
+    const status = statusField[0]
+    const paths = fields.slice(index + 1, index + (status === 'R' ? 3 : 2))
+    index += 1 + paths.length
+    const docPath = paths.at(-1)
+    if (!/^100(?:644|755)$/u.test(newMode) || !isDocPath(docPath)) continue
+    changes.push(
+      status === 'R' ? { oldPath: paths[0], path: docPath, status } : { path: docPath, status },
+    )
+  }
+  return changes
+}
+
+/**
+ * 병합이 진행 중인가(충돌을 풀고 병합 커밋을 만들기 전 — `MERGE_HEAD` 가 있다).
+ *
+ * `rev-parse -q --verify` 는 ref 가 없으면 아무것도 출력하지 않고 exit 1 로 끝낸다(`git-rev-parse(1)`
+ * `--quiet`). 그 한 가지 실패만 "진행 중 아님" 으로 읽고, 나머지는 그대로 던진다.
+ */
+export function isMergeInProgress(runGit) {
+  try {
+    runGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+    return true
+  } catch (error) {
+    if (error?.status === 1 && !error?.stderr) return false
+    throw error
+  }
+}
+
+/** 인덱스(stage 0)에 올라간 파일 내용 — 작업 트리가 아니라 이번 커밋에 들어갈 내용이다. 바이트 그대로. */
+export function readStagedBytes(runGit, relFilePath) {
+  return runGit(['cat-file', 'blob', `:${relFilePath}`], { encoding: 'buffer' })
+}
+
+/**
+ * 인덱스의 파일 내용만 `content` 로 바꾼다. 작업 트리와 파일 모드는 건드리지 않는다.
+ *
+ * 작업 트리를 고친 뒤 `git add` 하면 사용자가 일부러 스테이징하지 않은 변경(`git add -p`)까지
+ * 커밋에 섞인다. 그래서 blob 을 직접 만들어 인덱스 항목만 교체한다(`git-hash-object(1)`,
+ * `git-update-index(1)` 의 `--cacheinfo`). 모드를 읽을 때 경로를 `:(literal)` 로 넘긴다 — 글롭으로
+ * 읽으면 `[2024]` 같은 이름이 비슷한 다른 파일에 맞아 그 파일의 모드를 씌운다.
+ */
+export function writeStagedFile(runGit, relFilePath, content) {
+  const record = runGit(['ls-files', '--stage', '-z', '--', `:(literal)${relFilePath}`])
+  const match = /^(\d{6}) [0-9a-f]+ (\d)\t([^\0]*)\0$/u.exec(record)
+  if (!match || match[2] !== '0' || match[3] !== relFilePath) {
+    throw new Error(`인덱스에 없는 경로입니다: ${relFilePath}`)
+  }
+  const blob = runGit(['hash-object', '-w', '--stdin'], { input: content }).trim()
+  runGit(['update-index', '--cacheinfo', `${match[1]},${blob},${relFilePath}`])
+}
+
+/**
+ * 훅이 보고 있는 인덱스(`GIT_INDEX_FILE`)가 커밋 뒤 버려지는 임시 인덱스인가.
+ *
+ * 경로 지정 커밋(`git commit <경로>`)은 저장소 인덱스를 먼저 써 둔 뒤 훅을 별도 임시 인덱스 위에서
+ * 돌리고 커밋 후 그것을 버린다(github.com/git/git `builtin/commit.c` `prepare_index` 의 "A partial
+ * commit" 절차). 거기에 쓴 변경은 커밋에는 들어가도 저장소 인덱스에는 남지 않아, 다음 커밋이 그
+ * 변경을 되돌린다. 커밋 뒤 저장소 인덱스로 남는 것은 `<git-dir>/index`(일반 커밋)와 그 잠금 파일
+ * `<git-dir>/index.lock`(`commit -a`·`--include`) 둘뿐이다.
+ *
+ * @param {{ cwd: string, indexFile: string | undefined }} options `indexFile` 이 상대 경로면 `cwd` 기준
+ */
+export function isTemporaryIndex(runGit, { cwd, indexFile }) {
+  if (!indexFile) return false
+  const repositoryIndex = canonicalPath(
+    path.join(runGit(['rev-parse', '--absolute-git-dir']).trim(), 'index'),
+  )
+  const target = canonicalPath(path.resolve(cwd, indexFile))
+  return target !== repositoryIndex && target !== `${repositoryIndex}.lock`
+}
+
+/** 디렉터리 부분의 심볼릭 링크를 풀어 같은 파일을 같은 문자열로 만든다(파일 자체는 없어도 된다). */
+function canonicalPath(file) {
+  return path.join(realpathSync(path.dirname(file)), path.basename(file))
+}
+
+/**
  * vault 를 cwd 로 고정한 git 러너. 비0 종료는 **throw** 다(`execFileSync` 극성 그대로).
- * 두 번째 인자 `{ input }` 을 주면 그 문자열을 git 의 stdin 으로 넘긴다.
+ * 두 번째 인자 `{ input }` 을 주면 그 문자열을 git 의 stdin 으로 넘기고, `{ encoding: 'buffer' }` 면
+ * stdout 을 디코딩하지 않은 Buffer 로 돌려준다.
  *
  * ★ **`timeoutMs` 가 D23 의 spawn 타임아웃 자리다**(v3 P2). 미지정이면 옵션 자체를 붙이지 않아
  * 오늘과 **바이트 동일한 동작**이다 — Node `child_process` 의 `timeout` 기본값이 `undefined` 이고
@@ -403,10 +511,10 @@ export function readFrontmatterFieldChange(runGit, relFilePath, { contents, patt
  * @param {{ timeoutMs?: number }} [options]
  */
 export function makeGitRunner(cwd, { timeoutMs } = {}) {
-  return (args, { input } = {}) =>
+  return (args, { encoding = 'utf8', input } = {}) =>
     execFileSync('git', args, {
       cwd,
-      encoding: 'utf8',
+      encoding,
       maxBuffer: 64 * 1024 * 1024,
       ...(input === undefined
         ? { stdio: ['ignore', 'pipe', 'pipe'] }

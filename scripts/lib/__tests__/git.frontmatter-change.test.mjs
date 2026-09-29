@@ -263,6 +263,30 @@ describe('readFrontmatterFieldChange — 아직 커밋하지 않은 내용', () 
   })
 })
 
+describe('readFrontmatterFieldChange — 스테이징한 이동에서 id 줄이 없어진 경우', () => {
+  it('headPath 로 이동 전 경로를 주면 전은 HEAD 의 이동 전 문서 값이다', () => {
+    // 없어진 줄은 blame 할 수 없어 HEAD 의 값을 전으로 쓰는데, 이동했으면 HEAD 에는 옛 경로로 있다.
+    const vault = initWithRoot()
+    try {
+      writeDoc(vault, 'tech/옛이름', { id: X, title: 'HBM' })
+      commit(vault, 'chore: 옛 이름으로 생성')
+      git(vault, ['mv', 'wiki/tech/옛이름.md', HBM])
+      writeDoc(vault, 'tech/HBM', { title: 'HBM' })
+      git(vault, ['add', '-A'])
+
+      expect(
+        readFrontmatterFieldChange(makeGitRunner(vault), HBM, {
+          contents: staged(vault, HBM),
+          headPath: 'wiki/tech/옛이름.md',
+          pattern: ID_LINE,
+        }),
+      ).toEqual([X, undefined])
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
 describe('readFrontmatterFieldChange — 실패를 삼키지 않는다', () => {
   it('blame 이 알려진 "이력 없음" 말고 다른 이유로 실패하면 던진다', () => {
     // "이력 없음" 으로 삼키면 조회 실패가 "처음 등록" 으로 둔갑해 변경 판별이 조용히 꺼진다.

@@ -1,0 +1,1 @@
+node scripts/check-doc-ids.mjs

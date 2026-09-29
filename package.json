@@ -17,10 +17,12 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.8",
+    "husky": "^9.1.7",
     "prettier": "^3.8.3",
     "uuid": "^14.0.2",
     "vitest": "^4.1.8"

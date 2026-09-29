@@ -107,6 +107,31 @@ describe('writeFileAtomic — 정상 경로 (AT1~AT3 · 🔴RED 미구현)', () 
   })
 })
 
+describe('writeFileAtomic — 파일 이름·권한 (AT7·AT8)', () => {
+  it('AT7: 긴 파일 이름도 쓴다 — 임시 파일 이름 길이가 대상 이름에 따라 늘지 않는다', () => {
+    // 대상 이름을 임시 이름에 넣으면 긴 이름(한 경로 성분 255바이트 한도 근처)에서 임시 파일부터
+    //   만들 수 없다. 한글 한 글자는 UTF-8 3바이트라 76자 + `.md` 는 231바이트다.
+    const dir = makeDir()
+    const target = path.join(dir, `${'가'.repeat(76)}.md`)
+
+    writeAtomic(target, '본문\n')
+
+    expect(readFileSync(target, 'utf8')).toBe('본문\n')
+    expect(tmpLeftovers(dir)).toEqual([])
+  })
+
+  it('AT8: mode 를 주면 그 권한으로 쓴다(umask 와 무관)', () => {
+    const dir = makeDir()
+    const target = path.join(dir, 'a.md')
+    writeFileSync(target, 'old\n', { mode: 0o600 })
+
+    writeAtomic(target, 'new\n', { mode: 0o600 })
+
+    expect(readFileSync(target, 'utf8')).toBe('new\n')
+    expect(statSync(target).mode & 0o777).toBe(0o600)
+  })
+})
+
 describe('classifyFsError — 재시도 대상과 즉시 실패의 경계 (AT4 · 🔴RED 미구현)', () => {
   it('AT4: EPERM·EACCES·EBUSY → retry · **EXDEV** 와 ENOSPC → fatal', () => {
     // ★ EXDEV 를 재시도에 넣으면 **tmp 경로 버그가 0.5초 동안 조용히 숨는다**(D-E 7단계).
