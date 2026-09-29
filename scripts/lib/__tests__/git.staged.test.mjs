@@ -7,7 +7,7 @@
 //   writeStagedFile      : 인덱스 내용만 바꾸고 작업 트리와 파일 모드는 건드리지 않는다.
 //   isTemporaryIndex     : 훅이 보는 인덱스가 커밋 뒤 버려지는 임시 인덱스(경로 지정 커밋)인가.
 //   isMergeInProgress    : 충돌을 풀고 병합 커밋을 만들기 전인가(MERGE_HEAD).
-import { chmodSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -124,6 +124,24 @@ describe('listStagedDocChanges — 이번 커밋에 들어가는 문서', () => 
     }
   })
 
+  it('심볼릭 링크였던 경로가 일반 파일 문서가 되면(타입 변경) 낸다', () => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'tech/대상', { title: '대상' })
+      symlinkSync('대상.md', path.join(vault, 'wiki', 'tech', '링크.md'))
+      commit(vault, 'chore: 링크')
+      rmSync(path.join(vault, 'wiki', 'tech', '링크.md'))
+      writeDoc(vault, 'tech/링크', { title: '이제 문서' })
+      git(vault, ['add', '-A'])
+
+      expect(listStagedDocChanges(makeGitRunner(vault), { isDocPath: isWikiDoc })).toEqual([
+        { path: 'wiki/tech/링크.md', status: 'T' },
+      ])
+    } finally {
+      cleanup(vault)
+    }
+  })
+
   it('따옴표·탭이 든 경로도 그대로 낸다', () => {
     const vault = initVault()
     try {
@@ -222,6 +240,24 @@ describe('readStagedBytes · writeStagedFile — 인덱스만 읽고 쓴다', ()
       expect(
         git(vault, ['ls-files', '--stage', '--', ':(literal)wiki/tech/[2024] note.md']),
       ).toMatch(/^100644 /u)
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  it.each([
+    ['skip-worktree', '--skip-worktree', /^S /u],
+    ['assume-unchanged', '--assume-unchanged', /^h /u],
+  ])('writeStagedFile 은 %s 표시를 유지한다', (_label, flag, tag) => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'tech/HBM', { title: 'HBM' })
+      git(vault, ['add', '-A'])
+      git(vault, ['update-index', flag, '--', 'wiki/tech/HBM.md'])
+
+      writeStagedFile(makeGitRunner(vault), 'wiki/tech/HBM.md', '---\ntitle: HBM\n---\n')
+
+      expect(git(vault, ['ls-files', '-v', '--', 'wiki/tech/HBM.md'])).toMatch(tag)
     } finally {
       cleanup(vault)
     }

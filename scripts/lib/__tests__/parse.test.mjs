@@ -15,6 +15,7 @@ import {
   derivePathAndBreadcrumb,
   extractFrontmatterField,
   findFrontmatterFieldLine,
+  hasReadableFrontmatter,
   parseFrontmatterYaml,
   parseMarkdownFile,
   slugifyHeading,
@@ -210,6 +211,18 @@ describe('extractFrontmatterField — 패턴으로 지정한 frontmatter 필드 
     const md = `---\ntitle: x\n\n## 예시\n\n\`\`\`yaml\nid: ${OTHER_ID}\n\`\`\`\n\n---\n\n본문\n`
 
     expect(extractFrontmatterField(md, ID_LINE)).toBeUndefined()
+  })
+})
+
+describe('hasReadableFrontmatter — 검증기가 문서로 인정하는 frontmatter 가 있는가', () => {
+  it.each([
+    ['정상', `---\ntitle: x\nid: ${ID}\n---\n\n본문\n`, true],
+    ['필드가 없어도 블록이 해석되면 참', '---\ntitle: x\n---\n', true],
+    ['frontmatter 없음', '# 제목\n', false],
+    ['최상위 들여쓰기', '---\ntitle: x\n type: t\n---\n', false],
+    ['BOM 으로 시작', '\ufeff---\ntitle: x\n---\n', false],
+  ])('%s → %s', (_label, markdown, expected) => {
+    expect(hasReadableFrontmatter(markdown)).toBe(expected)
   })
 })
 

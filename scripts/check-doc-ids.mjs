@@ -4,7 +4,7 @@
 // 문서 id 는 한번 정해지면 바뀌면 안 되는 내부 키다. 사람이 손으로 만들면 빠뜨리거나 형식을 틀리기
 // 쉬워 기계가 채우고, 한번 정해진 id 를 바꾸는 커밋은 여기서 막는다. push 직전과 CI 는 같은 판단을
 // validate 로 다시 한다(ID_TAMPERED).
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { lstatSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -18,13 +18,18 @@ import {
   listStagedDocChanges,
   makeGitRunner,
   readFrontmatterFieldChange,
+  readHeadFile,
   readStagedBytes,
   underWikiPrefix,
   writeStagedFile,
 } from './lib/git.mjs'
 import { WIKI_PREFIX } from './lib/head-state.mjs'
 import { newDocId } from './lib/new-doc-id.mjs'
-import { extractFrontmatterField, upsertFrontmatterField } from './lib/parse.mjs'
+import {
+  extractFrontmatterField,
+  hasReadableFrontmatter,
+  upsertFrontmatterField,
+} from './lib/parse.mjs'
 
 // --vault 미지정 시 기본값 = 스크립트 자기 리포 루트(cwd 무관).
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -53,7 +58,7 @@ export function checkDocIds({ updateIndex = true, vault }) {
   const runGit = makeGitRunner(vaultDir)
   checkGitAvailable(runGit)
 
-  // 병합 커밋에 훅의 수정을 섞지 않는다 — id 는 병합 전 브랜치나 병합 뒤 일반 커밋에서 채운다.
+  // 병합 커밋에 훅의 수정을 섞지 않는다 — 판단·차단은 하되 채우지는 않는다.
   const merging = isMergeInProgress(runGit)
   const blocked = []
   const skipped = []
@@ -68,25 +73,29 @@ export function checkDocIds({ updateIndex = true, vault }) {
       continue
     }
 
+    // frontmatter 가 해석되지 않으면 id 줄이 멀쩡해도 id 를 읽을 수 없다(검증기도 문서로 보지 않는다).
+    //   id 를 되돌리라고 하면 틀린 안내가 되므로 먼저 가른다.
+    if (!hasReadableFrontmatter(staged)) {
+      blocked.push({ path: change.path, reason: UNREADABLE_FRONTMATTER })
+      continue
+    }
+
+    const headPath = change.oldPath ?? change.path
     const [before, after] = readFrontmatterFieldChange(runGit, change.path, {
       contents: staged,
-      headPath: change.oldPath,
+      headPath,
       pattern: DOC_ID_FIELD,
     })
     const verdict = judgeDocId([before, after])
-    if (verdict === 'changed') {
-      blocked.push({
-        path: change.path,
-        reason: `id 는 바꿀 수 없습니다(${before} → ${after}) — 원래 id ${before} 로 되돌리세요`,
-      })
-    } else if (verdict === 'damaged') {
-      blocked.push({
-        path: change.path,
-        reason: `id 가 지워졌거나 형식이 틀렸습니다 — 원래 id ${before} 로 되돌리세요`,
-      })
+    if (verdict === 'changed' || verdict === 'damaged') {
+      blocked.push({ path: change.path, reason: blockReason(runGit, headPath, verdict, before, after) }) // prettier-ignore
     } else if (verdict === 'unregistered') {
       if (merging) {
-        skipped.push({ path: change.path, reason: '병합 중이라 채우지 않습니다 — 병합 뒤 일반 커밋에서 채워집니다' }) // prettier-ignore
+        skipped.push({
+          path: change.path,
+          reason:
+            '병합 중이라 채우지 않습니다 — 병합 커밋 뒤 이 문서에 빈 `id:` 줄을 넣고 git add 해 커밋하면 채워집니다',
+        })
         continue
       }
       const plan = planFill(vaultDir, change.path, staged)
@@ -105,6 +114,27 @@ export function checkDocIds({ updateIndex = true, vault }) {
   return { blocked, filled: plans.map(({ id, path: docPath }) => ({ id, path: docPath })), skipped }
 }
 
+const UNREADABLE_FRONTMATTER =
+  'frontmatter 가 없거나 해석되지 않습니다(BOM·최상위 들여쓰기·닫는 --- 를 확인하세요) — 고쳐 다시 커밋하세요'
+
+/**
+ * 훼손·변경 문서를 막는 사유. 이번 커밋이 아니라 이미 커밋된 이력에서 바뀐 것이면(훅을 건너뛴 커밋)
+ * 원래 id 로 되돌려도 다시 변경이 되므로, 정정 방법을 가리킨다.
+ */
+function blockReason(runGit, headPath, verdict, before, after) {
+  const head = readHeadFile(runGit, headPath)
+  const atHead = head === undefined ? undefined : extractFrontmatterField(head, DOC_ID_FIELD)
+  if (atHead === after) {
+    return (
+      `id 변경이 이미 이력에 있습니다(${before} → ${after ?? '없음'}) — 이 커밋에서 바꾼 것이 아닙니다. ` +
+      'README 의 "id 를 고쳐야 할 때" 에서 이미 push 한 id 의 정정 방법을 따르세요'
+    )
+  }
+  return verdict === 'changed'
+    ? `id 는 바꿀 수 없습니다(${before} → ${after}) — 원래 id ${before} 로 되돌리세요`
+    : `id 가 지워졌거나 형식이 틀렸습니다 — 원래 id ${before} 로 되돌리세요`
+}
+
 /**
  * 미등록 문서에 넣을 id 와 고친 내용. 채울 수 없으면 그 사유(문자열).
  *
@@ -113,8 +143,12 @@ export function checkDocIds({ updateIndex = true, vault }) {
  */
 function planFill(vaultDir, relPath, staged) {
   const absPath = path.join(vaultDir, ...relPath.split('/'))
-  const worktree = existsSync(absPath) ? decodeUtf8(readFileSync(absPath)) : null
-  if (existsSync(absPath) && worktree === null) {
+  // 작업 트리는 일반 파일일 때만 고친다. 없거나 심볼릭 링크 등이면 인덱스만 채운다 — 링크를 따라가
+  //   쓰면 링크가 일반 파일로 바뀐다.
+  const entry = lstatSync(absPath, { throwIfNoEntry: false })
+  const isFile = entry?.isFile() === true
+  const worktree = isFile ? decodeUtf8(readFileSync(absPath)) : null
+  if (isFile && worktree === null) {
     return '작업 트리 파일이 UTF-8 이 아닙니다 — UTF-8 로 저장해 다시 커밋하세요'
   }
   const worktreeId = worktree === null ? undefined : extractFrontmatterField(worktree, DOC_ID_FIELD)
@@ -123,19 +157,17 @@ function planFill(vaultDir, relPath, staged) {
 
   const nextStaged = fillLine(staged, line, id)
   if (nextStaged === null) {
-    return 'frontmatter 가 없거나 해석되지 않아 id 를 넣을 수 없습니다 — frontmatter 를 고쳐 다시 커밋하세요'
+    return 'id 를 넣으면 frontmatter 가 깨집니다(빈 id: 줄 아래 들여쓴 블록) — id 줄을 지우고 다시 커밋하세요'
   }
   let nextWorktree = null
   if (worktree !== null && !isDocId(worktreeId)) {
     nextWorktree = fillLine(worktree, line, id)
-    if (nextWorktree === null) {
-      return '작업 트리 문서의 frontmatter 가 없거나 해석되지 않아 id 를 넣을 수 없습니다'
-    }
+    if (nextWorktree === null) return `작업 트리 문서: ${UNREADABLE_FRONTMATTER}`
   }
   return {
     absPath,
     id,
-    mode: worktree === null ? undefined : statSync(absPath).mode & 0o7777,
+    mode: worktree === null ? undefined : entry.mode & 0o7777,
     path: relPath,
     staged: nextStaged,
     worktree: nextWorktree,
@@ -199,10 +231,15 @@ export async function main(argv = process.argv.slice(2)) {
     //   커밋이 id 를 지운다. 그래서 작업 트리에만 넣고 여기서 커밋을 멈춘다.
     console.error(
       '[wiki] check-doc-ids 경로 지정 커밋에서는 인덱스를 고칠 수 없어 작업 트리에만 id 를 넣었습니다.\n' +
-        `  → git add ${filled.map((entry) => entry.path).join(' ')} 후 다시 커밋하세요.`,
+        `  → git add -- ${filled.map((entry) => shellQuote(`:(top)${entry.path}`)).join(' ')} 후 다시 커밋하세요.`,
     )
     process.exitCode = 1
   }
+}
+
+/** 셸에 그대로 붙여 넣을 수 있게 작은따옴표로 감싼다. */
+function shellQuote(text) {
+  return `'${text.replaceAll("'", "'\\''")}'`
 }
 
 function usage() {

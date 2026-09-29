@@ -357,6 +357,10 @@ export function readFrontmatterFieldChange(
     return [head === undefined ? undefined : extractFrontmatterField(head, pattern), after]
   }
 
+  // blame 은 HEAD 나 인덱스에 있는 경로만 받는다. 이력이 없음을 git 의 오류 문구로 가리지 않는다 —
+  //   그 문구는 로케일에 따라 번역된다.
+  if (!hasHead(runGit) || !isTracked(runGit, relFilePath)) return [undefined, after]
+
   let porcelain
   try {
     porcelain = runGit(
@@ -377,7 +381,6 @@ export function readFrontmatterFieldChange(
       { input: contents },
     )
   } catch (error) {
-    if (isNoHistoryBlame(error)) return [undefined, after]
     const message = error instanceof Error ? error.message : String(error)
     const stderr = typeof error?.stderr === 'string' && error.stderr ? `\n${error.stderr}` : ''
     throw new Error(`필드 줄의 변경 이력을 읽지 못했습니다(${relFilePath}): ${message}${stderr}`, {
@@ -385,21 +388,31 @@ export function readFrontmatterFieldChange(
     })
   }
 
-  const previous = parseBlamePrevious(porcelain)
-  if (previous === null) return [undefined, after]
-  const blob = runGit(['cat-file', 'blob', `${previous.sha}:${previous.path}`])
-  return [extractFrontmatterField(blob, pattern), after]
+  const blamed = parseBlamePorcelain(porcelain)
+  // blame 은 줄 글자를 따라간다. 그 줄이 생긴 커밋에서 그 줄이 실제로 쓰이던 값이 아니었다면(같은
+  //   키가 뒤에 또 있었거나 frontmatter 밖 본문이었다) 그 뒤 다른 줄을 지우거나 경계를 옮기는 커밋만으로
+  //   값이 바뀐 것이다. 그때는 그 커밋에서 실제로 쓰이던 값이 전이다.
+  if (!/^0+$/u.test(blamed.sha)) {
+    const atBlamed = extractFrontmatterField(readBlob(runGit, blamed.sha, blamed.path), pattern)
+    if (atBlamed !== after) return [atBlamed, after]
+  }
+  if (blamed.previous === null) return [undefined, after]
+  return [
+    extractFrontmatterField(readBlob(runGit, blamed.previous.sha, blamed.previous.path), pattern),
+    after,
+  ]
 }
 
 /**
- * 이번 커밋에 들어가는 문서 — 인덱스에서 추가(A)·수정(M)·이동(R)된 문서와 이동 전 경로. 삭제는 뺀다.
+ * 이번 커밋에 들어가는 문서 — 인덱스에서 추가(A)·수정(M)·이동(R)·타입 변경(T, 예: 심볼릭 링크였던
+ * 경로가 일반 파일이 됨)된 문서와 이동 전 경로. 삭제는 뺀다.
  *
  * `--find-renames` 를 명시한다. 사용자가 `diff.renames=false` 를 설정하면 이동이 삭제+추가로 보여
  * 옮긴 문서가 새 문서로 판단되기 때문이다(커맨드라인 플래그가 설정을 이긴다). `-z` 로 받아 따옴표·
  * 탭이 든 경로도 그대로 읽는다. HEAD 가 없는 첫 커밋 전에는 git 이 빈 트리와 비교하므로 전부 A 다.
  * 일반 파일(모드 100644·100755)만 낸다 — validate 도 일반 파일만 문서로 읽는다.
  *
- * @returns {{ oldPath?: string, path: string, status: 'A' | 'M' | 'R' }[]} 리포 상대 posix 경로
+ * @returns {{ oldPath?: string, path: string, status: 'A' | 'M' | 'R' | 'T' }[]} 리포 상대 posix 경로
  */
 export function listStagedDocChanges(runGit, { isDocPath }) {
   // `--raw -z` 한 항목: `:<옛 모드> <새 모드> <옛 blob> <새 blob> <상태>\0<경로>\0`, 이동은 경로 둘.
@@ -409,7 +422,7 @@ export function listStagedDocChanges(runGit, { isDocPath }) {
     '--raw',
     '-z',
     '--find-renames',
-    '--diff-filter=AMR',
+    '--diff-filter=AMRT',
   ]).split('\0')
   const changes = []
   for (let index = 0; index < fields.length - 1;) {
@@ -461,8 +474,14 @@ export function writeStagedFile(runGit, relFilePath, content) {
   if (!match || match[2] !== '0' || match[3] !== relFilePath) {
     throw new Error(`인덱스에 없는 경로입니다: ${relFilePath}`)
   }
+  // `--cacheinfo` 는 항목을 새로 만들어 skip-worktree·assume-unchanged 표시를 지운다. `ls-files -v` 의
+  //   태그로 읽어 두었다가 다시 건다(`git-ls-files(1)` `-v`: 대문자 S = skip-worktree, 소문자 태그 =
+  //   assume-unchanged).
+  const tag = runGit(['ls-files', '-v', '-z', '--', `:(literal)${relFilePath}`])[0]
   const blob = runGit(['hash-object', '-w', '--stdin'], { input: content }).trim()
   runGit(['update-index', '--cacheinfo', `${match[1]},${blob},${relFilePath}`])
+  if (tag === 'S' || tag === 's') runGit(['update-index', '--skip-worktree', '--', relFilePath])
+  if (tag !== tag.toUpperCase()) runGit(['update-index', '--assume-unchanged', '--', relFilePath])
 }
 
 /**
@@ -523,49 +542,61 @@ export function makeGitRunner(cwd, { timeoutMs } = {}) {
     })
 }
 
+/** HEAD 의 파일 내용. HEAD 가 없거나(커밋 0건) HEAD 에 그 경로가 없으면 `undefined`. */
+export function readHeadFile(runGit, relFilePath) {
+  if (!hasHead(runGit) || !isInHead(runGit, relFilePath)) return undefined
+  return readBlob(runGit, 'HEAD', relFilePath)
+}
+
 /**
- * HEAD 의 파일 내용. HEAD 가 없거나(커밋 0건) HEAD 에 그 경로가 없으면 `undefined`.
+ * 커밋이 하나라도 있는가. `-q --verify` 는 ref 가 없으면 출력 없이 exit 1 로 끝난다
+ * (`git-rev-parse(1)` `--quiet`). 그 한 가지 실패만 "없음" 으로 읽는다.
  */
-function readHeadFile(runGit, relFilePath) {
+function hasHead(runGit) {
   try {
     runGit(['rev-parse', '-q', '--verify', 'HEAD'])
+    return true
   } catch (error) {
-    // `-q --verify` 는 ref 가 없으면 출력 없이 exit 1 로 끝난다(`git-rev-parse(1)` `--quiet`).
-    if (error?.status === 1 && !error?.stderr) return undefined
+    if (error?.status === 1 && !error?.stderr) return false
     throw error
   }
-  const entry = runGit([
-    ...QUOTEPATH_OFF,
-    'ls-tree',
-    '-z',
-    'HEAD',
-    '--',
-    `:(literal)${relFilePath}`,
-  ])
-  if (entry === '') return undefined
-  return runGit(['cat-file', 'blob', `HEAD:${relFilePath}`])
 }
 
-/** blame 할 이력이 없어 실패했는가 — HEAD·인덱스 모두에 없는 경로, 또는 커밋 0건 저장소. */
-function isNoHistoryBlame(error) {
-  if (error?.status !== 128 || typeof error?.stderr !== 'string') return false
-  return /^fatal: (?:no such path '.*' in HEAD|no such ref: HEAD)$/mu.test(error.stderr)
+function isInHead(runGit, relFilePath) {
+  return (
+    runGit([...QUOTEPATH_OFF, 'ls-tree', '-z', 'HEAD', '--', `:(literal)${relFilePath}`]) !== ''
+  )
+}
+
+/** HEAD 나 인덱스에 있는 경로인가 — blame 이 받는 경로다. */
+function isTracked(runGit, relFilePath) {
+  if (isInHead(runGit, relFilePath)) return true
+  return runGit([...QUOTEPATH_OFF, 'ls-files', '-z', '--', `:(literal)${relFilePath}`]) !== ''
+}
+
+function readBlob(runGit, rev, relFilePath) {
+  return runGit(['cat-file', 'blob', `${rev}:${relFilePath}`])
 }
 
 /**
- * `git blame --porcelain` 한 줄 출력의 `previous <커밋> <경로>`. 없으면 null.
+ * `git blame --porcelain` 한 줄 출력 — 그 줄을 마지막으로 바꾼 커밋(`sha`)과 그때의 경로(`path`),
+ * 바로 전 부모(`previous`, 없으면 null). 커밋 전 내용이면 `sha` 가 0 으로만 이뤄진다.
  *
  * 경로는 `core.quotepath=false` 여도 `"`·`\\`·제어문자가 들어 있으면 C 식으로 따옴표를 친다.
  */
-function parseBlamePrevious(porcelain) {
-  for (const line of porcelain.split('\n')) {
+function parseBlamePorcelain(porcelain) {
+  const lines = porcelain.split('\n')
+  const result = { path: null, previous: null, sha: lines[0].split(' ')[0] }
+  for (const line of lines.slice(1)) {
     if (line.startsWith('\t')) break
-    if (!line.startsWith('previous ')) continue
-    const rest = line.slice('previous '.length)
-    const space = rest.indexOf(' ')
-    return { path: unquoteGitPath(rest.slice(space + 1)), sha: rest.slice(0, space) }
+    if (line.startsWith('filename ')) result.path = unquoteGitPath(line.slice('filename '.length))
+    if (line.startsWith('previous ')) {
+      const rest = line.slice('previous '.length)
+      const space = rest.indexOf(' ')
+      result.previous = { path: unquoteGitPath(rest.slice(space + 1)), sha: rest.slice(0, space) }
+    }
   }
-  return null
+  return result
 }
 
 /** git 의 C 식 경로 따옴표를 푼다(`quote.c` `unquote_c_style`: `\\a` 류 이스케이프와 3자리 8진 바이트). */

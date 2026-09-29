@@ -84,6 +84,13 @@ export function extractFrontmatterField(markdown, pattern) {
 }
 
 /**
+ * frontmatter 블록이 있고 `parseFrontmatterYaml` 로 해석되는가 — 검증기가 문서로 인정하는 frontmatter 인가.
+ */
+export function hasReadableFrontmatter(markdown) {
+  return findFieldLine(markdown, /(?!)/u) !== null
+}
+
+/**
  * `extractFrontmatterField` 가 읽는 필드 줄의 번호(1 부터). git 처럼 `\n` 만 줄 끝으로 센다.
  *
  * @param {string} markdown

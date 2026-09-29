@@ -9,7 +9,7 @@
 //   · 필드 줄이 없어진 경우는 blame 할 줄이 없으므로 전 = HEAD 의 값이다.
 //   · 필드는 정규식으로 받는다 — id 전용이 아니다.
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -182,6 +182,45 @@ describe('readFrontmatterFieldChange — 커밋된 이력', () => {
   })
 })
 
+describe('readFrontmatterFieldChange — 줄은 그대로인데 실제 id 가 바뀐 경우', () => {
+  // blame 은 줄 글자를 따라간다. 그 줄이 생길 때 실제로 쓰이던 id 가 아니었다면(뒤의 같은 키가 이겼거나
+  //   frontmatter 밖 본문이었다) 다른 줄을 지우거나 경계를 옮기는 커밋만으로 실제 id 가 바뀐다.
+  it('id 줄이 둘인 문서에서 이기던 줄을 지우면, 전은 그때 실제로 쓰이던 id 다', () => {
+    const vault = initWithRoot()
+    try {
+      const file = writeDoc(vault, 'tech/HBM', { title: 'HBM' })
+      writeFileSync(
+        file,
+        readFileSync(file, 'utf8').replace('---\n', `---\nid: '${Y}'\nid: '${X}'\n`),
+      )
+      commit(vault, 'chore: id 줄이 둘인 문서') // 실제 id = X(뒤의 줄이 이긴다)
+      writeFileSync(file, readFileSync(file, 'utf8').replace(`id: '${X}'\n`, ''))
+      commit(vault, 'chore: 이기던 줄 삭제') // 실제 id = Y
+
+      expect(change(vault)).toEqual([X, Y])
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  it('본문의 id 줄이 닫는 --- 를 옮기는 커밋으로 frontmatter 에 들어와도, 전은 그때 실제로 쓰이던 id 다', () => {
+    const vault = initWithRoot()
+    try {
+      const file = path.join(vault, HBM)
+      mkdirSync(path.dirname(file), { recursive: true })
+      writeFileSync(file, `---\nid: '${X}'\ntitle: HBM\n---\nid: '${Y}'\n\n본문\n`)
+      commit(vault, 'chore: HBM 생성') // 실제 id = X
+      // id: X 줄을 지우고 닫는 --- 를 id: Y 줄 아래로 옮긴다 — id: Y 줄 자체는 그대로다.
+      writeFileSync(file, `---\ntitle: HBM\nid: '${Y}'\n---\n\n본문\n`)
+      commit(vault, 'chore: 경계 이동') // 실제 id = Y
+
+      expect(change(vault)).toEqual([X, Y])
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
 describe('readFrontmatterFieldChange — 아직 커밋하지 않은 내용', () => {
   it('커밋 전 변경은 그 자체가 마지막 변경이다 — 전은 HEAD 의 값', () => {
     const vault = initWithRoot()
@@ -287,10 +326,49 @@ describe('readFrontmatterFieldChange — 스테이징한 이동에서 id 줄이 
   })
 })
 
+describe('readFrontmatterFieldChange — 이력이 없음을 오류 문구가 아니라 구조로 안다', () => {
+  // git 의 오류 문구는 로케일에 따라 번역된다("fatal: " → "Schwerwiegend: "). 문구를 읽어 "이력 없음"을
+  //   가리면 영어가 아닌 환경에서 멈춘다 — 그래서 HEAD 와 경로가 있는지를 먼저 묻고, 없으면 blame 을
+  //   부르지 않는다.
+  const contents = `---\ntitle: HBM\nid: '${X}'\n---\n`
+
+  it('HEAD 가 없으면 blame 을 부르지 않고 전이 없다', () => {
+    const calls = []
+    const runGit = (args) => {
+      calls.push(args)
+      if (args.includes('rev-parse'))
+        throw Object.assign(new Error('no HEAD'), { status: 1, stderr: '' })
+      throw new Error(`예상하지 못한 호출: ${args.join(' ')}`)
+    }
+
+    expect(readFrontmatterFieldChange(runGit, HBM, { contents, pattern: ID_LINE })).toEqual([
+      undefined,
+      X,
+    ])
+    expect(calls.some((args) => args.includes('blame'))).toBe(false)
+  })
+
+  it('HEAD 에도 인덱스에도 없는 경로면 blame 을 부르지 않고 전이 없다', () => {
+    const calls = []
+    const runGit = (args) => {
+      calls.push(args)
+      if (args.includes('blame')) throw new Error('Schwerwiegend: no such path')
+      return args.includes('rev-parse') ? 'abc\n' : ''
+    }
+
+    expect(readFrontmatterFieldChange(runGit, HBM, { contents, pattern: ID_LINE })).toEqual([
+      undefined,
+      X,
+    ])
+    expect(calls.some((args) => args.includes('blame'))).toBe(false)
+  })
+})
+
 describe('readFrontmatterFieldChange — 실패를 삼키지 않는다', () => {
-  it('blame 이 알려진 "이력 없음" 말고 다른 이유로 실패하면 던진다', () => {
+  it('이력이 있는 경로에서 blame 이 실패하면 던진다', () => {
     // "이력 없음" 으로 삼키면 조회 실패가 "처음 등록" 으로 둔갑해 변경 판별이 조용히 꺼진다.
     const failing = (args) => {
+      if (args.includes('ls-tree')) return `100644 blob abc\t${HBM}\0`
       if (args.includes('blame')) {
         throw Object.assign(new Error('Command failed: git blame'), {
           status: 128,

@@ -17,9 +17,11 @@
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -240,6 +242,46 @@ describe('checkDocIds — 미등록이면 채운다', () => {
     }
   })
 
+  it('심볼릭 링크였던 경로를 일반 파일 문서로 바꾸면(타입 변경) 채운다', () => {
+    const vault = initWithRoot()
+    try {
+      writeDoc(vault, 'tech/대상', { id: X, title: '대상' })
+      symlinkSync('대상.md', path.join(vault, HBM))
+      commit(vault, 'chore: 링크')
+      rmSync(path.join(vault, HBM))
+      writeDoc(vault, 'tech/HBM', { title: 'HBM' })
+      git(vault, ['add', '-A'])
+
+      const { filled } = checkDocIds({ vault })
+
+      expect(filled).toEqual([{ id: expect.stringMatching(UUIDV7), path: HBM }])
+      expect(insertedId(staged(vault, HBM))).toBe(filled[0].id)
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  it('작업 트리 쪽이 심볼릭 링크면 링크를 그대로 두고 인덱스만 채운다', () => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'tech/HBM', { title: 'HBM' })
+      git(vault, ['add', '-A'])
+      const target = path.join(vault, 'outside.md')
+      writeFileSync(target, 'outside\n')
+      rmSync(path.join(vault, HBM))
+      symlinkSync(target, path.join(vault, HBM))
+
+      const { filled } = checkDocIds({ vault })
+
+      expect(filled).toHaveLength(1)
+      expect(insertedId(staged(vault, HBM))).toBe(filled[0].id)
+      expect(lstatSync(path.join(vault, HBM)).isSymbolicLink()).toBe(true)
+      expect(readFileSync(target, 'utf8')).toBe('outside\n')
+    } finally {
+      cleanup(vault)
+    }
+  })
+
   it('파일 이름이 길어도 채운다', () => {
     const vault = initVault()
     try {
@@ -357,6 +399,59 @@ describe('checkDocIds — 훼손·변경이면 커밋을 막는다', () => {
     }
   })
 
+  it('줄은 그대로인데 실제 id 가 바뀐 경우(같은 키가 두 줄일 때 이기던 줄을 지움)도 막는다', () => {
+    const vault = initWithRoot()
+    try {
+      writeRaw(vault, `---\nid: '${Y}'\nid: '${X}'\ntitle: HBM\ntype: concept\nstatus: active\n---\n\n본문\n`) // prettier-ignore
+      commit(vault, 'chore: id 줄이 둘인 문서') // 실제 id = X
+      writeRaw(vault, `---\nid: '${Y}'\ntitle: HBM\ntype: concept\nstatus: active\n---\n\n본문\n`)
+      git(vault, ['add', '-A'])
+
+      expect(checkDocIds({ vault }).blocked).toEqual([
+        { path: HBM, reason: expect.stringContaining(X) },
+      ])
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  it('변경이 이번 커밋이 아니라 이미 이력에 있으면(훅을 건너뛴 커밋) 그렇게 알리고 정정 방법을 가리킨다', () => {
+    const vault = initWithRoot()
+    try {
+      writeDoc(vault, 'tech/HBM', { id: X, title: 'HBM' })
+      commit(vault, 'chore: HBM 생성')
+      writeDoc(vault, 'tech/HBM', { id: Y, title: 'HBM' })
+      commit(vault, 'chore: 훅 없이 들어온 id 변경')
+      writeDoc(vault, 'tech/HBM', { body: '## 정의\n\n본문만 수정.\n', id: Y, title: 'HBM' })
+      git(vault, ['add', '-A'])
+
+      const { blocked } = checkDocIds({ vault })
+
+      expect(blocked).toEqual([{ path: HBM, reason: expect.stringMatching(/이미 이력/u) }])
+      expect(blocked[0].reason).toContain(X)
+      expect(blocked[0].reason).not.toMatch(/되돌리세요/u)
+    } finally {
+      cleanup(vault)
+    }
+  })
+
+  it('frontmatter 만 깨지고 id 줄은 그대로면 frontmatter 를 고치라고 알린다(id 를 되돌리라고 하지 않는다)', () => {
+    const vault = initWithRoot()
+    try {
+      writeDoc(vault, 'tech/HBM', { id: X, title: 'HBM' })
+      commit(vault, 'chore: HBM 생성')
+      writeRaw(vault, worktree(vault, HBM).replace('type: concept', ' type: concept'))
+      git(vault, ['add', '-A'])
+
+      const { blocked } = checkDocIds({ vault })
+
+      expect(blocked).toEqual([{ path: HBM, reason: expect.stringMatching(/frontmatter/u) }])
+      expect(blocked[0].reason).not.toMatch(/되돌리세요/u)
+    } finally {
+      cleanup(vault)
+    }
+  })
+
   it('막는 문서가 있으면 다른 새 문서도 채우지 않는다(아무 파일도 고치지 않는다)', () => {
     const vault = initWithRoot()
     try {
@@ -449,10 +544,45 @@ describe('checkDocIds — 병합 커밋 중', () => {
       expect(checkDocIds({ vault })).toEqual({
         blocked: [],
         filled: [],
-        skipped: [{ path: HBM, reason: expect.stringMatching(/병합/u) }],
+        skipped: [{ path: HBM, reason: expect.stringMatching(/병합.*id:.*git add/su) }],
       })
       expect(staged(vault, HBM)).toBe(before)
       expect(worktree(vault, HBM)).toBe(before)
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('checkDocIds — 병합 커밋 중에도 판단·차단은 한다', () => {
+  it.each([
+    ['id 를 바꾼 브랜치', (vault) => writeDoc(vault, 'tech/HBM', { id: Y, title: 'HBM' })],
+    ['id 줄을 지운 브랜치', (vault) => writeDoc(vault, 'tech/HBM', { title: 'HBM' })],
+  ])('%s를 병합하면 원래 id 를 알리고 막는다', (_label, damage) => {
+    const vault = initVault()
+    try {
+      writeFileSync(path.join(vault, 'seed.txt'), 'base\n')
+      writeDoc(vault, 'tech/HBM', { id: X, title: 'HBM' })
+      commit(vault, 'chore: base')
+      const mainBranch = git(vault, ['symbolic-ref', '--short', 'HEAD'])
+      git(vault, ['checkout', '-q', '-b', 'side'])
+      damage(vault)
+      writeFileSync(path.join(vault, 'seed.txt'), 'side\n')
+      commit(vault, 'chore: side')
+      git(vault, ['checkout', '-q', mainBranch])
+      writeFileSync(path.join(vault, 'seed.txt'), 'main\n')
+      commit(vault, 'chore: main')
+      expect(() => git(vault, ['merge', '--no-edit', 'side'])).toThrow() // seed.txt 충돌로 멈춘다
+      writeFileSync(path.join(vault, 'seed.txt'), 'resolved\n')
+      git(vault, ['add', '-A'])
+      const before = staged(vault, HBM)
+
+      expect(checkDocIds({ vault })).toEqual({
+        blocked: [{ path: HBM, reason: expect.stringContaining(X) }],
+        filled: [],
+        skipped: [],
+      })
+      expect(staged(vault, HBM)).toBe(before)
     } finally {
       cleanup(vault)
     }
@@ -527,6 +657,30 @@ describe('pre-commit 훅으로 실행 — 실제 커밋', () => {
 
       expect(committedId(vault)).toBe(id)
       expect(git(vault, ['status', '--porcelain'])).toBe('')
+    } finally {
+      cleanup(vault, hooks)
+    }
+  })
+
+  it('git commit <경로> 를 하위 폴더에서 해도, 안내한 git add 명령을 그 자리에서 그대로 쓸 수 있다', () => {
+    const vault = initWithRoot()
+    const hooks = hooksDir()
+    try {
+      writeDoc(vault, 'tech/HBM', { title: 'HBM' })
+      git(vault, ['add', '-A'])
+      const subdir = path.join(vault, 'wiki', 'tech')
+
+      const first = spawnSync('git', commitArgs(hooks, ['-m', 'chore: HBM 생성', '--', 'HBM.md']), {
+        cwd: subdir,
+        encoding: 'utf8',
+        env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' }, // prettier-ignore
+      })
+      const advice = /(git add -- .+) 후 다시 커밋/u.exec(first.stderr)?.[1]
+
+      expect(first.status).not.toBe(0)
+      expect(advice).toBeDefined()
+      expect(spawnSync('sh', ['-c', advice], { cwd: subdir, encoding: 'utf8' }).status).toBe(0)
+      expect(git(vault, ['diff', '--name-only'])).toBe('')
     } finally {
       cleanup(vault, hooks)
     }

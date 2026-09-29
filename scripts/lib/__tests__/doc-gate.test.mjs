@@ -104,13 +104,17 @@ const relPathsOf = (docs) => docs.map((entry) => entry.relPath)
 /**
  * 깊은 티어 stub — `git` CLI 흉내. **테스트 로컬 리터럴**이며 프로덕션 상수를 쓰지 않는다.
  *
- * id 변경 판별은 ① `blame --porcelain` 으로 id 줄을 마지막으로 바꾼 커밋과 그 부모(`previous`)를 찾고
- * ② `cat-file blob <부모>:<경로>` 로 그때의 문서를 읽는다. 그래서 두 질의에 각각 답한다.
- * `--diff-filter=D`(삭제 이력)는 빈 답을 준다 — 이 케이스가 겨냥한 축은 ID_TAMPERED 하나다.
+ * id 변경 판별은 ① 경로가 이력에 있는지 묻고(`rev-parse`·`ls-tree`) ② `blame --porcelain` 으로 id
+ * 줄을 마지막으로 바꾼 커밋과 그 부모(`previous`)를 찾고 ③ `cat-file blob <커밋>:<경로>` 로 두 시점의
+ * 문서를 읽는다. 그래서 각 질의에 답한다. `--diff-filter=D`(삭제 이력)는 빈 답을 준다 — 이 케이스가
+ * 겨냥한 축은 ID_TAMPERED 하나다.
  */
 function tamperingRunGit(idBeforeChange = ID_BEFORE_CHANGE) {
+  const doc = (id) => `---\ntitle: 변조\ntype: concept\nstatus: active\nid: "${id}"\n---\n\n## 정의\n\n본문 문단이다.\n` // prettier-ignore
   return (args) => {
     if (args.includes('--diff-filter=D')) return ''
+    if (args.includes('rev-parse')) return '1111111111111111111111111111111111111111\n'
+    if (args.includes('ls-tree')) return '100644 blob abc\twiki/company/변조.md\0'
     if (args.includes('blame')) {
       return [
         '1111111111111111111111111111111111111111 1 1 1',
@@ -122,7 +126,8 @@ function tamperingRunGit(idBeforeChange = ID_BEFORE_CHANGE) {
       ].join('\n')
     }
     if (args.includes('cat-file')) {
-      return `---\ntitle: 변조\ntype: concept\nstatus: active\nid: "${idBeforeChange}"\n---\n\n## 정의\n\n본문 문단이다.\n` // prettier-ignore
+      // 변경 커밋(1111…)에서는 지금 id, 그 부모에서는 바뀌기 전 id 다.
+      return args.at(-1).startsWith('1111') ? doc(ID_TAMPER) : doc(idBeforeChange)
     }
     return ''
   }
