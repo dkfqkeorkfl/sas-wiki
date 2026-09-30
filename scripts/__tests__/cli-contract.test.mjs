@@ -330,7 +330,7 @@ describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)'
     // wiki는 `--file` 하나만 받고 그 인자가 필수다. 사람용 스크립트도 파일을 명시해야
     // `pnpm run wiki`가 exit 2로 죽지 않는다. 필수 인자 성질은 `wiki.file-arg.test.mjs` C-2가,
     // 여기서는 소비자가 실제로 실행하는 package script의 정확 문자열이 계약을 고정한다.
-    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --file wiki/KOSPI/삼성전자.md')
+    expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --file wiki/KOSPI/삼성전자/삼성전자.md')
     expect(pkg.scripts.validate).not.toContain('--vault')
   })
 })

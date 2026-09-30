@@ -276,7 +276,7 @@ exit 2 다. vault·env 개념이 사라진 것은 이 CLI 가 더 이상 명부�
 산출 3키와 갈래별 종료 코드는 [wiki 반환값](#wiki-반환값) 절이 소유한다.
 
 ```bash
-node scripts/wiki.mjs --file "$PWD/wiki/KOSPI/삼성전자.md"
+node scripts/wiki.mjs --file "$PWD/wiki/KOSPI/삼성전자/삼성전자.md"
 ```
 
 ### validate
