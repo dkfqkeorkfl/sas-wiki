@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1eae-7670-881d-b038d261a435'
-title: Tesla의 자율주행과 AI 투자
 type: concept
 status: active
 aliases: ['테슬라 AI 투자', 'Tesla FSD와 Optimus']

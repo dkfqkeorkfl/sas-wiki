@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-19fa-72d7-8ca1-c54eb1ad10f8'
-title: NVIDIA
 type: company
 status: active
 aliases: ["엔비디아", "NVDA"]

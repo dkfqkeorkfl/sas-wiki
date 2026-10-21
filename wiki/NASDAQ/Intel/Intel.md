@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-17d4-73c4-b299-a0f912fed4b1'
-title: Intel
 type: company
 status: active
 aliases: ["인텔", "INTC"]

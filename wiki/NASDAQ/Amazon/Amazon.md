@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-14f3-7777-b731-a95a2e1bd06f'
-title: Amazon
 type: company
 status: active
 aliases: ["아마존", "AWS", "AMZN"]

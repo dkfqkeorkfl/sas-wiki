@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1b3f-73b4-b370-4c88898e8b53'
-title: Qualcomm
 type: company
 status: active
 aliases: ["퀄컴", "QCOM"]

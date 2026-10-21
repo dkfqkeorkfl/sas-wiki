@@ -1,6 +1,5 @@
 ---
 id: '01a0422e-6299-70a0-89cb-0d8f7523b3c7'
-title: CLARITY Act
 type: concept
 status: active
 aliases: ['Digital Asset Market Clarity Act', 'H.R. 3633', 'Digital Asset Market Structure Act']

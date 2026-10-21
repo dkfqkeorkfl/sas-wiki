@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1955-73d0-aab5-60ceb7055417'
-title: Microsoft
 type: company
 status: active
 aliases: ["마이크로소프트", "MS", "MSFT"]

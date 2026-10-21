@@ -1,6 +1,5 @@
 ---
 id: "01a0ed88-6e72-747d-9400-6ff61aec081c"
-title: 오픈AI 동맹
 type: moc
 status: active
 aliases: ["OpenAI Ally", "OpenAI 진영", "오픈AI 생태계", "ChatGPT 생태계"]

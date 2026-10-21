@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1ac0-7556-ae53-70e3a369dcb6'
-title: Palantir
 type: company
 status: active
 aliases: ["팔란티어", "Palantir Technologies", "PLTR"]

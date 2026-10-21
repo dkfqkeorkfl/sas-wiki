@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-13f3-72b9-87d1-6e6c75375bc0'
-title: Adobe
 type: company
 status: active
 aliases: ["어도비", "ADBE"]

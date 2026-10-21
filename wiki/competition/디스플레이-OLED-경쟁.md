@@ -1,6 +1,5 @@
 ---
 id: '01a0f17a-4065-77cb-8bd8-109bde3e8e1a'
-title: OLED 디스플레이 시장 경쟁
 type: concept
 status: active
 aliases: ['OLED 점유율', 'OLED Market Share']

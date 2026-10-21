@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-146d-7320-b303-b96837efa2b6'
-title: Alphabet
 type: company
 status: active
 aliases: ["알파벳", "Google", "구글", "GOOG", "GOOGL"]

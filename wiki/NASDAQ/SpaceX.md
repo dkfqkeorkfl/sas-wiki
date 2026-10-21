@@ -1,6 +1,5 @@
 ---
 id: '01a04241-e1d9-7056-911d-e6e827e17adc'
-title: SpaceX
 type: company
 status: active
 aliases: ["스페이스X", "Space Exploration Technologies", "xAI", "Grok", "SPCX"]
@@ -195,4 +194,4 @@ Elon Musk가 차등의결권 주식을 통해 지배력을 보유한다. IPO 투
 - [[GroupX/Tesla-SpaceX-합병논의]]
 - [[concept/AI-데이터센터-생태계]]
 - [[NASDAQ/SpaceX/AI사업과-우주개발]]
-- [[TREND/2026-08/2026-08-04 Tesla·SpaceX 2분기 실적과 AI 투자|2026년 2분기 실적·투자 스냅샷]]
+- [[TREND/2026-08/04. Tesla·SpaceX 2분기 실적과 AI 투자|2026년 2분기 실적·투자 스냅샷]]

@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-098b-717a-a70e-624992ffb6f5'
-title: HD한국조선해양
 type: company
 status: active
 aliases: ["HD Korea Shipbuilding & Offshore Engineering", "한국조선해양", "009540"]

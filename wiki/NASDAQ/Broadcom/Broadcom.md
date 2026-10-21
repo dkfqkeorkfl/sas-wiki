@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-166b-724e-b16c-4204ce6df0c3'
-title: Broadcom
 type: company
 status: active
 aliases: ["브로드컴", "AVGO"]

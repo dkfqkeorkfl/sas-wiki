@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-0bb3-7519-af2c-76a238c9ef5a'
-title: LG화학
 type: company
 status: active
 aliases: ["LG Chem", "051910"]

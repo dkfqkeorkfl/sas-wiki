@@ -111,7 +111,6 @@ ignore-feeds.json       잘못 발행한 피드를 억제하는 목록(tombstone
 ```markdown
 ---
 id: '01088d26-ee68-7a11-b53c-398f328d520e'
-title: 삼성전자
 type: company
 status: active
 aliases: ['Samsung', '005930']
@@ -610,7 +609,6 @@ summary 벌크 아티팩트의 body 원소는 렌더 산출 4키를 유지한다
 | 필드      | 필수 | 값                                                          |
 | --------- | ---- | ----------------------------------------------------------- |
 | `id`      | ✔    | UUIDv7. 커밋할 때 훅이 채운다. **한 번 정해지면 변경 금지** |
-| `title`   | ✔    | 표시 제목                                                   |
 | `type`    | ✔    | `concept` \| `company` \| `moc`                             |
 | `status`  | ✔    | `active` \| `disable`                                       |
 | `aliases` |      | 검색용 별칭 배열 (영문명·티커 등)                           |
@@ -619,6 +617,8 @@ summary 벌크 아티팩트의 body 원소는 렌더 산출 4키를 유지한다
 | `draft`   |      | dev 전용 표식(불리언). 아래 [dev / prod](#dev--prod) 참고   |
 
 `type: company` 는 `meta.ticker`·`meta.sector`·`meta.exchange` 가 **필수**다(값이 `null` 인 건 허용).
+
+표시 제목은 **`.md` 확장자를 뺀 파일명 전체**에서 자동 생성한다. frontmatter에 `title`을 적지 않는다. 웹의 위키 트리와 문서 상단에 같은 제목을 표시한다. 예를 들어 `wiki/TREND/2026-08/28. 원화 강세.md`의 제목은 `28. 원화 강세`다. 엔드포인트가 제공하는 `title` 필드는 유지하며, 이전 frontmatter에 남은 `title`은 표시 제목으로 사용하지 않는다.
 
 id 는 적지 않아도 된다. `id:` 줄을 빼거나 비워 두고 커밋하면 커밋 훅이 UUIDv7 을 채운다(`id:` 줄이 없으면 frontmatter 첫 줄에 넣고, 빈 값·형식이 틀린 값이면 그 줄을 제자리에서 바꾼다). **다른 문서를 복사해 새 문서를 만들 때는 `id:` 줄을 지우고** 커밋한다 — 복사된 id 는 형식이 맞아 훅이 그대로 두고, push 직전 검사에서 중복(`DUPLICATE_ID`)으로 걸린다. 직접 만들어 넣으려면 리포 루트에서 `pnpm install` 을 한 뒤 이렇게 만든다.
 

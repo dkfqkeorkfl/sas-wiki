@@ -1,6 +1,5 @@
 ---
 id: '01a04293-6e25-739d-8cb3-d8e8d6b3b471'
-title: Tesla-SpaceX 합병논의
 type: concept
 status: active
 aliases: ['Tesla SpaceX Merger', 'Musk 지배구조 비교']

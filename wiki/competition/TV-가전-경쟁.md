@@ -1,6 +1,5 @@
 ---
 id: '01a0f17a-405b-70d8-a59d-4c80f1b78221'
-title: TV·생활가전 시장 경쟁
 type: concept
 status: active
 aliases: ['TV 점유율', '생활가전 점유율', 'TV Market Share']

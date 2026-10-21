@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-0a23-77bf-9b7a-4ffa98f19d18'
-title: HD현대중공업
 type: company
 status: active
 aliases: ["HD Hyundai Heavy Industries", "현대중공업", "329180"]

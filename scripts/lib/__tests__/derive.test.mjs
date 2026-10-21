@@ -202,11 +202,11 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
     expect(tree.map((node) => node.path).toSorted()).toEqual(['company', 'tech'])
   })
 
-  it('같은 폴더의 문서 id 배열은 title 기준 ko locale 순서로 정렬된다', () => {
+  it('같은 폴더의 문서 id 배열은 파일명에서 생성한 title 기준 ko locale 순서로 정렬된다', () => {
     const docs = [
       aParsedDoc({
         frontmatter: { id: TSMC_ID, status: 'active', tags: [], title: 'TSMC', type: 'company' },
-        relPath: 'company/tsmc',
+        relPath: 'company/TSMC',
       }),
       aParsedDoc({
         frontmatter: {
@@ -216,7 +216,7 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
           title: '삼성전자',
           type: 'company',
         },
-        relPath: 'company/samsung',
+        relPath: 'company/삼성전자',
       }),
       aParsedDoc({
         frontmatter: {
@@ -226,15 +226,15 @@ describe('derive — tree (루트 래퍼 없음 · path 누적 경로 · 문서�
           title: 'SK하이닉스',
           type: 'company',
         },
-        relPath: 'company/sk-hynix',
+        relPath: 'company/SK하이닉스',
       }),
     ]
     const { tree } = deriveForTest(
       docs,
       makeRunner({
-        'company/samsung': aLog(SAMSUNG_SHA, { file: 'wiki/company/samsung.md' }),
-        'company/sk-hynix': aLog(HBM_SHA, { file: 'wiki/company/sk-hynix.md' }),
-        'company/tsmc': aLog(SUB_SHA, { file: 'wiki/company/tsmc.md' }),
+        'company/삼성전자': aLog(SAMSUNG_SHA, { file: 'wiki/company/삼성전자.md' }),
+        'company/SK하이닉스': aLog(HBM_SHA, { file: 'wiki/company/SK하이닉스.md' }),
+        'company/TSMC': aLog(SUB_SHA, { file: 'wiki/company/TSMC.md' }),
       }),
     )
 

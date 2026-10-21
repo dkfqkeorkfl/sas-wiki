@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1574-71d4-8571-7c5ea72e280f'
-title: Apple
 type: company
 status: active
 aliases: ["애플", "AAPL"]

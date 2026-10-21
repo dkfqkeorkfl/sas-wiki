@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-18cc-773d-8b66-a06f9a712098'
-title: Micron
 type: company
 status: active
 aliases: ["마이크론", "Micron Technology", "MU"]

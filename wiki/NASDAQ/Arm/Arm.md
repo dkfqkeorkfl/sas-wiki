@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-15f5-7213-af22-e18ccf9942ff'
-title: Arm
 type: company
 status: active
 aliases: ["암", "Arm Holdings", "ARM"]

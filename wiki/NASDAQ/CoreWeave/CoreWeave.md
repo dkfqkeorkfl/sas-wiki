@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1757-77a8-800f-45441ac4620e'
-title: CoreWeave
 type: company
 status: active
 aliases: ["코어위브", "CRWV"]

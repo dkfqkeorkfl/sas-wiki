@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-0c3e-75f7-81cc-87c591cf7122'
-title: POSCO홀딩스
 type: company
 status: active
 aliases: ["포스코홀딩스", "POSCO Holdings", "포스코그룹", "005490"]
@@ -192,4 +191,4 @@ POSCO홀딩스는 철강회사 포스코를 중심으로 에너지·무역·이�
 - [[KOSPI/포스코인터내셔널/포스코인터내셔널]]
 - [[KOSPI/포스코퓨처엠/포스코퓨처엠]]
 - [[KOSPI/LG화학/LG화학]]
-- [[TREND/2026-08/2026-08-27 원화 강세]]
+- [[TREND/2026-08/27. 원화 강세]]

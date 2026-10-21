@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-0e61-7598-ac1a-7a4212c84ce3'
-title: 삼성SDI
 type: company
 status: active
 aliases: ["Samsung SDI", "006400"]

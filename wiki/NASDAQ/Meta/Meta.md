@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1847-7564-9788-9090393a79dd'
-title: Meta
 type: company
 status: active
 aliases: ["메타", "Meta Platforms", "Facebook", "페이스북", "META"]

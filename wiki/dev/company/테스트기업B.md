@@ -1,6 +1,5 @@
 ---
 id: "01088d27-d8c8-71d7-80df-fe55c5a99b8e"
-title: 테스트기업B
 type: company
 status: active
 draft: true

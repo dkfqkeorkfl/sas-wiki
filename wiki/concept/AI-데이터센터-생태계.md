@@ -1,6 +1,5 @@
 ---
 id: '01a04240-dfb9-7170-90a9-dac6402e5894'
-title: AI 데이터센터 생태계
 type: concept
 status: active
 aliases: ['AI 데이터센터', 'AI 컴퓨트 인프라', 'AI 팩토리', 'AI 슈퍼클러스터']

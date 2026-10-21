@@ -1,6 +1,5 @@
 ---
 id: "01a04241-ce57-7548-9765-9d9d8ccdc0d5"
-title: Anthropic
 type: company
 status: active
 aliases: ["안트로픽", "Claude", "클로드"]

@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-0aa7-77d4-a701-73184ff1a717'
-title: LG에너지솔루션
 type: company
 status: active
 aliases: ["LG Energy Solution", "LG엔솔", "373220"]

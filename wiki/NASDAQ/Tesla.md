@@ -1,6 +1,5 @@
 ---
 id: '01a042ee-449a-74e8-aeb1-f49d89964a3a'
-title: Tesla
 type: company
 status: active
 aliases: ["테슬라", "TSLA"]
@@ -219,4 +218,4 @@ Elon Musk가 주요주주다. 실질보유 주식에는 SEC 규칙에 따라 행
 - [[KOSPI/기아/기아]]
 - [[concept/AI-데이터센터-생태계]]
 - [[NASDAQ/Tesla/자율주행과-AI투자]]
-- [[TREND/2026-08/2026-08-04 Tesla·SpaceX 2분기 실적과 AI 투자|2026년 2분기 실적·투자 스냅샷]]
+- [[TREND/2026-08/04. Tesla·SpaceX 2분기 실적과 AI 투자|2026년 2분기 실적·투자 스냅샷]]

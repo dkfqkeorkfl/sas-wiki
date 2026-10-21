@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-16e9-7727-807a-f9159676c1b1'
-title: Cadence
 type: company
 status: active
 aliases: ["케이던스", "Cadence Design Systems", "CDNS"]

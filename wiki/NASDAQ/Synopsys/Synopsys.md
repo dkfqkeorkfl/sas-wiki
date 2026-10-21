@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1d22-7206-969a-106e86675b95'
-title: Synopsys
 type: company
 status: active
 aliases: ["시놉시스", "SNPS"]

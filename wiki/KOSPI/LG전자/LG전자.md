@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-0b35-7679-adfa-4eaf7e71d015'
-title: LG전자
 type: company
 status: active
 aliases: ["LG Electronics", "066570"]

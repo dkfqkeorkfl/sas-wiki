@@ -1,6 +1,5 @@
 ---
 id: "01a042ee-449c-7716-bbdb-18b60a5c3799"
-title: OpenAI
 type: company
 status: active
 aliases: ["오픈AI", "ChatGPT", "챗GPT"]

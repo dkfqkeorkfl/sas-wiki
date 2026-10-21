@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1369-744a-ac72-dc2973c71856'
-title: AMD
 type: company
 status: active
 aliases: ["에이엠디", "Advanced Micro Devices", "AMD"]

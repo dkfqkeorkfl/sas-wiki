@@ -2,18 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/wiki-doc.schema.json",
   "title": "wiki-doc",
-  "description": "wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층(path/breadcrumb)은 폴더 위치에서 빌드가 산출한다. id는 frontmatter에 저작된 불변 UUIDv7 내부 키다.",
+  "description": "wiki/<계층경로>/<basename>.md frontmatter 검증 스키마. 계층은 폴더 위치, 표시 title은 확장자를 뺀 파일명 전체에서 산출한다. id는 frontmatter에 저작된 불변 UUIDv7 내부 키다.",
   "type": "object",
-  "required": ["id", "title", "type", "status"],
+  "required": ["id", "type", "status"],
   "properties": {
     "id": {
       "type": "string",
       "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "description": "frontmatter에 저작된 UUIDv7 doc id(시간정렬 · 불변). 이동·재작성해도 바뀌지 않는다. created/updated는 git history에서 유도한다."
-    },
-    "title": {
-      "type": "string",
-      "minLength": 1
     },
     "aliases": {
       "type": "array",

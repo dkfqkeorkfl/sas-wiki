@@ -1,6 +1,5 @@
 ---
 id: '01a04240-def1-72da-ab0d-2c832644b805'
-title: IBM
 type: company
 status: active
 aliases: ['International Business Machines', 'International Business Machines Corporation', '인터내셔널 비즈니스 머신즈']

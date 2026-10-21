@@ -78,7 +78,7 @@ export function derive(parsedDocs, runGit, { wikiPrefix }) {
         breadcrumb: doc.breadcrumb,
         id: doc.id,
         status: 'disable',
-        title: doc.frontmatter.title,
+        title: doc.relPath.split('/').at(-1),
       })
       continue
     }
@@ -97,7 +97,7 @@ export function derive(parsedDocs, runGit, { wikiPrefix }) {
       id: doc.id,
       status: doc.frontmatter.status,
       tags: doc.frontmatter.tags || [],
-      title: doc.frontmatter.title,
+      title: doc.relPath.split('/').at(-1),
       type: doc.frontmatter.type,
       updated: doc.updated,
     })

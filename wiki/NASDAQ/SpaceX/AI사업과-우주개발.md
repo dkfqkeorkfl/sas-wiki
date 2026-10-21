@@ -1,6 +1,5 @@
 ---
 id: '01a15e10-1cae-7354-b3cf-a3a72c1fd360'
-title: SpaceX의 AI 사업과 우주개발
 type: concept
 status: active
 aliases: ['SpaceX AI 사업', 'xAI와 Colossus']
