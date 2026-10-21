@@ -6,9 +6,9 @@
 //   **다른 리터럴·경로**(UUIDv7 B/C · 다른 문서)로 세 케이스를 독립 단언한다. GREEN 완료 후 메인이
 //   재실행해 게이트가 R5 시나리오에만 맞춘 하드코딩이 아님을 확인한다(현재는 게이트 부재라 tamper 가 RED).
 //
-//   · 정상   : 생성 blob id == HEAD id            → build PASS
-//   · 변조   : 생성 blob id ≠ HEAD id             → build FAIL (← 현행 게이트 부재라 이 케이스가 RED)
-//   · pre-id : 생성 blob 에 id 부재(마이그레이션 전) → build PASS (false-fail 금지)
+//   · 정상   : id 를 바꾼 커밋이 없음                       → build PASS
+//   · 변조   : id 를 바꾼 커밋의 바로 전 id ≠ 현재 id       → build FAIL
+//   · 등록 전 : 커밋된 이력에 id 부재(작업 트리에 처음 넣음) → build PASS (false-fail 금지)
 import { describe, expect, it } from 'vitest'
 
 import { buildContent } from '../validate.mjs'
@@ -18,7 +18,7 @@ const UUIDV7_B = '0192f0c0-8000-7000-9abc-0123456789ab'
 const UUIDV7_C = '0192f0c1-0000-7000-b000-000000000003'
 
 describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
-  it('정상: 생성 id 가 HEAD 까지 불변이면 build PASS', () => {
+  it('정상: id 를 한 번도 바꾸지 않았으면 build PASS', () => {
     const vault = initVault()
     const out = makeOut()
     try {
@@ -37,7 +37,7 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
     }
   })
 
-  it('변조: 생성 id ≠ HEAD id 면 build FAIL', () => {
+  it('변조: id 를 바꾼 커밋이 있으면 build FAIL', () => {
     const vault = initVault()
     const out = makeOut()
     try {
@@ -55,12 +55,12 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
     }
   })
 
-  it('pre-id: 생성 blob 에 id 가 없으면 build PASS(false-fail 금지)', () => {
+  it('등록 전: 커밋된 이력에 id 가 없으면 build PASS(false-fail 금지)', () => {
     const vault = initVault()
     const out = makeOut()
     try {
-      // 실 마이그레이션 재현: 생성 커밋 blob 에는 id 부재(불변 게이트 null=PASS), working tree 에는
-      // 마이그레이션이 넣은 id(미커밋 → 스키마 required PASS). 게이트가 pre-id 를 오판하지 않음을 검증한다.
+      // 실 마이그레이션 재현: 커밋된 이력에는 id 부재(직전 값 없음 → 처음 등록=PASS), working tree 에는
+      // 마이그레이션이 넣은 id(미커밋 → 스키마 required PASS). 게이트가 처음 등록을 오판하지 않음을 검증한다.
       writeDoc(vault, 'concept/온디바이스-AI', { title: '온디바이스 AI' }) // 생성 커밋: id 없음
       commit(vault, 'chore: 온디바이스 AI 문서 생성')
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' }) // 마이그레이션: working tree id(미커밋)

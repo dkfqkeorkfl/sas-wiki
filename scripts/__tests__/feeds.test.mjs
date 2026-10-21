@@ -143,7 +143,7 @@ describe('endpoints.feeds — 억제는 `ignore.mjs` 한 곳이다 (E-F3 🔴RED
     //      때문에 이미 `lib/ignore.mjs` 를 import 하고 `feeds.mjs` 는 어차피 `walkCursorPage` 를
     //      부른다. 그래서 **로더**를 재구현해도 그 모듈은 다른 경로로 여전히 로드된다.
     //   ② 정적 import 존재 확인 — 재구현자가 쓰지 않는 import 를 남겨 두면 그대로 통과한다.
-    //      이 리포에는 미사용 import 를 잡는 린터가 없어서(훅·CI·ESLint 부재가 계약이다) 그 형태가
+    //      이 리포에는 미사용 import 를 잡는 린터(ESLint)가 없어서 그 형태가
     //      실제로 관측됐다: import 를 남긴 채 로더만 인라인했더니 이 파일이 전부 green 이었다.
     //
     // 그래서 **로더만 갖는 계약**을 문다. `lib/ignore.mjs` 의 `loadIgnoreFeedsAt` 은 파일이

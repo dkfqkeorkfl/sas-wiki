@@ -35,8 +35,9 @@ import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
+import { makeGitRunner } from '../lib/git.mjs'
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
-import { cleanup, git } from './helpers/tmp-git-vault.mjs'
+import { cleanup } from './helpers/tmp-git-vault.mjs'
 import { CONTROL_PATH, ID_A, seedCleanVault, seedPollutedVault } from './helpers/polluted-vault.mjs'
 
 // P5 · OQ-P5-1=A — runSummaryGenerator 가 CLI 파일(summary.mjs)에서 lib/generator.mjs 로 이동했다.
@@ -167,11 +168,12 @@ describe('runSummaryGenerator — 주입한 runGit 이 실제로 쓰인다 (FR7)
     //   `generate()` 가 실제로 산출물을 냈다는 앵커만으로는 어느 러너가 불렸는지 구분되지 않는다.
     const vault = freshClean()
     const calls = []
-    // `git()`(tmp-git-vault) 는 `(cwd, args)` 시그니처다 — `runGit` 계약(`(args) => stdout`)에 맞춰
-    //   vault 를 닫아 감싼다. 실제 git 실행은 위임하므로 생성기가 정상적으로 완주한다(스텁이 아니다).
-    const spyRunGit = (args) => {
+    // 실제 git 실행은 기본 러너에 위임하므로 생성기가 정상적으로 완주한다(스텁이 아니다). 두 번째
+    //   인자(stdin 등 `runGit` 계약의 옵션)도 그대로 넘긴다.
+    const real = makeGitRunner(vault)
+    const spyRunGit = (args, options) => {
       calls.push(args)
-      return git(vault, args)
+      return real(args, options)
     }
 
     const result = await generate({ env: 'dev', runGit: spyRunGit, vault })

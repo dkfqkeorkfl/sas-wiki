@@ -294,8 +294,8 @@ describe('침묵 폴백 소멸 · argv 잔재 0 (CQ3·CQ4·CQ5)', () => {
     const source = readFileSync(path.join(SCRIPTS_DIR, 'feeds.mjs'), 'utf8')
     const block = source.match(/options:\s*\{([\s\S]*?)\n\s*\},/u)
     if (block === null) return []
-    // 들여쓰기 폭에 결속하지 않는다 — 원래 정규식은 키 줄이 **정확히 6칸**이어야 매치됐다. 이
-    //   리포에는 CI·훅이 없어(legacy-sweep.test.mjs) 포맷 드리프트가 실제 위험이고, 폭이 다른
+    // 들여쓰기 폭에 결속하지 않는다 — 원래 정규식은 키 줄이 **정확히 6칸**이어야 매치됐다. 포맷
+    //   검사(prettier)는 CI 에서야 돌므로 로컬 작업 중에는 폭이 다른 줄이 실제로 생기고, 폭이 다른
     //   줄 하나만 스캔에서 조용히 빠져도(예: 재도입된 `from`/`to` 가 다른 폭으로 붙는다) 부재
     //   단언(`not.toContain('from')`)은 "정말 없다"와 "못 봤다"를 구분하지 못한다. `options:{}` 안의
     //   `key: {` 형태만 요구하고 앞의 공백 폭은 묻지 않는다 — `node:util.parseArgs` 의 옵션 스키마는

@@ -10,7 +10,8 @@
 //   H3 walkFeeds  — `env === 'prod'` 로 draft 를 걸러 non-dev 오타값이 draft 를 노출(PRD D2 위반).
 //   H4 isDraft    — `draft: yes` 처럼 불리언이 아닌 값이 "공개"로 해석.
 //   H5 parseVault — frontmatter 없는 .md 를 에러 없이 목록에서 누락.
-//   H6 readIdAtCreation — 생성 blob 조회가 실패하면 null(=pre-id) 로 간주해 불변 게이트를 건너뜀.
+//   H6 readFrontmatterFieldChange — 변경 직전 blob 조회가 실패하면 "전 없음(처음 등록)"으로 간주해
+//      불변 게이트를 건너뜀.
 //   H7 삭제된 문서의 id 재사용 — 과거 피드가 무관한 새 문서로 오귀속된다(정당한 rename 은 면제).
 //
 // 판정 방향(전 항목 공통): **알 수 없으면 숨기거나 멈춘다** — 서빙 층은 숨김, 게이트 층은 중단.
@@ -21,7 +22,12 @@ import { fileURLToPath } from 'node:url'
 
 import { buildContent } from '../../validate.mjs'
 import { isDraft } from '../draft.mjs'
-import { anyMarkdown, collectDeletedDocEvents, makeGitRunner, readIdAtCreation } from '../git.mjs'
+import {
+  anyMarkdown,
+  collectDeletedDocEvents,
+  makeGitRunner,
+  readFrontmatterFieldChange,
+} from '../git.mjs'
 import { parseVault } from '../parse-vault.mjs'
 import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import {
@@ -202,7 +208,7 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
 // H7 삭제된 문서의 UUID 재사용 — 과거 피드가 엉뚱한 문서로 연결된다
 // ───────────────────────────────────────────────────────────────────────────────
 describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 물려받지 못한다', () => {
-  // 유일성은 HEAD 기준, 불변성은 자기 생성 blob 기준이라 **둘 다 통과**하는 구멍이 있었다:
+  // 유일성은 HEAD 기준, 불변성은 자기 이력 기준이라 **둘 다 통과**하는 구멍이 있었다:
   //   A(id X) 삭제 → 무관한 B 가 id X 로 생성 → A 를 가리키던 과거 피드가 B 로 연결된다.
   //   피드=변경이력이 제품의 신뢰 근거인데 귀속이 조용히 틀어지는 형태다.
   it('삭제된 문서의 id 를 다른 경로의 새 문서가 쓰면 id·양쪽 경로를 담아 throw 한다', () => {
@@ -313,37 +319,50 @@ describe('H7 검증 게이트 — 삭제된 문서의 id 를 다른 문서가 �
 })
 
 // ───────────────────────────────────────────────────────────────────────────────
-// H6 readIdAtCreation — 생성 blob 조회 실패를 "pre-id" 로 오해하지 않는다
+// H6 readFrontmatterFieldChange — 변경 직전 blob 조회 실패를 "처음 등록" 으로 오해하지 않는다
 // ───────────────────────────────────────────────────────────────────────────────
-describe('H6 readIdAtCreation — git 실패를 삼키지 않는다', () => {
-  // 기존 구현은 `catch { return null }` 이었다. null 은 호출부(validate.mjs)에서 "pre-id era
-  //   문서" 를 뜻하므로, 조회가 실패했을 뿐인 문서가 **불변 검사 면제** 를 받았다. 즉 제품의 핵심
-  //   보증(생성 시점 id 는 바뀌지 않는다)이 예외 경로에서 조용히 꺼졌다.
-  it('git show 가 실패하면 throw 한다 (null=pre-id 로 위장하지 않는다)', () => {
+describe('H6 readFrontmatterFieldChange — git 실패를 삼키지 않는다', () => {
+  // 전(변경 직전 값)이 없으면 호출부는 "처음 등록"으로 판단한다. 조회가 실패했을 뿐인 문서가 그렇게
+  //   판단되면 id 변경 검사를 면제받는다 — 제품의 핵심 보증(id 는 바뀌지 않는다)이 예외 경로에서
+  //   조용히 꺼진다.
+  const ID_LINE = /^id\s*:([\s\S]*)$/u
+
+  it('변경 직전 blob 을 못 읽으면 throw 한다(전 없음으로 위장하지 않는다)', () => {
     const vault = initVault()
     try {
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
       commit(vault, 'chore: HBM 문서 생성')
+      writeDoc(vault, 'tech/HBM', { id: UUIDV7_DRAFT, title: 'HBM' })
+      commit(vault, 'chore: HBM id 변경')
 
       const real = makeGitRunner(vault)
-      const showFails = (args) => {
-        if (args.includes('show')) throw new Error('fatal: bad object (모의 blob 조회 실패)')
-        return real(args)
+      const blobFails = (args, options) => {
+        if (args.includes('cat-file')) throw new Error('fatal: bad object (모의 blob 조회 실패)')
+        return real(args, options)
       }
+      const contents = git(vault, ['show', 'HEAD:wiki/tech/HBM.md'])
 
-      expect(() => readIdAtCreation(showFails, 'wiki/tech/HBM.md')).toThrow(/bad object/u)
+      expect(() =>
+        readFrontmatterFieldChange(blobFails, 'wiki/tech/HBM.md', { contents, pattern: ID_LINE }),
+      ).toThrow(/bad object/u)
     } finally {
       cleanup(vault)
     }
   })
 
-  it('blob 을 읽었고 id 가 없을 때만 null 이다 (pre-id era 는 그대로 통과)', () => {
+  it('이력을 읽었고 id 줄이 문서가 생길 때부터 있었을 때만 전이 없다', () => {
     const vault = initVault()
     try {
-      writeDoc(vault, 'tech/HBM', { title: 'HBM' }) // id 없이 생성
+      writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
       commit(vault, 'chore: HBM 문서 생성')
+      const contents = git(vault, ['show', 'HEAD:wiki/tech/HBM.md'])
 
-      expect(readIdAtCreation(makeGitRunner(vault), 'wiki/tech/HBM.md')).toBeNull()
+      expect(
+        readFrontmatterFieldChange(makeGitRunner(vault), 'wiki/tech/HBM.md', {
+          contents,
+          pattern: ID_LINE,
+        }),
+      ).toEqual([undefined, UUIDV7_PUBLIC])
     } finally {
       cleanup(vault)
     }

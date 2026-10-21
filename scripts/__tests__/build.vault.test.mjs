@@ -218,10 +218,11 @@ describe('실 vault ① 문서 집합', () => {
     const created = git(ctx.vault, ['log', '-1', '--format=%aI', creationSha(HBM)])
 
     // 커밋 12 에서 concept/HBM → tech/HBM 으로 이동했지만 id 는 frontmatter 저작 UUIDv7 이라 불변이다.
-    // created 는 여전히 생성 커밋(커밋 4)의 author date 에서 파생된다.
+    // created 는 여전히 생성 커밋(커밋 4)의 author date 에서 파생된다. `%aI` 는 git 2.45 전에는 UTC 를
+    // `+00:00` 으로 쓰지만 빌드 결과는 git 버전과 무관하게 `Z` 다.
     expect(hbm.id).toBe(docId(HBM))
     expect(hbm.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
-    expect(hbm.created).toBe(created)
+    expect(hbm.created).toBe(created.replace(/\+00:00$/u, 'Z'))
   })
 
   it('excerpt 는 본문 첫 문단 평문이다(heading 건너뛰기 · HEAD 스냅샷)', () => {

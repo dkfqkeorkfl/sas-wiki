@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
+import path from 'node:path'
 
-import { parseFrontmatterYaml } from './parse.mjs'
+import { DOC_ID_FIELD } from './doc-id.mjs'
+import { extractFrontmatterField, findFrontmatterFieldLine } from './parse.mjs'
 
 // `--name-status` 의 상태줄. rename/copy 는 `R100\told\tnew`(탭 2개), A/M/D 는 `M\tpath`(탭 1개).
 // 커밋 헤더줄(`<hash>\t<date>`)은 소문자 hex 로 시작하므로 이 패턴에 걸리지 않는다.
@@ -146,9 +149,9 @@ export function collectDeletedDocEvents(runGit, { isDocPath }) {
 /**
  * 삭제 **직전** blob 의 frontmatter id — 즉 *지워진 그 문서* 의 id.
  *
- * `readIdAtCreation` 을 쓰면 안 된다: 그것은 `getFileHistory` 를 타고, 그 함수는 생성 커밋에서
- * 끊으므로 **삭제 후 재생성된 경로에서는 새 문서의 id** 를 돌려준다(의도된 동작 — 재생성은 새
- * 문서다). 삭제된 쪽의 id 를 알아야 하는 이 게이트에는 정반대 값이다.
+ * 현재 경로의 이력(`getFileHistory` · blame)으로 읽으면 안 된다: 둘 다 문서가 생긴 커밋에서 끊기므로
+ * **삭제 후 재생성된 경로에서는 새 문서의 id** 를 본다(의도된 동작 — 재생성은 새 문서다). 삭제된
+ * 쪽의 id 를 알아야 하는 이 게이트에는 정반대 값이다.
  *
  * @returns {string|null} id. frontmatter·id 가 없으면 null(pre-id era).
  */
@@ -163,10 +166,7 @@ export function readIdAtDeletion(runGit, { path: relFilePath, sha }) {
       cause: error,
     })
   }
-  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
-  if (!match) return null
-  const id = parseFrontmatterYaml(match[1], relFilePath).id
-  return id === undefined ? null : id
+  return extractFrontmatterField(blob, DOC_ID_FIELD) ?? null
 }
 
 export function collectGitLog(runGit) {
@@ -208,7 +208,7 @@ export function parseCommitRecords(raw) {
       throw new Error(`git 커밋 hash 형식이 올바르지 않습니다: ${hash}`)
     }
     records.push({
-      authorDate: tokens[index + 1],
+      authorDate: normalizeUtcOffset(tokens[index + 1]),
       body: tokens[index + 3].replace(/^\n+/, '').replace(/\s+$/u, ''),
       hash,
       subject: tokens[index + 2] || '',
@@ -317,44 +317,202 @@ export function getFileHistory(runGit, relFilePath) {
       continue
     }
     const [sha, ts] = line.split('\t')
-    header = { sha, ts }
+    header = { sha, ts: normalizeUtcOffset(ts) }
   }
   return history
 }
 
 /**
- * 문서의 **생성 커밋 blob** frontmatter 에서 id 를 읽는다 — 불변 게이트 원자재.
+ * frontmatter 필드 한 개의 [전, 후] — 문서 id 변경 판별의 재료다(`judgeDocId`).
  *
- * HEAD 가 아니라 생성 시점 blob 을 본다(사후 삽입·변조 무시). 생성 blob 에 id 가 없으면
- * (pre-id era — 마이그레이션 전 생성분) `null` 을 돌려준다. 그래야 불변 게이트가 pre-id 문서를
- * "차이"로 오판해 마이그레이션 전 전 문서를 false-fail 시키는 일이 없다.
+ * - **후**: `contents`(작업 트리나 인덱스의 문서 내용)에서 읽은 값.
+ * - **전**: 그 필드 줄을 마지막으로 바꾼 커밋의 **바로 전** 값. `git blame --contents -` 로 그 줄의
+ *   마지막 변경을 찾고, porcelain 출력의 `previous <커밋> <경로>`(변경 직전 부모와 그때의 경로)에서
+ *   값을 읽는다. 아직 커밋하지 않은 변경은 그 자체가 마지막 변경이라 `previous` 가 HEAD 다. 그 줄이
+ *   문서가 생길 때부터 있었으면 `previous` 가 없고 전도 없다(`undefined`).
+ * - 필드 줄이 `contents` 에 없으면 blame 할 줄이 없다. 이때 전은 HEAD 의 값이다 — 줄이 지워진
+ *   변경이 아직 커밋 전이면 그것이 마지막 변경이기 때문이다. 아직 커밋하지 않은 이동이면 HEAD 에는
+ *   옛 경로로 있으므로 `headPath` 로 그 경로를 준다.
+ * - HEAD·인덱스 어디에도 없는 문서, 커밋이 없는 저장소는 이력이 없어 전이 없다.
  *
- * @returns {null | string} 생성 blob frontmatter 의 id, 없으면 null
+ * blame 은 파일 이름 변경을 따라가고(`git-blame(1)`: _"The origin of lines is automatically
+ * followed across whole-file renames"_), 비교는 줄 글자가 아니라 해석한 값으로 한다 — 따옴표나
+ * 공백만 바꾼 커밋은 전과 후가 같은 값이 된다.
+ *
+ * @param {(args: string[], options?: { input?: string }) => string} runGit
+ * @param {string} relFilePath 리포 상대 posix 경로
+ * @param {{ contents: string, headPath?: string, pattern: RegExp }} options `pattern` 은
+ *   `extractFrontmatterField` 규약. `headPath` 는 HEAD 에서의 경로(기본: `relFilePath`)
+ * @returns {[unknown, unknown]} [전, 후]
  */
-export function readIdAtCreation(runGit, relFilePath) {
-  const history = getFileHistory(runGit, relFilePath)
-  if (history.length === 0) return null
-  const creation = history.find((entry) => isCreation(entry)) ?? history.at(-1)
-  let blob
+export function readFrontmatterFieldChange(
+  runGit,
+  relFilePath,
+  { contents, headPath = relFilePath, pattern },
+) {
+  const after = extractFrontmatterField(contents, pattern)
+  const line = findFrontmatterFieldLine(contents, pattern)
+  if (line === undefined) {
+    const head = readHeadFile(runGit, headPath)
+    return [head === undefined ? undefined : extractFrontmatterField(head, pattern), after]
+  }
+
+  // blame 은 HEAD 나 인덱스에 있는 경로만 받는다. 이력이 없음을 git 의 오류 문구로 가리지 않는다 —
+  //   그 문구는 로케일에 따라 번역된다.
+  if (!hasHead(runGit) || !isTracked(runGit, relFilePath)) return [undefined, after]
+
+  let porcelain
   try {
-    blob = runGit([...QUOTEPATH_OFF, 'show', `${creation.sha}:${creation.pathAtCommit}`])
+    porcelain = runGit(
+      [
+        ...QUOTEPATH_OFF,
+        'blame',
+        '--porcelain',
+        // 저장소 설정 `blame.ignoreRevsFile` 은 지정한 커밋을 건너뛰어 변경 커밋을 숨긴다. 이 옵션이
+        //   설정의 목록까지 비운다(`--ignore-revs-file ""` 는 설정한 파일이 없으면 오히려 실패한다).
+        '--no-ignore-revs-file',
+        '--contents',
+        '-',
+        '-L',
+        `${line},${line}`,
+        '--',
+        relFilePath,
+      ],
+      { input: contents },
+    )
   } catch (error) {
-    // 생성 blob 을 못 읽으면 **멈춘다**. null 은 호출부(validate.mjs)에서 "pre-id era 문서 = 불변
-    //   검사 면제" 를 뜻하므로, 여기서 null 을 돌려주면 *조회 실패* 가 *면제* 로 둔갑해 제품 핵심
-    //   보증(생성 시점 id 불변)이 조용히 꺼진다. presence 는 스키마가 잡지만 **불변은 여기뿐**이다.
     const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`생성 blob 을 읽지 못했습니다(${relFilePath} @ ${creation.sha}): ${message}`, {
+    const stderr = typeof error?.stderr === 'string' && error.stderr ? `\n${error.stderr}` : ''
+    throw new Error(`필드 줄의 변경 이력을 읽지 못했습니다(${relFilePath}): ${message}${stderr}`, {
       cause: error,
     })
   }
-  const match = blob.match(/^---\r?\n([\s\S]*?)\r?\n---/u)
-  if (!match) return null
-  const id = parseFrontmatterYaml(match[1], relFilePath).id
-  return id === undefined ? null : id
+
+  const blamed = parseBlamePorcelain(porcelain)
+  // blame 은 줄 글자를 따라간다. 그 줄이 생긴 커밋에서 그 줄이 실제로 쓰이던 값이 아니었다면(같은
+  //   키가 뒤에 또 있었거나 frontmatter 밖 본문이었다) 그 뒤 다른 줄을 지우거나 경계를 옮기는 커밋만으로
+  //   값이 바뀐 것이다. 그때는 그 커밋에서 실제로 쓰이던 값이 전이다.
+  if (!/^0+$/u.test(blamed.sha)) {
+    const atBlamed = extractFrontmatterField(readBlob(runGit, blamed.sha, blamed.path), pattern)
+    if (atBlamed !== after) return [atBlamed, after]
+  }
+  if (blamed.previous === null) return [undefined, after]
+  return [
+    extractFrontmatterField(readBlob(runGit, blamed.previous.sha, blamed.previous.path), pattern),
+    after,
+  ]
+}
+
+/**
+ * 이번 커밋에 들어가는 문서 — 인덱스에서 추가(A)·수정(M)·이동(R)·타입 변경(T, 예: 심볼릭 링크였던
+ * 경로가 일반 파일이 됨)된 문서와 이동 전 경로. 삭제는 뺀다.
+ *
+ * `--find-renames` 를 명시한다. 사용자가 `diff.renames=false` 를 설정하면 이동이 삭제+추가로 보여
+ * 옮긴 문서가 새 문서로 판단되기 때문이다(커맨드라인 플래그가 설정을 이긴다). `-z` 로 받아 따옴표·
+ * 탭이 든 경로도 그대로 읽는다. HEAD 가 없는 첫 커밋 전에는 git 이 빈 트리와 비교하므로 전부 A 다.
+ * 일반 파일(모드 100644·100755)만 낸다 — validate 도 일반 파일만 문서로 읽는다.
+ *
+ * @returns {{ oldPath?: string, path: string, status: 'A' | 'M' | 'R' | 'T' }[]} 리포 상대 posix 경로
+ */
+export function listStagedDocChanges(runGit, { isDocPath }) {
+  // `--raw -z` 한 항목: `:<옛 모드> <새 모드> <옛 blob> <새 blob> <상태>\0<경로>\0`, 이동은 경로 둘.
+  const fields = runGit([
+    'diff',
+    '--cached',
+    '--raw',
+    '-z',
+    '--find-renames',
+    '--diff-filter=AMRT',
+  ]).split('\0')
+  const changes = []
+  for (let index = 0; index < fields.length - 1;) {
+    const [, newMode, , , statusField] = fields[index].split(' ')
+    const status = statusField[0]
+    const paths = fields.slice(index + 1, index + (status === 'R' ? 3 : 2))
+    index += 1 + paths.length
+    const docPath = paths.at(-1)
+    if (!/^100(?:644|755)$/u.test(newMode) || !isDocPath(docPath)) continue
+    changes.push(
+      status === 'R' ? { oldPath: paths[0], path: docPath, status } : { path: docPath, status },
+    )
+  }
+  return changes
+}
+
+/**
+ * 병합이 진행 중인가(충돌을 풀고 병합 커밋을 만들기 전 — `MERGE_HEAD` 가 있다).
+ *
+ * `rev-parse -q --verify` 는 ref 가 없으면 아무것도 출력하지 않고 exit 1 로 끝낸다(`git-rev-parse(1)`
+ * `--quiet`). 그 한 가지 실패만 "진행 중 아님" 으로 읽고, 나머지는 그대로 던진다.
+ */
+export function isMergeInProgress(runGit) {
+  try {
+    runGit(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+    return true
+  } catch (error) {
+    if (error?.status === 1 && !error?.stderr) return false
+    throw error
+  }
+}
+
+/** 인덱스(stage 0)에 올라간 파일 내용 — 작업 트리가 아니라 이번 커밋에 들어갈 내용이다. 바이트 그대로. */
+export function readStagedBytes(runGit, relFilePath) {
+  return runGit(['cat-file', 'blob', `:${relFilePath}`], { encoding: 'buffer' })
+}
+
+/**
+ * 인덱스의 파일 내용만 `content` 로 바꾼다. 작업 트리와 파일 모드는 건드리지 않는다.
+ *
+ * 작업 트리를 고친 뒤 `git add` 하면 사용자가 일부러 스테이징하지 않은 변경(`git add -p`)까지
+ * 커밋에 섞인다. 그래서 blob 을 직접 만들어 인덱스 항목만 교체한다(`git-hash-object(1)`,
+ * `git-update-index(1)` 의 `--cacheinfo`). 모드를 읽을 때 경로를 `:(literal)` 로 넘긴다 — 글롭으로
+ * 읽으면 `[2024]` 같은 이름이 비슷한 다른 파일에 맞아 그 파일의 모드를 씌운다.
+ */
+export function writeStagedFile(runGit, relFilePath, content) {
+  const record = runGit(['ls-files', '--stage', '-z', '--', `:(literal)${relFilePath}`])
+  const match = /^(\d{6}) [0-9a-f]+ (\d)\t([^\0]*)\0$/u.exec(record)
+  if (!match || match[2] !== '0' || match[3] !== relFilePath) {
+    throw new Error(`인덱스에 없는 경로입니다: ${relFilePath}`)
+  }
+  // `--cacheinfo` 는 항목을 새로 만들어 skip-worktree·assume-unchanged 표시를 지운다. `ls-files -v` 의
+  //   태그로 읽어 두었다가 다시 건다(`git-ls-files(1)` `-v`: 대문자 S = skip-worktree, 소문자 태그 =
+  //   assume-unchanged).
+  const tag = runGit(['ls-files', '-v', '-z', '--', `:(literal)${relFilePath}`])[0]
+  const blob = runGit(['hash-object', '-w', '--stdin'], { input: content }).trim()
+  runGit(['update-index', '--cacheinfo', `${match[1]},${blob},${relFilePath}`])
+  if (tag === 'S' || tag === 's') runGit(['update-index', '--skip-worktree', '--', relFilePath])
+  if (tag !== tag.toUpperCase()) runGit(['update-index', '--assume-unchanged', '--', relFilePath])
+}
+
+/**
+ * 훅이 보고 있는 인덱스(`GIT_INDEX_FILE`)가 커밋 뒤 버려지는 임시 인덱스인가.
+ *
+ * 경로 지정 커밋(`git commit <경로>`)은 저장소 인덱스를 먼저 써 둔 뒤 훅을 별도 임시 인덱스 위에서
+ * 돌리고 커밋 후 그것을 버린다(github.com/git/git `builtin/commit.c` `prepare_index` 의 "A partial
+ * commit" 절차). 거기에 쓴 변경은 커밋에는 들어가도 저장소 인덱스에는 남지 않아, 다음 커밋이 그
+ * 변경을 되돌린다. 커밋 뒤 저장소 인덱스로 남는 것은 `<git-dir>/index`(일반 커밋)와 그 잠금 파일
+ * `<git-dir>/index.lock`(`commit -a`·`--include`) 둘뿐이다.
+ *
+ * @param {{ cwd: string, indexFile: string | undefined }} options `indexFile` 이 상대 경로면 `cwd` 기준
+ */
+export function isTemporaryIndex(runGit, { cwd, indexFile }) {
+  if (!indexFile) return false
+  const repositoryIndex = canonicalPath(
+    path.join(runGit(['rev-parse', '--absolute-git-dir']).trim(), 'index'),
+  )
+  const target = canonicalPath(path.resolve(cwd, indexFile))
+  return target !== repositoryIndex && target !== `${repositoryIndex}.lock`
+}
+
+/** 디렉터리 부분의 심볼릭 링크를 풀어 같은 파일을 같은 문자열로 만든다(파일 자체는 없어도 된다). */
+function canonicalPath(file) {
+  return path.join(realpathSync(path.dirname(file)), path.basename(file))
 }
 
 /**
  * vault 를 cwd 로 고정한 git 러너. 비0 종료는 **throw** 다(`execFileSync` 극성 그대로).
+ * 두 번째 인자 `{ input }` 을 주면 그 문자열을 git 의 stdin 으로 넘기고, `{ encoding: 'buffer' }` 면
+ * stdout 을 디코딩하지 않은 Buffer 로 돌려준다.
  *
  * ★ **`timeoutMs` 가 D23 의 spawn 타임아웃 자리다**(v3 P2). 미지정이면 옵션 자체를 붙이지 않아
  * 오늘과 **바이트 동일한 동작**이다 — Node `child_process` 의 `timeout` 기본값이 `undefined` 이고
@@ -372,14 +530,121 @@ export function readIdAtCreation(runGit, relFilePath) {
  * @param {{ timeoutMs?: number }} [options]
  */
 export function makeGitRunner(cwd, { timeoutMs } = {}) {
-  return (args) =>
+  return (args, { encoding = 'utf8', input } = {}) =>
     execFileSync('git', args, {
       cwd,
-      encoding: 'utf8',
+      encoding,
       maxBuffer: 64 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      ...(input === undefined
+        ? { stdio: ['ignore', 'pipe', 'pipe'] }
+        : { input, stdio: ['pipe', 'pipe', 'pipe'] }),
       ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     })
+}
+
+/** HEAD 의 파일 내용. HEAD 가 없거나(커밋 0건) HEAD 에 그 경로가 없으면 `undefined`. */
+export function readHeadFile(runGit, relFilePath) {
+  if (!hasHead(runGit) || !isInHead(runGit, relFilePath)) return undefined
+  return readBlob(runGit, 'HEAD', relFilePath)
+}
+
+/**
+ * 커밋이 하나라도 있는가. `-q --verify` 는 ref 가 없으면 출력 없이 exit 1 로 끝난다
+ * (`git-rev-parse(1)` `--quiet`). 그 한 가지 실패만 "없음" 으로 읽는다.
+ */
+function hasHead(runGit) {
+  try {
+    runGit(['rev-parse', '-q', '--verify', 'HEAD'])
+    return true
+  } catch (error) {
+    if (error?.status === 1 && !error?.stderr) return false
+    throw error
+  }
+}
+
+function isInHead(runGit, relFilePath) {
+  return (
+    runGit([...QUOTEPATH_OFF, 'ls-tree', '-z', 'HEAD', '--', `:(literal)${relFilePath}`]) !== ''
+  )
+}
+
+/** HEAD 나 인덱스에 있는 경로인가 — blame 이 받는 경로다. */
+function isTracked(runGit, relFilePath) {
+  if (isInHead(runGit, relFilePath)) return true
+  return runGit([...QUOTEPATH_OFF, 'ls-files', '-z', '--', `:(literal)${relFilePath}`]) !== ''
+}
+
+function readBlob(runGit, rev, relFilePath) {
+  return runGit(['cat-file', 'blob', `${rev}:${relFilePath}`])
+}
+
+/**
+ * `git blame --porcelain` 한 줄 출력 — 그 줄을 마지막으로 바꾼 커밋(`sha`)과 그때의 경로(`path`),
+ * 바로 전 부모(`previous`, 없으면 null). 커밋 전 내용이면 `sha` 가 0 으로만 이뤄진다.
+ *
+ * 경로는 `core.quotepath=false` 여도 `"`·`\\`·제어문자가 들어 있으면 C 식으로 따옴표를 친다.
+ */
+function parseBlamePorcelain(porcelain) {
+  const lines = porcelain.split('\n')
+  const result = { path: null, previous: null, sha: lines[0].split(' ')[0] }
+  for (const line of lines.slice(1)) {
+    if (line.startsWith('\t')) break
+    if (line.startsWith('filename ')) result.path = unquoteGitPath(line.slice('filename '.length))
+    if (line.startsWith('previous ')) {
+      const rest = line.slice('previous '.length)
+      const space = rest.indexOf(' ')
+      result.previous = { path: unquoteGitPath(rest.slice(space + 1)), sha: rest.slice(0, space) }
+    }
+  }
+  return result
+}
+
+/** git 의 C 식 경로 따옴표를 푼다(`quote.c` `unquote_c_style`: `\\a` 류 이스케이프와 3자리 8진 바이트). */
+function unquoteGitPath(text) {
+  if (!text.startsWith('"')) return text
+  const escapes = {
+    '"': 0x22,
+    '\\': 0x5c,
+    a: 0x07,
+    b: 0x08,
+    f: 0x0c,
+    n: 0x0a,
+    r: 0x0d,
+    t: 0x09,
+    v: 0x0b,
+  }
+  const bytes = []
+  for (let index = 1; index < text.length - 1; index += 1) {
+    const char = String.fromCodePoint(text.codePointAt(index))
+    if (char !== '\\') {
+      bytes.push(...Buffer.from(char, 'utf8'))
+      index += char.length - 1
+      continue
+    }
+    const next = text[index + 1]
+    if (/[0-3]/u.test(next)) {
+      bytes.push(Number.parseInt(text.slice(index + 1, index + 4), 8))
+      index += 3
+    } else {
+      bytes.push(escapes[next])
+      index += 1
+    }
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
+/**
+ * git 이 준 strict ISO 8601 시각(`%aI`)의 UTC 표기를 `Z` 하나로 맞춘다.
+ *
+ * git 2.45 부터 이 형식은 UTC 를 `+00:00` 대신 `Z` 로 쓴다(github.com/git/git
+ * `Documentation/RelNotes/2.45.0.adoc`: _"The output format for dates "iso-strict" has been tweaked
+ * to show a time in the Zulu timezone with "Z" suffix, instead of "+00:00"."_). 이 값은 문서
+ * created/updated 와 피드 ts 에 그대로 실리므로, 맞추지 않으면 같은 커밋이라도 빌드한 컴퓨터의 git
+ * 버전에 따라 결과가 다른 글자가 된다. 최신 git 의 표기인 `Z` 로 맞추고, 다른 오프셋(`+09:00` 등)은
+ * 커밋한 시간대 그대로 둔다.
+ */
+function normalizeUtcOffset(isoDate) {
+  return isoDate.replace(/\+00:00$/u, 'Z')
 }
 
 /**

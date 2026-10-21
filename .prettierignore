@@ -6,6 +6,11 @@ pnpm-lock.yaml
 # hashes remain feed ids and history anchors.
 wiki
 
+# Research prompt documents are authored content, not code. Prettier's Markdown formatter rewrites
+# their raw text — e.g. it joins a standalone `+` line (a diagram connector) onto the end of the
+# previous line and re-pads tables — so they are excluded rather than reformatted.
+docs/금융 리서치
+
 # Deliberately malformed artifact fixture (P4 · RD2). It must break JSON.parse to be worth
 # anything — a "truncated" file that still parses makes the reader-distrust case vacuous.
 # Formatting it is impossible by construction, so prettier must not try.

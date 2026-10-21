@@ -2,6 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { docPath, judgeDocs } from './doc-gate.mjs'
+import { findDuplicateIds } from './doc-id.mjs'
 import { isDraft } from './draft.mjs'
 import { makeGitRunner } from './git.mjs'
 import {
@@ -126,16 +127,8 @@ export function loadHeadDocState(
 
 /** prod 에서만 숨겨지는 draft 가 공개 문서의 id 를 재사용하는 그룹. draft끼리의 중복은 규정하지 않는다. */
 function findDraftPublicIdCollisions(parsedDocs) {
-  const docsById = new Map()
-  for (const doc of parsedDocs) {
-    const id = doc.frontmatter?.id
-    if (typeof id !== 'string') continue
-    if (!docsById.has(id)) docsById.set(id, [])
-    docsById.get(id).push(doc)
-  }
-
   return new Map(
-    [...docsById].filter(([, docs]) => {
+    [...findDuplicateIds(parsedDocs, (doc) => doc.frontmatter?.id)].filter(([, docs]) => {
       const draftFlags = docs.map((doc) => isDraft(doc))
       return draftFlags.includes(true) && draftFlags.includes(false)
     }),
