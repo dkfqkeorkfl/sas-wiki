@@ -17,6 +17,9 @@ import { main as wikiMain } from '../wiki.mjs'
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+// 실제 67문서 vault 탐색은 단독 실행에서도 summary 56s·feeds 38s였다.
+// 임시 vault의 기본 제한은 유지하고, 아래 두 실제 저장소 검사에만 적용한다.
+const REAL_VAULT_TIMEOUT = 120_000
 
 /** active 문서 1 + 그 문서를 가리키는 feed 1 (post-D1 — blob 에 id 존재). */
 function seed() {
@@ -83,11 +86,15 @@ describe('summary.mjs CLI smoke', () => {
     expect(json.docs.some((doc) => doc.id === ID_A)).toBe(true)
   })
 
-  it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
-    const json = JSON.parse(await run(summaryMain, ['--env', 'dev']))
-    expect(Array.isArray(json.docs)).toBe(true)
-    expect(json.docs.length).toBeGreaterThan(0)
-  })
+  it(
+    '--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)',
+    { timeout: REAL_VAULT_TIMEOUT },
+    async () => {
+      const json = JSON.parse(await run(summaryMain, ['--env', 'dev']))
+      expect(Array.isArray(json.docs)).toBe(true)
+      expect(json.docs.length).toBeGreaterThan(0)
+    },
+  )
 })
 
 describe('feeds.mjs CLI smoke', () => {
@@ -100,10 +107,14 @@ describe('feeds.mjs CLI smoke', () => {
     expect(json.items.map((item) => item.title)).toContain('삼성 소식')
   })
 
-  it('--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)', async () => {
-    const json = JSON.parse(await run(feedsMain, ['--env', 'dev', '--count', '5']))
-    expect(Array.isArray(json.items)).toBe(true)
-  })
+  it(
+    '--vault 누락 → 기본값 REPO_ROOT 로 실행(throw 안 함 — D3)',
+    { timeout: REAL_VAULT_TIMEOUT },
+    async () => {
+      const json = JSON.parse(await run(feedsMain, ['--env', 'dev', '--count', '5']))
+      expect(Array.isArray(json.items)).toBe(true)
+    },
+  )
 })
 
 describe('wiki.mjs CLI smoke', () => {

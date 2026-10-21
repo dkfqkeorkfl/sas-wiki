@@ -44,7 +44,8 @@ beforeAll(() => {
   //   prod 에서는 문서 모집단이 통째로 비어(docs=0) 아래 단언들이 빈 배열끼리 비교하는 공허
   //   통과가 된다. 여기서 `dev` 를 명시하는 것이 이 파일의 검사 대상을 존재하게 만드는 조건이다.
   ctx.result = buildContent({ env: 'dev', out: ctx.out, vault: VAULT })
-})
+  // 실제 67문서 vault 빌드는 순차 재현에서 78s였다. 다른 hook의 기본 60s 제한은 유지한다.
+}, 120_000)
 
 afterAll(() => {
   for (const key of GIT_CONFIG_KEYS) {
