@@ -5,7 +5,7 @@
 //   · `prepare` 가 husky 를 실행한다 — husky 9 는 `core.hooksPath` 를 `.husky/_` 로 두고 거기서
 //     `.husky/<훅 이름>` 을 `sh -e` 로 실행한다(github.com/typicode/husky `husky` 스크립트).
 //   · `.husky/pre-commit` 은 문서 id 를 판단한다(미등록이면 채우고 훼손·변경이면 막는다).
-//   · `.husky/pre-push` 는 CI 와 같은 문서 검증(validate)을 돌린다 — 중복 id 는 여기서 처음 걸린다.
+//   · `.husky/pre-push` 는 작성 하네스 뒤 validate를 돌린다 — 중복 id는 validate에서 걸린다.
 //   · 새 문서 id 발급(uuid)은 커밋 훅만 쓴다. feeds 서빙 경로는 npm 패키지를 로드하지 않아야 하므로
 //     (`serving.cost-profile.test.mjs`) 발급을 `new-doc-id.mjs` 로 분리했고, uuid 는 husky 와 함께
 //     개발 도구(devDependency)다.
@@ -39,10 +39,11 @@ describe('git 훅 배선', () => {
     expect(commandsOf('pre-commit')).toEqual(['node scripts/check-doc-ids.mjs'])
   })
 
-  it('.husky/pre-push 는 validate 를 돌리고, 실패하면 고치는 방법을 알리고 멈춘다', () => {
+  it('.husky/pre-push 는 작성 하네스 뒤 validate 를 돌리고, 실패하면 고치는 방법을 알리고 멈춘다', () => {
     const commands = commandsOf('pre-push')
 
-    expect(commands[0]).toBe('node scripts/validate.mjs --env dev || {')
+    expect(commands[0]).toBe('pnpm run test:harness || exit 1')
+    expect(commands[1]).toBe('node scripts/validate.mjs --env dev || {')
     expect(commands.at(-2)).toBe('exit 1')
     // 원격 끝이 아니라 갈라진 지점으로 되돌린다 — 원격 끝으로 soft reset 하면 그사이 남이 올린 변경이
     //   되돌리는 변경으로 스테이징돼 다음 커밋이 그것을 지운다.
@@ -54,6 +55,62 @@ describe('git 훅 배선', () => {
     expect(pkg.devDependencies).toHaveProperty('uuid')
     expect(pkg.dependencies).not.toHaveProperty('uuid')
   })
+})
+
+describe('실제 pre-push 스크립트의 검사 순서와 차단', () => {
+  it.each([
+    { policyExit: 1, validateExit: 0, trace: ['pnpm:run test:harness'], success: false },
+    {
+      policyExit: 0,
+      validateExit: 1,
+      trace: ['pnpm:run test:harness', 'node:scripts/validate.mjs --env dev'],
+      success: false,
+    },
+    {
+      policyExit: 0,
+      validateExit: 0,
+      trace: ['pnpm:run test:harness', 'node:scripts/validate.mjs --env dev'],
+      success: true,
+    },
+  ])(
+    '하네스 종료 $policyExit / validate 종료 $validateExit',
+    ({ policyExit, validateExit, trace, success }) => {
+      const dir = mkdtempSync(path.join(tmpdir(), 'wiki-hook-order-'))
+      const traceFile = path.join(dir, 'trace')
+      try {
+        for (const [name, variable] of [
+          ['pnpm', 'WIKI_POLICY_EXIT'],
+          ['node', 'WIKI_VALIDATE_EXIT'],
+        ]) {
+          const file = path.join(dir, name)
+          writeFileSync(
+            file,
+            `#!/bin/sh\nprintf '%s:%s\\n' '${name}' "$*" >> "$WIKI_HOOK_TRACE"\nexit "$${variable}"\n`,
+          )
+          chmodSync(file, 0o755)
+        }
+        const result = spawnSync('sh', ['-e', path.join(REPO_ROOT, '.husky/pre-push')], {
+          cwd: dir,
+          encoding: 'utf8',
+          timeout: 10_000,
+          env: {
+            ...process.env,
+            PATH: `${dir}${path.delimiter}${process.env.PATH}`,
+            WIKI_HOOK_TRACE: traceFile,
+            WIKI_POLICY_EXIT: String(policyExit),
+            WIKI_VALIDATE_EXIT: String(validateExit),
+          },
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.status === 0, result.stderr).toBe(success)
+        expect(readFileSync(traceFile, 'utf8').trim().split('\n')).toEqual(trace)
+        if (policyExit === 0 && validateExit !== 0)
+          expect(result.stderr).toContain('validate 가 실패')
+      } finally {
+        cleanup(dir)
+      }
+    },
+  )
 })
 
 describe('push 직전 validate — 실제 git push', () => {

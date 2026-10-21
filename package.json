@@ -18,7 +18,8 @@
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:harness": "vitest run harness --passWithNoTests=false"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.8",

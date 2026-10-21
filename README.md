@@ -890,6 +890,7 @@ dev → prod 승격은 어떤 신호로 숨겼느냐에 따라 다르다.
 
 ```bash
 pnpm test              # vitest
+pnpm test:harness      # 문서 작성 규칙과 실제 wiki 문서 검사
 pnpm test:coverage
 pnpm format            # prettier --write .
 pnpm format:check
@@ -908,10 +909,10 @@ pnpm format:check
 | 단계       | 언제           | 하는 일                                                                         |
 | ---------- | -------------- | ------------------------------------------------------------------------------- |
 | pre-commit | `git commit`   | 문서 id 를 판단한다 — 미등록이면 채우고, 훼손·변경이면 원래 id 를 알리고 막는다 |
-| pre-push   | `git push`     | `validate` — id 형식·변경·**중복**, 스키마, 링크                                |
+| pre-push   | `git push`     | 문서 작성 하네스 → `validate` — id 형식·변경·**중복**, 스키마, 링크             |
 | CI         | PR · main push | 포맷 · 테스트(커버리지) · `validate` · `build`                                  |
 
-**설치** — `pnpm install` 이 `prepare` 스크립트로 husky 를 설치한다(`core.hooksPath` 를 `.husky/_` 로 둔다). 그 뒤 `git commit` 마다 `.husky/pre-commit` 이 `scripts/check-doc-ids.mjs` 를, `git push` 마다 `.husky/pre-push` 가 `scripts/validate.mjs --env dev` 를 부른다.
+**설치** — `pnpm install` 이 `prepare` 스크립트로 husky 를 설치한다(`core.hooksPath` 를 `.husky/_` 로 둔다). 그 뒤 `git commit` 마다 `.husky/pre-commit` 이 `scripts/check-doc-ids.mjs` 를, `git push` 마다 `.husky/pre-push` 가 `pnpm run test:harness`와 `scripts/validate.mjs --env dev`를 순서대로 부른다.
 
 **커밋 훅(`check-doc-ids`)**
 
@@ -923,7 +924,9 @@ pnpm format:check
 - `git commit <경로>` 처럼 경로를 지정해 커밋하면 git 이 훅에 커밋 뒤 버려지는 임시 인덱스를 넘긴다. 그 인덱스에 쓰면 저장소 인덱스에 남지 않아 다음 커밋이 id 를 지우므로, 훅은 작업 트리에만 id 를 넣고 커밋을 멈춘다. `git add <경로>` 후 다시 커밋하면 된다.
 - `git commit --amend` 는 고치는 대상 커밋과 비교한다. 커밋을 고칠 때는 `git reset --soft` 로 되돌려 다시 커밋한다.
 
-**push 직전 훅** — 작업 트리를 `validate` 한다(push 할 커밋이 아니라 지금 파일을 본다). 걸리면 아직 push 하지 않은 커밋이므로 [되돌려 고친다](#id-를-고쳐야-할-때).
+**문서 작성 하네스** — `harness/`의 Vitest 테스트가 TREND·REPORT의 공통 경로(`YYYY-MM/DD. 제목.md`), 실제 날짜, `meta.asOf` 일치, `type: concept`, 본문 첫 줄의 기준일 안내를 검사한다. 모든 wiki 문서에서 중복 저작한 frontmatter `title`도 검사한다. 표시 제목은 확장자를 뺀 파일명 전체다. 실제 문서와 잘못된 입력 예시를 함께 검사하며, REPORT가 비어 있어도 규칙 검사는 실행된다. 단독 실행은 `pnpm run test:harness`이고, 전체 테스트·CI에도 기본 포함된다. 새 자료인지 사실 오류 정정인지처럼 본문 의미가 필요한 판단은 작성·리뷰 단계에서 확인한다.
+
+**push 직전 훅** — 문서 작성 하네스를 실행한 뒤 작업 트리를 `validate` 한다(push 할 커밋이 아니라 지금 파일을 본다). 걸리면 아직 push 하지 않은 커밋이므로 [되돌려 고친다](#id-를-고쳐야-할-때).
 
 **CI** — `.github/workflows/ci.yml` 이 PR 과 main push 에서 돈다.
 
