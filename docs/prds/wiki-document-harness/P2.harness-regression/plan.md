@@ -10,7 +10,7 @@
 
 ## Problem → Solution
 
-P2 착수 당시 기본 Vitest는 scripts와 실제 문서 가드를 수집했지만 `test:harness`도 같은 설정에서 harness를 필터링해 실제 가드를 다시 실행한다. 평탄한 `harness/document-rules.test.mjs` 회귀는 이 명령에 수집되지 않았다. pre-push도 이 잘못된 수동 명령을 호출했다.
+P2 착수 당시 기본 Vitest는 scripts와 실제 문서 가드를 수집했지만 `test:harness`도 같은 설정에서 harness를 필터링해 실제 가드를 다시 실행했다. 평탄한 `harness/document-rules.test.mjs` 회귀는 이 명령에 수집되지 않았다. pre-push도 이 잘못된 수동 명령을 호출했다.
 
 같은 `wiki-documents/__tests__/`에 집행·회귀·설정 계약을 모으고, 기본 test/coverage는 scripts 전체와 문서 분야의 `.guard`를 수집한다. 수동 전용 설정은 같은 분야에서 가드를 제외한 회귀만 수집한다. pre-push는 일반 test를 실행하고 기존 validate 단계는 P3까지 유지한다.
 
@@ -228,4 +228,12 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 기존 Vites
 
 - 배치 정정 RED: 설정 변경 전 선택 계약 7건 중 수집 2건이 예상대로 실패했다. 실제 자동 목록은 기대 110개에 수동 회귀 5개가 혼입된 115개였고, 혼합 종류 fixture도 기대 3개 대신 5개를 자동 수집했다. 나머지 5건은 통과했다. 샌드박스 EPERM 실행은 근거에서 제외하고 권한 제한을 해소한 재실행 결과만 사용했다.
 
-- 배치 정정 GREEN: 두 Vitest 설정이 같은 가드 글롭을 공유하며 같은 문서 분야에서 자동 가드/수동 회귀를 나눈다. 수동 전체는 5개 파일·130건, exit 0(56.98초)이다. 혼합 종류 fixture와 기존 검사기·가드·훅·CI 회귀가 모두 통과했다. 기록: `logs/verification/p2-colocation-harness.log`. 전체 제품 coverage는 이 설정에서 이어서 확인한다.
+- 배치 정정 GREEN: 두 Vitest 설정이 같은 가드 글롭을 공유하며 같은 문서 분야에서 자동 가드/수동 회귀를 나눈다. 수동 전체는 5개 파일·130건, exit 0(56.98초)이다. 혼합 종류 fixture와 기존 검사기·가드·훅·CI 회귀가 모두 통과했다. 기록: `logs/verification/p2-colocation-harness.log`. 아래 전체 제품 coverage에서도 같은 설정을 검증했다.
+
+### 배치 정정 완료 검수
+
+- 최종 `pnpm run test:coverage --maxWorkers=1 --reporter=verbose --coverage.reportOnFailure`: 110개 파일·1,197건, exit 0. 1,562.25초가 걸렸으며 `logs/verification/p2-colocation-coverage.log`에 기록했다. 자동에는 문서 가드가, 수동에는 같은 분야의 나머지 5개 파일이 포함되며 누락·교집합이 없다.
+- 제품 coverage: statements 90.26%, branches 82.72%, functions 95.63%, lines 91.52%. 기존 86/76/92/89 floor와 계측 범위를 유지했다. 실제 문서의 dev/prod 무결성도 통과했다.
+- Codex가 정확성·중복·죽은 코드·정리 부채·편법을 직접 검수했다. contract C1–C3·C7의 소유·이름·종류·자동/수동 수집·실패·공용 도우미 기준을 코드와 대응했다. C8의 기존 기능/훅/CI 동작을 보존하고 C9의 sas-wiki 내부 범위를 지켰으며 C10에 따라 승인한 정정을 PRD·계약·계획·README에 반영했다. 별도 리팩터링이나 새 배치 가드는 필요하지 않았다.
+- 문서 검사기·실제 가드·기능 구현·위키 문서·ID·의존성·훅·CI workflow는 이번 정정에서 변경하지 않았다. 훅·CI·가드 회귀 3개는 원본과 바이트가 같고, 규칙 회귀는 import만 바꿨다. 수집 계약에 혼합 종류 fixture 1건을 추가했다. 옛 분야 폴더와 현재 참조를 제거했다.
+- 의존성 감사는 기존 high 3/moderate 7/low 1건이며 이번 변경에 의존성 수정은 없다. 변경 파일의 Prettier 및 diff 검사를 통과했다. 부모 인덱스의 sas-wiki 포인터는 main의 `97f207c`를 유지했다. 로컬 커밋만 하며 원격 push와 P3/P4는 진행하지 않았다.
