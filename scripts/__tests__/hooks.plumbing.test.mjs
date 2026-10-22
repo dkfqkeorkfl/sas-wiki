@@ -1,6 +1,6 @@
 // @vitest-environment node
 // 실제 validate가 중복 ID 문서의 push를 차단하는 기능 검사다.
-// 훅 설정·명령 순서 계약은 harness/validation-regression에서 수동 검증한다.
+// 훅 설정·명령 순서 계약은 harness/wiki-documents/__tests__에서 수동 검증한다.
 import { spawnSync } from 'node:child_process'
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -1,8 +1,11 @@
 import { defineConfig } from 'vitest/config'
 
+// 같은 문서 분야에서 guard 종류만 자동 집행한다. 복수 종류의 뒤쪽 접미도 허용한다.
+export const documentGuardTests = ['harness/wiki-documents/__tests__/*.guard{,.*}.test.mjs']
+
 export default defineConfig({
   test: {
-    include: ['scripts/**/*.test.mjs', 'harness/wiki-documents/__tests__/*.test.mjs'],
+    include: ['scripts/**/*.test.mjs', ...documentGuardTests],
     passWithNoTests: false,
     coverage: {
       include: ['scripts/**/*.mjs'],

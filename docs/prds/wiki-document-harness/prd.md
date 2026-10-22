@@ -6,7 +6,7 @@
 
 ## Evidence
 
-- 현재 build·build-dev는 validate → summary → feeds를 실행하고 pre-push는 test:harness → validate를 실행한다.
+- 재구성 전 build·build-dev는 validate → summary → feeds, pre-push는 test:harness → validate를 실행했다. P2에서 pre-push를 test → validate로 바꿨으며 빌드의 validate 제거는 P3 대상이다.
 - 기존 생산 파싱 경로의 문서 상태 수집은 스키마·ID 이력 감사와 결합돼 있다. validate 호출만 지워서는 사용자가 요구한 실행 책임·비용 분리가 끝나지 않는다.
 - 사용자는 실제 문서 집행과 스크립트 테스트를 CI·Git 훅에서 강제하고, 하네스 회귀는 설정·개발 시에만 수동 실행하도록 확정했다.
 
