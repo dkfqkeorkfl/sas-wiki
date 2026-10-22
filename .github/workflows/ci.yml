@@ -44,3 +44,35 @@ jobs:
       - run: pnpm run format:check
       - run: pnpm run test:coverage
       - run: pnpm run build
+
+      - name: Verify prod artifact pair
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readArtifact, SCHEMA_VERSION } from './scripts/lib/artifact.mjs'
+          import { loadSchema, validateItem } from './scripts/lib/schema-validator.mjs'
+          const expectedSha = process.env.GITHUB_SHA ?? ''
+          assert.match(expectedSha, /^[0-9a-f]{40}$/, 'GITHUB_SHA must identify the tested commit')
+          const payloads = ['summary', 'feeds'].map(kind => {
+            const file = `cache/${kind}.prod.json`
+            const result = readArtifact({ expect: { env: 'prod', schemaVersion: SCHEMA_VERSION }, path: file })
+            assert.ok(result.fresh, `${file}: ${result.reason}`)
+            assert.equal(result.payload.sourceCommit, expectedSha, `${file}: sourceCommit`)
+            assert.deepEqual(validateItem(result.payload, loadSchema(`scripts/schema/${kind}.schema.json`), file), [], file)
+            return result.payload
+          })
+          assert.equal(payloads[0].generatedAt, payloads[1].generatedAt, 'prod artifact generatedAt mismatch')
+          console.log(`[wiki] prod artifact pair sourceCommit=${expectedSha}`)
+          NODE
+
+      - name: Store prod artifact pair
+        if: ${{ success() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wiki-prod-${{ github.event_name }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            cache/summary.prod.json
+            cache/feeds.prod.json
+          archive: true
+          overwrite: false
+          if-no-files-found: error

@@ -876,7 +876,7 @@ pnpm format:check
 | ---------- | -------------- | ------------------------------------------------------------------------------- |
 | pre-commit | `git commit`   | 문서 id 를 판단한다 — 미등록이면 채우고, 훼손·변경이면 원래 id 를 알리고 막는다 |
 | pre-push   | `git push`     | `test`(기능·실제 문서)                                                          |
-| CI         | PR · main push | 포맷 · 테스트(커버리지) · `build`                                               |
+| CI         | PR · main push | 포맷 · 테스트(커버리지) · `build` · prod 세트 확인·저장                         |
 
 **설치** — `pnpm install` 이 `prepare` 스크립트로 husky 를 설치한다(`core.hooksPath` 를 `.husky/_` 로 둔다). 그 뒤 `git commit` 마다 `.husky/pre-commit` 이 `scripts/check-doc-ids.mjs` 를, `git push` 마다 `.husky/pre-push` 가 `pnpm run test`를 부른다. `test:harness`는 훅·CI에서 자동 실행하지 않는다.
 
@@ -901,8 +901,16 @@ pnpm format:check
 1. 전체 이력으로 체크아웃한다(`fetch-depth: 0`). id 변경 판별(git blame)과 피드가 이력을 읽고, 얕은 클론이면 문서 집행과 생성이 실패한다([클론 요건](#클론-요건)).
 2. `pnpm install --frozen-lockfile` — 잠금 파일과 다르면 실패한다.
 3. `pnpm run format:check` → `pnpm run test:coverage`(커버리지 하한 포함) → `pnpm run build`(prod 체인).
+4. `cache/summary.prod.json`과 `cache/feeds.prod.json`을 각각 읽어 JSON·버전·prod 환경·해당 스키마와 `GITHUB_SHA`의 일치를 확인한다. 두 `generatedAt`도 같아야 한다. 파일 하나만 빠지거나 다른 커밋의 파일이 섞여도 실패한다.
+5. 앞 단계가 모두 성공한 경우에만 두 prod 파일을 zip artifact 한 개로 저장한다. dev 파일·보고서·캐시 폴더 전체를 업로드하지 않는다.
 
-CI 는 **마지막 상태만** 본다. 그래서 [id 정정 1번](#id-를-고쳐야-할-때)(id 줄 삭제 → 새 id)이 통과한다 — 의도한 동작이다. action 은 태그가 아니라 전체 커밋 SHA 로 고정한다(태그는 옮겨질 수 있다). 토큰 권한은 읽기 전용이고, CI 는 커밋·push 하지 않으므로 `HUSKY=0` 으로 git 훅을 설치하지 않는다.
+산출물 이름은 `wiki-prod-<event>-<sha>-<run_id>-<run_attempt>`다. 커밋·실행·재시도를 구분하며 기존 세트를 덮어쓰지 않는다. Actions 실행 화면에서 해당 artifact를 확인할 수 있고, 보관 기간과 만료는 저장소 설정을 따른다.
+
+릴리즈에 사용할 후보는 **main push의 성공한 verify 실행**에서 고른다. 같은 실행의 두 파일을 함께 사용하며, PR 검증용 세트를 운영 후보와 섞지 않는다. PR의 SHA는 일반적으로 head가 아닌 검증한 merge 커밋이다. 실제 릴리즈 발행·다운로드 자동화·배포 연결은 별도 작업이다.
+
+CI는 체크아웃한 커밋의 현재 파일과 그 커밋까지의 이력을 검사한다. [id 정정 1번](#id-를-고쳐야-할-때)(id 줄 삭제 → 새 id)은 허용하는 정정 절차다. action은 전체 커밋 SHA로 고정하고 토큰 권한은 읽기 전용으로 유지한다. CI는 커밋·push하지 않으므로 `HUSKY=0`으로 git 훅을 설치하지 않는다.
+
+**부모 workspace 연결 시 별도 조치** — 부모의 `/workspace/scripts/wiki-dev-server/__tests__/wikiSetup.contract.source-scan.test.ts`에는 sas-wiki가 `validate` 명령을 소유해야 한다는 옛 단언이 남아 있다. 이 기능 브랜치로 포인터를 갱신할 때 해당 단언을 실제 자동 문서 가드와 `test` 소유 확인으로 바꿔야 한다. 이 PRD는 sas-wiki 내부만 수정하며 부모 파일·포인터는 변경하지 않는다. 제거한 CLI를 되살려 해결하지 않는다.
 
 **CI 가 머지를 막으려면** GitHub 저장소 설정에서 main 에 `verify` 검사를 필수 상태 검사로 걸어야 한다. 걸지 않으면 CI 는 실패를 보여 줄 뿐 머지를 막지 않는다.
 
