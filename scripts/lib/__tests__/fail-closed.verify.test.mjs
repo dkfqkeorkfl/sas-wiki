@@ -5,8 +5,6 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 
 import path from 'node:path'
 
-import { fileURLToPath } from 'node:url'
-
 import { isDraft } from '../draft.mjs'
 
 import {
@@ -28,10 +26,6 @@ import {
   initVault,
   writeDoc,
 } from '../../__tests__/helpers/tmp-git-vault.mjs'
-
-// P5 Task 9(D-I) — `buildWirePayload` 는 이제 `parseVault(...).wire` 다(얕은/깊은 구분이 사라져
-//   전용 wrapper 가 무의미해졌다). 좌표만 바뀌었을 뿐 이 스펙의 단언(가용성 보존)은 무변경이다.
-const SCHEMA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema')
 
 const UUIDV7_PUBLIC = '0192f0c0-8000-7000-8000-0123456789ab'
 
@@ -192,6 +186,23 @@ describe('H6 readFrontmatterFieldChange — git 실패를 삼키지 않는다', 
           pattern: ID_LINE,
         }),
       ).toEqual([undefined, UUIDV7_PUBLIC])
+    } finally {
+      cleanup(vault)
+    }
+  })
+})
+
+describe('원문 파싱의 가용성', () => {
+  it('frontmatter가 없는 파일이 있어도 정상 문서와 날짜를 처리한다', () => {
+    const vault = initVault()
+    try {
+      writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC })
+      writeRawDoc(vault, 'tech/맨몸', '# frontmatter 없음\n\n본문.\n')
+      commit(vault, 'chore: 문서와 메모 생성')
+      const { context, wire } = parseVault(vault, 'prod')
+      expect(wire.docs.map((doc) => doc.id)).toEqual([UUIDV7_PUBLIC])
+      expect(wire.docs[0].updated).toBeTruthy()
+      expect(context.headState.strayDocPaths).toEqual(new Set(['wiki/tech/맨몸.md']))
     } finally {
       cleanup(vault)
     }

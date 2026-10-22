@@ -186,11 +186,7 @@ export function writeDoc(
     `status: ${status}`,
   ]
   if (id !== undefined) fm.push(`id: "${id}"`)
-  // `type: company` 는 스키마상 `meta` 가 필수다(조건부 required). P3 이전에는 문서 스키마 검증이
-  //   `validate.mjs` 에서만 돌아 **서빙 경로가 이 위반을 통과**시켰고, 그래서 이 헬퍼가 meta 없이도
-  //   쓸 만했다. P3 부터 판정이 얕은 티어(항상)로 올라와 그런 문서는 서빙에서도 제외된다 —
-  //   즉 이 헬퍼가 만들던 company 문서는 이제 **부적합 데이터**다. 픽스처는 유효 문서를 만들어야
-  //   부재 단언이 공허해지지 않으므로, 지정이 없으면 타입이 요구하는 최소 meta 를 채운다.
+  // 회사 문서의 스키마 필수 meta를 기본 제공한다. 위반을 시험할 때는 해당 필드만 바꾼다.
   const resolvedMeta = meta ?? (type === 'company' ? DEFAULT_COMPANY_META : undefined)
   if (resolvedMeta !== undefined) {
     fm.push('meta:')

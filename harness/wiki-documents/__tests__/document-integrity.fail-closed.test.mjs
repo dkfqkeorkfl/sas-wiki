@@ -9,8 +9,6 @@ import { inspectVault } from '../document-integrity.mjs'
 
 import { anyMarkdown, collectDeletedDocEvents, makeGitRunner } from '../../../scripts/lib/git.mjs'
 
-import { parseVault } from '../../../scripts/lib/parse-vault.mjs'
-
 import { cleanup, commit, git, initVault, writeDoc } from '../../test-utils/tmp-git-vault.mjs'
 
 const UUIDV7_PUBLIC = '0192f0c0-8000-7000-8000-0123456789ab'
@@ -42,19 +40,6 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
       commit(vault, 'chore: 문서 2건 생성')
 
       expect(() => inspectVault({ env: 'prod', vault })).toThrow(/맨몸/u)
-    } finally {
-      cleanup(vault)
-    }
-  })
-
-  it('서빙 경로(parseVault)는 stray 가 있어도 죽지 않는다 (가용성 보존)', () => {
-    const vault = initVault()
-    try {
-      writeDoc(vault, 'tech/HBM', { id: UUIDV7_PUBLIC, title: 'HBM' })
-      writeRawDoc(vault, 'tech/맨몸', '# frontmatter 없음\n\n본문.\n')
-      commit(vault, 'chore: 문서 2건 생성')
-
-      expect(() => parseVault(vault, 'prod')).not.toThrow()
     } finally {
       cleanup(vault)
     }

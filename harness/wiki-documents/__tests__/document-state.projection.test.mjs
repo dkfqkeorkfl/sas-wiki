@@ -1,5 +1,4 @@
 // 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
-import path from 'node:path'
 
 import { fileURLToPath } from 'node:url'
 
@@ -34,13 +33,7 @@ import {
   TWIN_TAG,
 } from '../../test-utils/polluted-vault.mjs'
 
-const HERE = path.dirname(
-  fileURLToPath(
-    new URL('../../../scripts/__tests__/build.doc-exclusion.test.mjs', import.meta.url),
-  ),
-)
-
-const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
+const SCHEMA_DIR = fileURLToPath(new URL('../../../scripts/schema/', import.meta.url))
 
 const tmps = []
 

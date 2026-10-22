@@ -34,8 +34,6 @@ describe('draft와 공개 문서의 ID 충돌', () => {
       expect(state.excluded.every((entry) => entry.message.includes(id))).toBe(true)
       expect(state.headDocs).toEqual([])
       expect(() => inspectVault({ vault, env })).toThrow(/DUPLICATE_ID[\s\S]*wiki\/dev\/초안.md/)
-      writeDoc(vault, 'dev/초안', { id: otherId })
-      // ID 변경 이력과 혼합하지 않도록 정상 대조군은 별도 저장소에서 확인한다.
     } finally {
       cleanup(vault)
     }

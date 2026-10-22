@@ -11,13 +11,7 @@ import { describe, expect, it } from 'vitest'
 
 import { checkCommitConventions } from '../document-invariants.mjs'
 
-const HERE = path.dirname(
-  fileURLToPath(
-    new URL('../../../scripts/lib/__tests__/invariants.grandfathering.test.mjs', import.meta.url),
-  ),
-)
-
-const REPO_ROOT = path.resolve(HERE, '..', '..', '..')
+const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 
 const INVARIANTS_PATH = path.join(REPO_ROOT, 'harness/wiki-documents/document-invariants.mjs')
 

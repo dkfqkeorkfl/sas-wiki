@@ -23,7 +23,7 @@ const EMAIL = 'bot@sas.wiki'
 
 let tick = 1_136_239_445
 
-const ctx = { ids: {}, prevEpoch: undefined, result: null, result2: null, vault: '' }
+const ctx = { ids: {}, prevEpoch: undefined, result: null, vault: '' }
 
 function appendDoc(root, rel, paragraph) {
   const full = path.join(root, 'wiki', `${rel}.md`)
@@ -158,7 +158,6 @@ beforeAll(() => {
   // 결정성 검증용 2회 조립(같은 입력·같은 SOURCE_DATE_EPOCH). validate 는 파일을 쓰지 않으므로
   // in-memory payload 를 대조한다(구: out1·out2 byte-identical).
   ctx.result = inspectVault({ vault })
-  ctx.result2 = inspectVault({ vault })
 })
 
 afterAll(() => {

@@ -11,11 +11,9 @@ import {
   writeDoc,
 } from '../../test-utils/tmp-git-vault.mjs'
 import { inspectVault } from '../document-integrity.mjs'
-const HERE = path.dirname(
-  fileURLToPath(new URL('../../../scripts/__tests__/build.p5-plumbing.test.mjs', import.meta.url)),
+const REPORT_SCHEMA = fileURLToPath(
+  new URL('../../../scripts/schema/report.schema.json', import.meta.url),
 )
-const SCRIPTS_DIR = path.resolve(HERE, '..')
-const REPORT_SCHEMA = path.join(SCRIPTS_DIR, 'schema', 'report.schema.json')
 const REPORT_PROPERTY_KEYS = [
   'env',
   'excluded',

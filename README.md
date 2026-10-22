@@ -910,7 +910,7 @@ pnpm format:check
 
 CI는 체크아웃한 커밋의 현재 파일과 그 커밋까지의 이력을 검사한다. [id 정정 1번](#id-를-고쳐야-할-때)(id 줄 삭제 → 새 id)은 허용하는 정정 절차다. action은 전체 커밋 SHA로 고정하고 토큰 권한은 읽기 전용으로 유지한다. CI는 커밋·push하지 않으므로 `HUSKY=0`으로 git 훅을 설치하지 않는다.
 
-**부모 workspace 연결 시 별도 조치** — 부모의 `/workspace/scripts/wiki-dev-server/__tests__/wikiSetup.contract.source-scan.test.ts`에는 sas-wiki가 `validate` 명령을 소유해야 한다는 옛 단언이 남아 있다. 이 기능 브랜치로 포인터를 갱신할 때 해당 단언을 실제 자동 문서 가드와 `test` 소유 확인으로 바꿔야 한다. 이 PRD는 sas-wiki 내부만 수정하며 부모 파일·포인터는 변경하지 않는다. 제거한 CLI를 되살려 해결하지 않는다.
+**부모 workspace 연결 시 별도 조치** — 부모의 `/workspace/scripts/wiki-dev-server/__tests__/wikiSetup.contract.source-scan.test.ts`에는 sas-wiki가 `validate` 명령을 소유해야 한다는 옛 단언이 남아 있다. 새 검사 체계로 포인터를 갱신할 때 해당 단언을 실제 자동 문서 가드와 `test` 소유 확인으로 바꿔야 한다. 부모 파일·포인터 갱신은 부모 저장소에서 별도로 처리한다. 제거한 CLI를 되살려 해결하지 않는다.
 
 **CI 가 머지를 막으려면** GitHub 저장소 설정에서 main 에 `verify` 검사를 필수 상태 검사로 걸어야 한다. 걸지 않으면 CI 는 실패를 보여 줄 뿐 머지를 막지 않는다.
 
