@@ -1,28 +1,14 @@
-// @vitest-environment node
-//
-// P2 dev/prod 분리 · Task 2·4 — build.mjs `--env` + draft 필터 RED (tdd §3 Task 2·4 · plan §Task 2·4)
-//
-// 두 seam 을 분리 단언한다:
-//   A) parseArgs `--env` — dev|prod 파싱 · 미지정=prod(fail-closed)+console.error 경고 · 잘못된 값 throw.
-//   B) buildContent draft 필터 — prod=제외 / dev=포함, `isDraft = flag(fail-open) OR dev/ 폴더(백스톱)` OR-결합.
-//      필터는 **parse 이후·validateParsedDocs 이전**(부분 누출 방지) — 스키마-위반 draft 앵커가 구조 증명.
-//
-// RED 사유 요약:
-//   · parseArgs: 현행은 `--env` 를 **알 수 없는 인자로 throw**(build.mjs:182) · 미지정 시 options.env 부재.
-//   · buildContent: 현행 signature 는 `{allowDeadlinks,out,schema,vault}`(:46) — `env` 를 **무시**하고
-//     전량 빌드 → prod 에도 draft 문서가 그대로 남는다(누출).
-//
-// **in-process 호출**(subprocess 아님) — 신규 분기(env 4-way × isDraft flag/folder/both)를 v8 커버리지에
-//   태우기 위함(build.smoke.test.mjs §11 관례). CLI end-to-end 는 build.cli.test.mjs 소관.
-//
-// **정본 문서 수 하드코딩 금지**(MEMORY: tests-decoupled-from-canonical-data) — 전부 합성 tmp-vault 로
-//   로직만 검증한다. 각 문서는 유효 UUIDv7 id·chore 커밋으로 시딩한다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+
 import path from 'node:path'
+
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { deriveGeneratedAt } from '../lib/parse-vault.mjs'
-import { buildContent, parseArgs } from '../validate.mjs'
+
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import {
   cleanup,
   commit,
@@ -32,15 +18,18 @@ import {
 } from './helpers/tmp-git-vault.mjs'
 
 const outputDirs = []
+
 function makeOut() {
   const out = makeTempOut()
   outputDirs.push(out)
   return out
 }
+
 afterAll(() => cleanup(...outputDirs))
 
 // ── 합성 시딩 원자 (helpers/tmp-git-vault.writeDoc 는 draft·비유효 id 를 못 넣으므로 로컬 확장) ──
 let idSeq = 0
+
 function nextValidId() {
   return `0192f0d0-0000-7000-8000-${(idSeq += 1).toString(16).padStart(12, '0')}`
 }
@@ -102,40 +91,7 @@ function feedRefsId(result, id) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// A. parseArgs --env (순수 · in-process)
-// ────────────────────────────────────────────────────────────────────────────
-describe('parseArgs --env — dev|prod · fail-closed 기본 · bogus throw', () => {
-  it('--env dev → options.env === "dev" (RED — 현행은 알 수 없는 인자로 throw)', () => {
-    expect(parseArgs(['--vault', 'v', '--env', 'dev']).env).toBe('dev')
-  })
-
-  it('--env prod → options.env === "prod"', () => {
-    expect(parseArgs(['--vault', 'v', '--env', 'prod']).env).toBe('prod')
-  })
-
-  it('--env 미지정 → prod (fail-closed 기본, Layer B — RED: 현행은 env 부재)', () => {
-    expect(parseArgs(['--vault', 'v']).env).toBe('prod')
-  })
-
-  it('--env 미지정 → console.error 경고 (silent 폴백 금지 — RED: 현행은 경고 없음)', () => {
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      parseArgs(['--vault', 'v'])
-
-      expect(spy).toHaveBeenCalled()
-      expect(spy.mock.calls.flat().join(' ')).toMatch(/prod|fail-closed|미지정/i)
-    } finally {
-      spy.mockRestore()
-    }
-  })
-
-  it('--env 잘못된 값(staging) → throw (E3 조용한 폴백 금지)', () => {
-    expect(() => parseArgs(['--vault', 'v', '--env', 'staging'])).toThrow()
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────────────
-// B. buildContent draft 필터 — OR-결합(flag / dev/ 폴더 / both)
+// B. parsePayloads draft 필터 — OR-결합(flag / dev/ 폴더 / both)
 //    Vault A(공용): keep(공개) · secretFlag(draft:true) · devFolder(dev/, 플래그無) · both(dev/+draft)
 // ────────────────────────────────────────────────────────────────────────────
 describe('draft 필터 — prod 제외 / dev 포함 (OR 이중신호)', () => {
@@ -152,8 +108,8 @@ describe('draft 필터 — prod 제외 / dev 포함 (OR 이중신호)', () => {
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
     // 현행은 env 무시 → 두 빌드 모두 4문서를 낸다(throw 없음). GREEN 후 prod=1 / dev=4.
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault: ctx.vault })
-    ctx.devResult = buildContent({ env: 'dev', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
+    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -191,38 +147,6 @@ describe('draft 필터 — prod 제외 / dev 포함 (OR 이중신호)', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// B'. 완전 배제 앵커 — 필터가 validateParsedDocs **이전**임을 구조 증명(부분 누출 방지)
-//     draft 문서를 **스키마 위반(비유효 id)** 으로 시딩:
-//       prod → 필터가 validate 전에 배제 → 빌드 성공(위반 미검증)
-//       dev  → 포함 → validateParsedDocs 가 pattern 위반으로 throw
-// ────────────────────────────────────────────────────────────────────────────
-describe('완전 배제 앵커 — 필터 = validate 이전 (부분 누출 방지)', () => {
-  const ctx = { vault: '' }
-
-  beforeAll(() => {
-    // keep: 유효 공개 문서. badDraft: draft:true + **비유효 id**(UUIDv7 pattern 위반).
-    //   type 은 유효(concept)라 build.mjs:65 의 early type-throw 는 타지 않는다 — 위반은 오직
-    //   validateParsedDocs(:72) 의 id pattern 이며, 그 지점은 필터보다 뒤다.
-    ctx.vault = seedVault([
-      { rel: 'concept/keep' },
-      { draft: true, id: 'not-a-valid-uuid', rel: 'concept/bad-draft' },
-    ])
-  })
-
-  afterAll(() => {
-    cleanup(ctx.vault)
-  })
-
-  it('prod: 스키마-위반 draft 문서는 validate 이전에 배제되어 빌드가 성공한다 (RED — 현행은 전량 검증→throw)', () => {
-    expect(() => buildContent({ env: 'prod', out: makeOut(), vault: ctx.vault })).not.toThrow()
-  })
-
-  it('dev: 그 문서가 포함되어 validateParsedDocs 가 스키마 위반으로 throw 한다 (경계 드러냄)', () => {
-    expect(() => buildContent({ env: 'dev', out: makeOut(), vault: ctx.vault })).toThrow(/스키마|위반|pattern|id/i) // prettier-ignore
-  })
-})
-
-// ────────────────────────────────────────────────────────────────────────────
 // C. 빈 prod 빌드 — 전 문서 draft → 0문서 exit 0 + 유효 빈 payload (Task 4)
 // ────────────────────────────────────────────────────────────────────────────
 describe('빈 prod 빌드 — 전 문서 draft → 0문서 우아 처리', () => {
@@ -234,7 +158,7 @@ describe('빈 prod 빌드 — 전 문서 draft → 0문서 우아 처리', () =>
       { draft: true, rel: 'concept/draft-a' },
       { draft: true, rel: 'concept/draft-b' },
     ])
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -280,7 +204,7 @@ describe('prod 누출 0 — draft 문서 id 부재(정본) + draft 필드 부재
     ]
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -324,8 +248,8 @@ describe('disable + draft 동시 — prod 완전 배제(제외 우선순위)', (
     ]
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault: ctx.vault })
-    ctx.devResult = buildContent({ env: 'dev', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
+    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -361,8 +285,8 @@ describe('draft feed 필터 — prod prune / dev 노출 (통합 feed 해석)', (
     appendDoc(vault, 'concept/secret', '비공개 소식이 추가됐다.')
     commit(vault, 'feed: secret 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
     ctx.vault = vault
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
-    ctx.devResult = buildContent({ env: 'dev', out: makeOut(), vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault })
+    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault })
   })
 
   afterAll(() => {
@@ -403,7 +327,7 @@ describe('이동한 draft feed — 과거경로도 prune (rename 좌표)', () =>
     git(vault, ['mv', 'wiki/concept/movable.md', 'wiki/tech/movable.md'])
     commit(vault, 'chore: movable 을 tech/ 로 이동')
     ctx.vault = vault
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault })
   })
 
   afterAll(() => {
@@ -433,8 +357,8 @@ describe('draft+public 혼합 feed — per-ref prune', () => {
     appendDoc(vault, 'concept/secret', '비공개 소식.')
     commit(vault, 'feed: pub·secret 공동 소식\n\n본문.\n\nKeywords: 소식\nImportance: highlight')
     ctx.vault = vault
-    ctx.prodResult = buildContent({ env: 'prod', out: makeOut(), vault })
-    ctx.devResult = buildContent({ env: 'dev', out: makeOut(), vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault })
+    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault })
   })
 
   afterAll(() => {

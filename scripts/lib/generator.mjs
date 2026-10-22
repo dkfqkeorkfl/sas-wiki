@@ -10,32 +10,23 @@
 //   필요한 일은 git HEAD 조회와 파일 쓰기뿐인데, 마크다운 렌더러를 정적으로 물면 호출할 때마다
 //   그 로드 비용(수 초)을 전부 낸다. 그래서 파싱은 실행 본문에서 동적으로 연다.
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { writeFileAtomic } from './atomic.mjs'
 import { CURSOR_LENGTH, walkCursorPage } from './feed-cursor.mjs'
-import { makeGitRunner } from './git.mjs'
+import { GIT_HISTORY_TIMEOUT_MS, makeGitRunner, memoizeGitRunner } from './git.mjs'
 import { loadIgnoreFeedsAt } from './ignore.mjs'
 import { buildFeeds, buildSummary } from './payloads.mjs'
-
-/** 생산 JSON Schema 디렉토리 — 이 모듈은 scripts/lib/ 이므로 상위 scripts/schema. */
-const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
 
 /**
  * summary 산출물을 계산하고, `artifactPath` 가 있을 때만 발행한다.
  *
  * 신선도 판정은 지운 값을 다른 값으로 대체하지 않는다. 약화된 판정을 남기면 어떤 산출물도 항상
  * fresh 처럼 보이므로 PRD D34 가 금지한 "발동 불가능한 방어층"이 된다. 쓰기 순서는
- * feeds 아티팩트는 `runFeedsGenerator` / `feeds.mjs --out` 이 소유하고, 리포트는 `validate.mjs` 가
- * 게이트 전에 쓴다. 이 파일은 더 이상 형제 경로를 파생하지 않는다.
+ * feeds 아티팩트는 `runFeedsGenerator` / `feeds.mjs --out` 이 소유하고, 검사 보고서는 하네스가
+ * 집행 시 쓴다. 이 파일은 형제 경로를 파생하지 않는다.
  *
  * 예전 스킵 판정의 교훈 중 살아남는 것은 "모르면 다시 만든다"가 아니라 "모르면 서빙하지 않는다"다.
  * 조회 스크립트는 이제 직접 만들지 않고, 부재·손상 캐시는 fail-loud 로 드러낸다.
- *
- * `--max-excluded` 는 **여기 없다**. 그것은 산출 방식이 아니라 **종료 코드 정책**이라 CLI 층
- * (`summary.mjs`)이 `result.excludedCount` 로 판정한다 — 이 함수는 제외를 세기만 하고 그것으로
- * 무엇을 할지는 정하지 않는다. 예전에는 구조분해에 남아 있었으나 본문에서 쓰이지 않아, 이 함수가
- * 임계를 강제한다는 **거짓 인상**만 줬다(리뷰 지적).
  *
  * @param {{ artifactPath?: string, env?: 'dev'|'prod', runGit?: Function, vault: string }} input
  */
@@ -47,7 +38,13 @@ export async function runSummaryGenerator({
   vault,
 }) {
   const vaultDir = path.resolve(vault)
-  const git = runGit ?? makeGitRunner(vaultDir)
+  const git = memoizeGitRunner(
+    runGit ??
+      makeGitRunner(vaultDir, {
+        timeoutMs: GIT_HISTORY_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+      }),
+  )
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
 
   // ★ 여기서 비로소 파싱·렌더 툴체인을 연다(위 헤더 주석 참조). 이 함수 안에는 조기 반환 분기가
@@ -55,8 +52,7 @@ export async function runSummaryGenerator({
   //   자체를 호출하지 않는 것이다(정적 import 였다면 호출 여부와 무관하게 로드 시점에 항상 비용을
   //   냈을 것이다).
   const { parseVault } = await import('./parse-vault.mjs')
-  // P5 Task 9(D-I) — parseVault 는 이제 항상 깊은 티어다(얕은 티어 선택 스위치를 제거했다).
-  const parsed = parseVault(vaultDir, env, SCHEMA_DIR, { runGit: git })
+  const parsed = parseVault(vaultDir, env, { runGit: git })
   const payload = buildSummary({
     docs: parsed.wire.docs,
     env,
@@ -65,14 +61,10 @@ export async function runSummaryGenerator({
     tags: parsed.wire.tags,
     tree: parsed.wire.tree,
   })
-  const excluded = parsed.stats.excluded ?? []
   const result = {
     artifactPath: artifactPathOverride ?? null,
-    excluded,
-    excludedCount: excluded.length,
     payload,
     sourceCommit,
-    status: excluded.length > 0 ? 'partial' : 'clean',
   }
 
   if (artifactPathOverride) {
@@ -108,18 +100,24 @@ export async function runFeedsGenerator({
   vault,
 }) {
   const vaultDir = path.resolve(vault)
-  const git = runGit ?? makeGitRunner(vaultDir)
+  const git = memoizeGitRunner(
+    runGit ??
+      makeGitRunner(vaultDir, {
+        timeoutMs: GIT_HISTORY_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+      }),
+  )
   const sourceCommit = git(['rev-parse', 'HEAD']).trim()
   const { parseVault } = await import('./parse-vault.mjs')
-  const parsed = parseVault(vaultDir, env, SCHEMA_DIR, { runGit: git })
+  const parsed = parseVault(vaultDir, env, { runGit: git })
   // ★ 해석기를 **다시 돌리지 않는다.** `parseVault` 가 이미 `collectFeedItems`(전량 워크)로 모든
   //   `feed:` 커밋을 해석해 뒀고(`wire.items`), 그것이 `resolveItems` 가 낼 값 **그 자체**다 —
   //   같은 HEAD·같은 생존 판정이므로 다시 부르면 HEAD 문서 상태와 경로 역인덱스를 통째로 재구성하는
   //   비용만 낸다. 커서 워크에는 **순서·경계·`nextCursor`** 만 맡긴다(그것이 이 함수가 워크를 부르는
   //   유일한 이유다 — D48 등가 불변식이 두 경로의 페이지 계산을 같게 요구한다).
-  // ★ `parsed.gate.runGit` 은 메모이즈된 러너다. 같은 리포는 한 파싱 안에서 변하지 않으므로 배치
+  // ★ `parsed.context.runGit` 은 메모이즈된 러너다. 같은 리포는 한 파싱 안에서 변하지 않으므로 배치
   //   워크가 내는 질의도 그 캐시를 그대로 탄다.
-  const walkGit = parsed.gate.runGit ?? git
+  const walkGit = parsed.context.runGit
   const byFeedId = new Map(parsed.wire.items.map((item) => [item.id, item]))
   const { items, nextCursor } = walkCursorPage(vaultDir, {
     count,

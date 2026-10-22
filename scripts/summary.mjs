@@ -29,17 +29,10 @@ export async function main(argv = process.argv.slice(2)) {
   try {
     const result = await runSummaryGenerator(options)
     if (options.artifactPath) {
-      console.error(
-        `[wiki] summary generated status=${result.status} excluded=${result.excludedCount} artifact=${result.artifactPath}`,
-      )
+      console.error(`[wiki] summary generated artifact=${result.artifactPath}`)
     } else {
       process.stdout.write(`${JSON.stringify(result.payload)}\n`)
-      console.error(
-        `[wiki] summary computed status=${result.status} excluded=${result.excludedCount}`,
-      )
-    }
-    if (typeof options.maxExcluded === 'number' && result.excludedCount > options.maxExcluded) {
-      process.exitCode = 3
+      console.error('[wiki] summary computed')
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
@@ -82,12 +75,6 @@ function parseCliArgs(argv) {
     }
     if (name === '--out') {
       artifactPathRaw = readValue()
-      continue
-    }
-    if (name === '--max-excluded') {
-      const raw = readValue()
-      if (!/^\d+$/u.test(raw)) throw new Error('--max-excluded 에는 0 이상의 정수가 필요합니다')
-      options.maxExcluded = Number.parseInt(raw, 10)
       continue
     }
     throw new Error(`알 수 없는 인자: ${arg}`)

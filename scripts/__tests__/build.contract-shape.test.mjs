@@ -1,32 +1,8 @@
-// @vitest-environment node
-//
-// P2 · Task 4·7 — 앵커를 계약에서 제거하고 `importance: fix` 를 더한다 — tdd §3.4(AN1~AN3·AN5) · §3.7(IM1~IM3)
-//
-// 무엇이 사라지는가: `feeds[].docs[].anchor`/`anchorText` 와 그것을 만드는 `deriveAnchor`·`NO_ANCHOR`,
-//   그리고 그 둘을 검사하던 **불변식 6**(`checkAnchors`). 서빙 경로는 이미 `{anchor: null, anchorText: null}`
-//   을 무조건 넣고 있었다(= 소비자가 받는 앵커는 언제나 null 이었다 · plan 「베이스라인」 실측).
-//
-// **무엇이 사라지지 않는가 (AN5 — 무수정 pin · 신규 케이스를 쓰지 않는다)**:
-//   위키링크·heading 앵커는 **살아 있는 별개 기능**이다. 아래 기존 스펙이 **무수정 green** 인 것이
-//   AN5 의 판정이며, 그래서 여기에 중복 케이스를 만들지 않는다(tdd §3.4 AN5 · §10.1-3):
-//     · scripts/lib/__tests__/render.wikilink.test.mjs (전량)
-//     · scripts/lib/__tests__/derive.test.mjs 의 `checkAnchorExists` 스펙
-//     · scripts/schema/body.schema.json 의 headings[].anchor 스펙
-//   GREEN 담당은 이 세 지점을 **경로 치환조차 하지 않는다.** 손대는 순간 plan Risks 2위(앵커 제거가
-//   위키링크까지 삭제)가 실현된 것이다.
-//
-// RED 사유(라벨별):
-//   AN1  RED(flip) — 현행 산출 docRef 는 `{anchor, anchorText, id}` 3키다(원장 ⑬·⑭).
-//   AN2  RED(flip) — 현행 `feeds.schema.json` docRef 는 그 2필드를 **required** 로 요구한다(원장 ⑫).
-//   AN3  RED(flip) — 현행 불변식 6(`checkAnchors`)이 anchorText 정합을 검사해 throw 한다(원장 ⑤).
-//   IM1  RED        — 현행 `IMPORTANCE` 에 `fix` 가 없어 normal 로 강등 + warning.
-//   IM2  RED        — 현행 스키마 enum 3값.
-//   IM3  RED        — 코드·스키마 양쪽 3값. **`feed.mjs` 가 `IMPORTANCE` 를 export 해야 한다**(신설 seam).
-//
-// 자기참조 공허성(§2.3 규범 A): IM3 의 기대값은 **리터럴 4값**이다 — 한쪽 SSOT 를 다른 쪽으로 비교하면
-//   둘이 함께 틀려도 통과한다. 리터럴이 제3의 기준점이 되어 조용한 드리프트를 끊는다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { readFileSync } from 'node:fs'
+
 import path from 'node:path'
+
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
@@ -38,9 +14,11 @@ import {
   DOC_A,
   GHOST_ID,
 } from '../lib/__tests__/helpers/payload-builders.mjs'
-import { checkInvariants } from '../lib/invariants.mjs'
+
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
-import { buildContent } from '../validate.mjs'
+
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 // `IMPORTANCE` 는 정적 export 다. namespace import 로 모듈 표면을 받아 IM3 에서 export 존재와
@@ -48,10 +26,13 @@ import { cleanup, commit, feedCommit, initVault, writeDoc } from './helpers/tmp-
 const feedModule = await import(new URL('../lib/feed.mjs', import.meta.url).href)
 
 const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
+
 const FEEDS_SCHEMA_PATH = path.join(SCHEMA_DIR, 'feeds.schema.json')
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
+
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
+
 const T1 = '2026-01-01T00:00:00Z'
 
 /** 한 `feed:` 커밋이 문서 **2건**을 고친 vault — docRef 를 2건 이상 만들어 AN1 의 앵커를 세운다. */
@@ -86,7 +67,7 @@ describe('산출 docRef 는 정확히 1키다 (AN1 🔴RED(flip) · 원장 ⑬�
   it('AN1: docs 참조가 2건 이상이고, 전부 키가 정확히 ["id"] 다', () => {
     const vault = seedTwoDocFeedVault()
     try {
-      const { feeds } = buildContent({ env: 'dev', vault })
+      const { feeds } = parsePayloads({ env: 'dev', vault })
       const refs = feeds.items.flatMap((item) => item.docs)
 
       // ★ 위험 실재 앵커(규범 B): 개수 하한이 **먼저**다. D9 도입으로 `docs: []` 가 실제로 생기므로,
@@ -117,25 +98,6 @@ describe('스키마가 여분 앵커 필드를 거부한다 (AN2 🔴RED(flip) �
   })
 })
 
-describe('불변식 6 은 계약에서 사라지되 게이트는 남는다 (AN3 🔴RED(flip) · 원장 ⑤)', () => {
-  it('AN3: 앵커 필드가 붙은 payload 로도 checkInvariants 가 throw 하지 않는다', () => {
-    // 부재 단언 — 짝(아래)이 없으면 "불변식 게이트를 통째로 껐다" 와 구분되지 않는다.
-    // 보호가 사라지지 않는다는 증명은 AN2 가 담당한다(같은 payload 를 **스키마**가 잡는다).
-    const { body, summary } = aWorld()
-
-    expect(() => checkInvariants(summary, anchoredFeeds(), body)).not.toThrow()
-  })
-
-  it('AN3-pair: 불변식 1 위반(summary 에 없는 doc id)은 여전히 throw 한다', () => {
-    const { body, summary } = aWorld()
-    const feeds = aFeeds()
-      .withItem(aFeedItem().refs([{ id: GHOST_ID }]))
-      .build()
-
-    expect(() => checkInvariants(summary, feeds, body)).toThrow(new RegExp(GHOST_ID))
-  })
-})
-
 describe('importance: fix (IM1·IM2·IM3 🔴RED)', () => {
   it('IM1: `Importance: fix` 트레일러가 강등되지 않고 warning 도 남기지 않는다', () => {
     const vault = initVault()
@@ -145,7 +107,7 @@ describe('importance: fix (IM1·IM2·IM3 🔴RED)', () => {
       writeDoc(vault, 'company/공개', { body: '## 정의\n\n정정 갱신.\n', id: ID_A, wikiRoot: 'wiki' }) // prettier-ignore
       feedCommit(vault, { date: T1, importance: 'fix', subject: '정정 알림' })
 
-      const { feeds, stats } = buildContent({ env: 'dev', vault })
+      const { feeds, stats } = parsePayloads({ env: 'dev', vault })
 
       expect(feeds.items).toHaveLength(1) // 앵커: 피드가 실제로 발행됐다
       expect(feeds.items[0].importance).toBe('fix')

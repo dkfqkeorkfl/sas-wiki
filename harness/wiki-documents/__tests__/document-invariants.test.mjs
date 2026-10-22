@@ -1,17 +1,4 @@
-// @vitest-environment node
-//
-// P2 RED-7 · scripts/wiki/lib/invariants.mjs (불변식 8종) — README · 불변식 8종 / tdd §7
-// RED 사유: `lib/invariants.mjs` 미구현(모듈 부재) → import 실패.
-//
-// 계약: checkInvariants(summary, feeds, body) — 위반 시 **구체 메시지와 함께 throw**, 정상이면 void.
-//
-// **green 픽스처만 두면 불변식이 실제로 잡는지 알 수 없다**(vacuous pass).
-//   → 8종 각각에 **위반 픽스처**를 둔다: 정상 세계(aWorld)를 받아 **딱 한 곳만** 망가뜨린다.
-//   → 정상 케이스(통과)도 함께 둔다: **과잉 검출**(정상 운영이 빌드를 죽임)을 막기 위해서다.
-//     특히 불변식 1 — disable 문서를 가리키는 피드는 **통과해야 한다**(실 vault 커밋 13·14).
-//
-// 메시지 계약: "invariant 1 violated" 류는 거부한다. **무엇이 무엇을 못 찾았는지**를 담아야
-//   대량 실패 시 원인을 추적할 수 있다(예: `feed f1f1f1f1f1f1 → doc ffffffffffff`).
+// 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -24,7 +11,7 @@ import {
   DOC_B,
   DOC_D,
   GHOST_ID,
-} from './helpers/payload-builders.mjs'
+} from '../../test-utils/payload-builders.mjs'
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
 // 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
@@ -33,7 +20,7 @@ import {
 // D26: checkCommitConventions 도 같은 모듈에서 가져온다 — 별도 import 문으로 쪼갤 이유가 없다
 //   (ESM 캐시가 같은 인스턴스를 준다).
 const { checkCommitConventions, checkInvariants } = await import(
-  new URL('../invariants.mjs', import.meta.url).href
+  new URL('../document-invariants.mjs', import.meta.url).href
 )
 
 /** 정상 세계에 한 가지 변형만 가한다(DAMP — 무엇이 틀렸는지 본문에 보인다). */
@@ -41,6 +28,25 @@ function worldWith(mutate) {
   const world = aWorld()
   mutate(world)
   return world
+}
+
+// ── D26 · checkCommitConventions — 접두어 없는 커밋도 vault A+D 동시 발생을 잡는다 ──────────────
+//
+// D26(적용됨): 접두어 유무와 무관하게 모든 커밋의 vault A(추가)+D(삭제) 동시 발생을 검사해 fail 한다
+//   (`checkCommitConventions` 가 `commits` 전체에 대해 `getCommitDocStatuses` 를 부른다 — subject
+//   접두어로 분기하는 per-kind 규칙 자체가 이제 없다).
+//   근거 — getCommitDocStatuses 는 `--find-renames` 를 쓰므로 정당한 이동은 R 로 흡수된다. 그 뒤에도
+//   남는 A+D = git 이 rename 으로 못 붙인 이동 = 문서 id 연결을 잃는 시그니처다.
+//
+// stub 계약(git.test.mjs 의 getCommitDocStatuses stub 패턴 재사용): checkCommitConventions 는 커밋마다
+//   getCommitDocStatuses(runGit, hash, wikiPrefix) 를 부르고, 그 함수는
+//   `git -c core.quotepath=false show --find-renames --name-status --format= <sha>` 를 실행한다.
+//   → sha 별 name-status stdout(`A\tpath` · `D\tpath` · `R100\told\tnew`)만 돌려주면 된다.
+const WIKI_PREFIX = 'wiki/'
+
+/** sha → `git show --name-status` stdout. D26 은 show 조회만 본다(그 외는 ''). */
+function stubGitStatuses(byHash) {
+  return (args) => (args.includes('show') ? (byHash[args.at(-1)] ?? '') : '')
 }
 
 describe('checkInvariants — 정상 3 페이로드(과잉 검출 방지)', () => {
@@ -189,26 +195,7 @@ describe('불변식 8 — summary.docs[].id 가 유일 (문서 id 유일성의 �
   })
 })
 
-// ── D26 · checkCommitConventions — 접두어 없는 커밋도 vault A+D 동시 발생을 잡는다 ──────────────
-//
-// D26(적용됨): 접두어 유무와 무관하게 모든 커밋의 vault A(추가)+D(삭제) 동시 발생을 검사해 fail 한다
-//   (`checkCommitConventions` 가 `commits` 전체에 대해 `getCommitDocStatuses` 를 부른다 — subject
-//   접두어로 분기하는 per-kind 규칙 자체가 이제 없다).
-//   근거 — getCommitDocStatuses 는 `--find-renames` 를 쓰므로 정당한 이동은 R 로 흡수된다. 그 뒤에도
-//   남는 A+D = git 이 rename 으로 못 붙인 이동 = 문서 id 연결을 잃는 시그니처다.
-//
-// stub 계약(git.test.mjs 의 getCommitDocStatuses stub 패턴 재사용): checkCommitConventions 는 커밋마다
-//   getCommitDocStatuses(runGit, hash, wikiPrefix) 를 부르고, 그 함수는
-//   `git -c core.quotepath=false show --find-renames --name-status --format= <sha>` 를 실행한다.
-//   → sha 별 name-status stdout(`A\tpath` · `D\tpath` · `R100\told\tnew`)만 돌려주면 된다.
-const WIKI_PREFIX = 'wiki/'
-
-/** sha → `git show --name-status` stdout. D26 은 show 조회만 본다(그 외는 ''). */
-function stubGitStatuses(byHash) {
-  return (args) => (args.includes('show') ? (byHash[args.at(-1)] ?? '') : '')
-}
-
-describe('checkCommitConventions — D26 접두어 없는 커밋의 vault A+D 동시 발생', () => {
+describe('checkCommitConventions — 접두어 없는 커밋의 vault A+D 동시 발생', () => {
   it('[R-T4a 양성] 접두어 없는 커밋이 vault 문서 A 1개 + D 1개면 throw 한다', () => {
     // git 이 rename 으로 못 붙인 이동 = 문서 id 소실. 현행은 `!match continue` 로 통과 → RED.
     const commits = [{ hash: 'c0ffee000001', subject: '문서 대개편' }]

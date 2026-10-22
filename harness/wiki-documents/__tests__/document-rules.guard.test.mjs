@@ -2,14 +2,22 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { collectMarkdownFilesRecursive, parseMarkdownFile } from '../../../scripts/lib/parse.mjs'
-import { buildContent } from '../../../scripts/validate.mjs'
+import { collectMarkdownFilesRecursive } from '../../../scripts/lib/parse.mjs'
+import { collectHeadDocuments } from '../../../scripts/lib/head-state.mjs'
+import {
+  GIT_HISTORY_TIMEOUT_MS,
+  makeGitRunner,
+  memoizeGitRunner,
+} from '../../../scripts/lib/git.mjs'
+import { inspectVault } from '../document-integrity.mjs'
 import { inspectDocument } from '../document-rules.mjs'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
 const wikiDir = path.join(root, 'wiki')
 const files = collectMarkdownFilesRecursive(wikiDir)
 const relativePath = (base, file) => path.relative(base, file).split(path.sep).join('/')
+let snapshot
+let runGit
 
 beforeAll(() => {
   const rawCount = process.env.GIT_CONFIG_COUNT ?? '0'
@@ -25,6 +33,10 @@ beforeAll(() => {
   vi.stubEnv(`GIT_CONFIG_KEY_${count}`, 'safe.directory')
   vi.stubEnv(`GIT_CONFIG_VALUE_${count}`, path.resolve(root))
   vi.stubEnv('GIT_CONFIG_COUNT', String(count + 1))
+  snapshot = collectHeadDocuments(root)
+  runGit = memoizeGitRunner(
+    makeGitRunner(root, { timeoutMs: GIT_HISTORY_TIMEOUT_MS, killSignal: 'SIGKILL' }),
+  )
 })
 
 afterAll(() => {
@@ -39,15 +51,7 @@ describe('실제 위키 문서', () => {
   it.each(files.map((file) => [relativePath(wikiDir, file), file]))(
     '%s의 작성 규칙을 지킨다',
     (relativeFile, file) => {
-      let parsed
-      try {
-        parsed = parseMarkdownFile(file)
-      } catch (error) {
-        throw new Error(
-          `${relativeFile}: PARSE ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        )
-      }
+      const parsed = snapshot.parsedDocs.find((doc) => doc.filePath === file) ?? null
       const issues = inspectDocument(relativeFile, parsed)
       expect(
         issues,
@@ -59,8 +63,10 @@ describe('실제 위키 문서', () => {
   it.each(['dev', 'prod'])(
     '%s 문서·이력·참조·산출물의 무결성을 지킨다',
     (env) => {
-      const { body, feeds, report, stats, summary } = buildContent({
+      const { body, feeds, report, stats, summary } = inspectVault({
         env,
+        snapshot,
+        runGit,
         onReport(payload, write) {
           console.log(
             `[wiki] env=${payload.env} total=${payload.summary.total}` +

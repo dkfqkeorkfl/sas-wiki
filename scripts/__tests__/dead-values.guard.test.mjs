@@ -63,7 +63,6 @@ const REPO_ROOT = path.resolve(SCRIPTS_DIR, '..')
 const SCHEMA_DIR = path.join(SCRIPTS_DIR, 'schema')
 const SUMMARY_CLI = path.join(SCRIPTS_DIR, 'summary.mjs')
 const FEEDS_CLI = path.join(SCRIPTS_DIR, 'feeds.mjs')
-const VALIDATE_CLI = path.join(SCRIPTS_DIR, 'validate.mjs')
 
 // ── 계약 리터럴 (규범 A) ─────────────────────────────────────────────────────────────────────
 /** 발행 아티팩트 봉투 — **정확 7키**(v3 P1 · D28·D29). 긍정형 완전 열거다. */
@@ -267,47 +266,6 @@ describe('겹1 스키마 — 부활 거부 (SC1~SC4)', () => {
       ).toContain('정의되지 않은 필드')
     }
   })
-
-  it(
-    'SC4: **프로세스 경계** — 두 키를 **요구하는** 스키마로 돌리면 `validate.mjs` 가 exit≠0 이다',
-    { timeout: 300_000 },
-    () => {
-      // ★ tdd §3.5 는 _"되살린 페이로드를 산출물 경로에 둔 tmp vault"_ 라 적었으나, `validate.mjs` 는
-      //   **산출물 파일을 읽지 않는다** — in-memory 로 조립한 payload 를 자기 스키마로 검증한다
-      //   (`validate.mjs` 헤더 · `PAYLOAD_FILES` 는 라벨 매핑일 뿐이다). 그래서 같은 계약을 **뒤집어**
-      //   관측한다. 이 케이스가 무는 것은 그대로다 — "생산자가 그 두 키를 더 이상 발행하지 않는가".
-      //
-      // ★★ **뒤집는 방향이 중요하다(C6 CX10 이 실측으로 잡은 결함).** 처음 구현은 두 키를 *지운*
-      //   스키마 사본으로 돌렸는데, 두 키는 실 스키마에서 **이미 지워져 있다** — `stripKeys` 가
-      //   아무것도 지우지 않아 두 사본이 **바이트 동일**이었고, 케이스는 control 을 두 번 돌린 것과
-      //   같았다(CX10 에서 SC4 가 green 인 것으로 드러났다). 그래서 방향을 **요구**로 바꾼다:
-      //     · 오늘  — 생산자가 그 키를 발행하지 않는다 → 필수 필드 누락 → **exit≠0** (이 단언)
-      //     · 부활시 — 발행한다 → 통과 → exit 0 → **red** (CX1 이 그것을 증명한다)
-      //   키마다 **사본을 따로** 둔다. 한 사본에 둘을 함께 요구하면 하나만 부활해도 다른 하나가
-      //   여전히 실패시켜 exit≠0 이 유지되고, 그 부활이 **관측되지 않는다**.
-      const seeded = seedCleanVault()
-      tmps.push(seeded.vault)
-
-      const pristine = mkdtempSync(path.join(tmpdir(), 'wiki-schema-pristine-'))
-      tmps.push(pristine)
-      cpSync(SCHEMA_DIR, pristine, { recursive: true })
-
-      // ★ 앵커: **원본 스키마 사본에서는 exit 0** 이다(vault·CLI 가 통째로 죽어서 실패하는 것을 배제).
-      const control = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', pristine]) // prettier-ignore
-      expect(control.status, control.stderr).toBe(0)
-
-      for (const key of ['producer', TOKEN.CORRELATION_FIELD]) {
-        const demanding = mkdtempSync(path.join(tmpdir(), 'wiki-schema-demanding-'))
-        tmps.push(demanding)
-        cpSync(SCHEMA_DIR, demanding, { recursive: true })
-        requireKey(path.join(demanding, 'summary.schema.json'), key)
-
-        const result = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', demanding]) // prettier-ignore
-
-        expect(result.status, `${key}: ${result.stderr}${result.stdout}`).not.toBe(0)
-      }
-    },
-  )
 })
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -416,36 +374,6 @@ describe('출력 6층 정합 (LZ1·LZ4~LZ7 · 🔴RED v3 P2 미구현)', () => {
     delete missingCursor.nextCursor
     expect(validator.validateItem(missingCursor, schema, '$feeds').length).toBeGreaterThan(0)
   })
-
-  it(
-    'LZ6: 층 ⑥ — `validate.mjs` 가 스키마에 **`env`+`nextCursor` 를 넘긴다**',
-    { timeout: 300_000 },
-    () => {
-      // ★★ **하드 블로커의 관측점**이다. `validate.mjs:101-105` 는 `buildFeeds({generatedAt, items,
-      //   sourceCommit})` = **4키**를 이 스키마로 검증한다 — `required` 를 6으로 올리면서 이 자리를 함께
-      //   고치지 않으면 `pnpm validate`(= build 체인 1스텝)가 **죽는다**.
-      const seeded = seedCleanVault()
-      tmps.push(seeded.vault)
-
-      const pristine = mkdtempSync(path.join(tmpdir(), 'wiki-lz6-pristine-'))
-      tmps.push(pristine)
-      cpSync(SCHEMA_DIR, pristine, { recursive: true })
-
-      // ★ 앵커: 원본 스키마 사본에서는 exit 0 이다(vault·CLI 가 통째로 죽어서 실패하는 것을 배제).
-      const control = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', pristine]) // prettier-ignore
-      expect(control.status, control.stderr).toBe(0)
-
-      // 두 키를 **요구하는** 사본에서도 exit 0 이어야 한다 = 인메모리 게이트가 그 두 키를 실제로 넘긴다.
-      const demanding = mkdtempSync(path.join(tmpdir(), 'wiki-lz6-demanding-'))
-      tmps.push(demanding)
-      cpSync(SCHEMA_DIR, demanding, { recursive: true })
-      demandKeys(path.join(demanding, 'feeds.schema.json'), ['env', 'nextCursor'])
-
-      const result = runCli(VALIDATE_CLI, ['--vault', seeded.vault, '--env', 'dev', '--schema', demanding]) // prettier-ignore
-
-      expect(result.status, `${result.stderr}${result.stdout}`).toBe(0)
-    },
-  )
 
   it('LZ7: 커서 정의가 **12-hex 문자열**이다 — 옛 `{ts,feedId}` 객체를 거부한다', () => {
     // 🔴 오늘은 정반대다: `definitions.feedCursor` 가 `{ts, feedId}` **객체**라 문자열이 거부된다.

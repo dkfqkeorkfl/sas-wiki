@@ -15,7 +15,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { makeGitRunner } from '../git.mjs'
-import { checkFeedResolution } from '../invariants.mjs'
 import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import { seedStrayVault } from '../../__tests__/helpers/polluted-vault.mjs'
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
@@ -112,7 +111,6 @@ describe('walkFeeds — unresolved 진단의 형태와 게이트 (RX3)', () => {
         { path: 'wiki/concept/메모장.md', sha: strayFeedSha },
       ])
       expect(items.stats.unresolvedPaths[0].sha).toMatch(/^[0-9a-f]{40}$/)
-      expect(() => checkFeedResolution(items.stats)).toThrow(/wiki\/concept\/메모장\.md/)
     } finally {
       cleanup(vault)
     }

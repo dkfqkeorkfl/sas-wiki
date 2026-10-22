@@ -13,12 +13,9 @@
 //   P5 Task 9(D-I) — 얕은/깊은 판정 스위치가 사라지며 전용 pre-wire 추출 함수가 그 파싱 엔진의
 //   1줄 wrapper 로 좁아졌다(늘 같은 결과). 그래서 여기서는 파싱 엔진을 직접 부른다.
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import { parseVault } from './parse-vault.mjs'
 import { buildSummary } from './payloads.mjs'
-
-const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'schema')
 
 /**
  * @param {string} vault git vault repository root — **기본값을 흡수하지 않는다**(순수 함수 격리 불변식).
@@ -26,7 +23,7 @@ const SCHEMA_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..',
  */
 export function summary(vault, env = 'prod') {
   const vaultDir = path.resolve(vault)
-  const payload = parseVault(vaultDir, env, SCHEMA_DIR).wire
+  const payload = parseVault(vaultDir, env).wire
   return buildSummary({
     docs: payload.docs,
     env,

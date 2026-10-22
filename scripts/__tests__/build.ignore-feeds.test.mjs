@@ -16,10 +16,9 @@
 //   1회 적용 → reportIgnoreHygiene(stale) 를 경고로 출력. 파일 부재=[](fail-open).
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent, main } from '../validate.mjs'
-import { checkInvariants } from '../lib/invariants.mjs'
+import { generatePayloads } from '../test-utils/generatedPayloads.mjs'
 import { cleanup, commit, initVault, makeOut } from './helpers/tmp-git-vault.mjs'
 
 const WHEN = '2026-07-23T00:00:00Z'
@@ -65,17 +64,17 @@ const ctx = { rawIds: null, suppressId: null, vault: null }
 const outs = []
 
 /** entries=null → ignore-feeds.json 제거(fail-open), 아니면 기록. 매 호출 새 out 으로 격리 빌드. */
-function build(entries) {
+async function build(entries) {
   if (entries === null) rmSync(ignorePath(ctx.vault), { force: true })
   else writeFileSync(ignorePath(ctx.vault), JSON.stringify(entries), 'utf8')
   const out = makeOut()
   outs.push(out)
-  return buildContent({ env: 'dev', out, vault: ctx.vault })
+  return generatePayloads({ env: 'dev', out, vault: ctx.vault })
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   ctx.vault = seedFeedVault()
-  const raw = build(null) // 빈-억제 1차 빌드 — 억제 대상 id 를 여기서 유도(하드코딩 금지)
+  const raw = await build(null) // 빈-억제 1차 빌드 — 억제 대상 id 를 여기서 유도(하드코딩 금지)
   ctx.rawIds = raw.feeds.items.map((item) => item.id)
   ctx.suppressId = raw.feeds.items.find((item) => item.title === '베타 소식').id
 })
@@ -85,20 +84,20 @@ afterAll(() => {
 })
 
 describe('build 배선 — 실존 feed 억제', () => {
-  it('억제된 feed id 가 산출 wiki_feeds.json 에 없다 (#1)', () => {
-    const result = build([{ id: ctx.suppressId, when: WHEN }])
+  it('억제된 feed id 가 산출 wiki_feeds.json 에 없다 (#1)', async () => {
+    const result = await build([{ id: ctx.suppressId, when: WHEN }])
 
     expect(result.feeds.items.map((item) => item.id)).not.toContain(ctx.suppressId)
   })
 
-  it('억제 전(빈 목록)에는 그 id 가 존재한다 (#2 대조군 — 우연 부재 아닌 필터 제거임을 증명)', () => {
-    const result = build([])
+  it('억제 전(빈 목록)에는 그 id 가 존재한다 (#2 대조군 — 우연 부재 아닌 필터 제거임을 증명)', async () => {
+    const result = await build([])
 
     expect(result.feeds.items.map((item) => item.id)).toContain(ctx.suppressId)
   })
 
-  it('나머지 피드는 순서·개수가 정합한다(그 1건만 빠진다) (#3)', () => {
-    const result = build([{ id: ctx.suppressId, when: WHEN }])
+  it('나머지 피드는 순서·개수가 정합한다(그 1건만 빠진다) (#3)', async () => {
+    const result = await build([{ id: ctx.suppressId, when: WHEN }])
 
     expect(result.feeds.items.map((item) => item.id)).toEqual(
       ctx.rawIds.filter((id) => id !== ctx.suppressId),
@@ -107,52 +106,34 @@ describe('build 배선 — 실존 feed 억제', () => {
 })
 
 describe('build 배선 — fail-open / fail-loud 구분', () => {
-  it('ignore-feeds.json 부재 → 전량 통과, 에러 없음 (#5 fail-open)', () => {
-    let result
-    expect(() => {
-      result = build(null)
-    }).not.toThrow()
+  it('ignore-feeds.json 부재 → 전량 통과, 에러 없음 (#5 fail-open)', async () => {
+    const result = await build(null)
     expect(result.feeds.items.map((item) => item.id)).toEqual(ctx.rawIds)
   })
 
-  it('존재하지 않는 id 억제 → 빌드 정상 + items 불변 (#4a fail-open)', () => {
-    let result
-    expect(() => {
-      result = build([{ id: MISSING_ID, when: WHEN }])
-    }).not.toThrow()
+  it('존재하지 않는 id 억제 → 빌드 정상 + items 불변 (#4a fail-open)', async () => {
+    const result = await build([{ id: MISSING_ID, when: WHEN }])
     expect(result.feeds.items.map((item) => item.id)).toEqual(ctx.rawIds)
   })
 
-  it('스키마 위반 ignore-feeds.json → build FAIL(throw, warn 아님) (#6 fail-loud)', () => {
+  it('스키마 위반 ignore-feeds.json → build FAIL(throw, warn 아님) (#6 fail-loud)', async () => {
     // when 누락 + 비-12hex id → 신뢰 못 할 목록은 조용히 무시하지 않고 build 를 끊는다.
-    expect(() => build([{ id: 'ABC' }])).toThrow(
+    await expect(build([{ id: 'ABC' }])).rejects.toThrow(
       /ignore-feeds\.json 스키마 위반[\s\S]*(필수 필드 누락 "when"|pattern 위반)/u,
     )
   })
 })
 
-describe('build 배선 — hygiene 경고(stale)', () => {
-  it('존재하지 않는 id 억제 → stale 경고가 stdout 에 관측된다 (#4b)', async () => {
-    writeFileSync(ignorePath(ctx.vault), JSON.stringify([{ id: MISSING_ID, when: WHEN }]), 'utf8')
-    const out = makeOut()
-    outs.push(out)
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
-    let printed = ''
-    try {
-      await main(['--vault', ctx.vault, '--env', 'dev'])
-      printed = spy.mock.calls.flat().join('\n') // mockRestore 가 calls 를 비우므로 restore 전에 캡처
-    } finally {
-      spy.mockRestore()
-    }
-
-    expect(printed).toMatch(/000000000000|stale|ignore|억제/iu)
-  })
-})
-
 describe('build 배선 — 참조 무결성(억제≠참조 파괴)', () => {
-  it('억제 후에도 checkInvariants 가 통과한다 (#7 — 억제는 item 제거일 뿐 ref 무결성 무영향)', () => {
-    const { body, feeds, summary } = build([{ id: ctx.suppressId, when: WHEN }])
+  it('억제 후에도 checkInvariants 가 통과한다 (#7 — 억제는 item 제거일 뿐 ref 무결성 무영향)', async () => {
+    const { body, feeds, summary } = await build([{ id: ctx.suppressId, when: WHEN }])
 
-    expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
+    expect(summary.docs.length).toBeGreaterThan(0)
+    for (const item of feeds.items)
+      for (const doc of item.docs) {
+        const entry = summary.docs.find((entry) => entry.id === doc.id)
+        expect(entry).toBeDefined()
+        expect(Object.hasOwn(body.docs, entry.breadcrumb.join('/'))).toBe(true)
+      }
   })
 })

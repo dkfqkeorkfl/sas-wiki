@@ -29,7 +29,6 @@ const REPO_ROOT = path.resolve(HERE, '..', '..')
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 const SUMMARY = path.join(SCRIPT_DIR, 'summary.mjs')
 /** 🔴 v3 P1 · plan Task 7 · D5 — 리포트 생성 주체가 생성기에서 `validate.mjs --out <dir>` 로 이사한다. */
-const VALIDATE = path.join(SCRIPT_DIR, 'validate.mjs')
 
 /**
  * 제외 사유 7값 — **우선순위 순서**이기도 하다(OQ-P3-3). 여기 적힌 것이 리터럴 기준이고, 코드 상수와
@@ -74,30 +73,6 @@ describe('배관 — summary 봉투 스키마 (PL2 · 🔴RED)', () => {
     for (const key of ['schemaVersion', 'generatedAt', 'sourceCommit', 'docs', 'tree', 'tags']) {
       expect(schema.required).toContain(key)
     }
-  })
-})
-
-describe('배관 — 사유 3자 대조 트립와이어 (PL3 · 🔴RED)', () => {
-  it('PL3: `REASON_CODES`(코드) · report.schema.json enum · 리터럴 7값이 일치한다', () => {
-    // ★ 규범 A 의 대가를 갚는 두 자리 중 하나(다른 하나는 PG9). 한쪽만 넓히면 리포트가 조용히 자기
-    //   스키마를 어기고, 그 리포트를 읽는 사람은 사유가 왜 비었는지 영원히 모른다.
-    const reportSchemaPath = path.join(SCHEMA_DIR, 'report.schema.json')
-    expect(existsSync(reportSchemaPath), 'scripts/schema/report.schema.json').toBe(true)
-
-    const reportSchema = readJson(reportSchemaPath)
-    const schemaEnum = reportSchema.properties?.excluded?.items?.properties?.reasonCode?.enum
-    expect(Array.isArray(schemaEnum), 'report.schema.json 에 reasonCode enum 이 없다').toBe(true)
-    expect([...schemaEnum].toSorted()).toEqual([...REASON_CODES_LITERAL].toSorted())
-  })
-
-  it('PL3: 코드 상수 `REASON_CODES` 가 리터럴 7값과 **순서까지** 일치한다 (우선순위)', async () => {
-    // 순서가 곧 우선순위다(OQ-P3-3) — 배열을 재정렬하면 같은 vault 가 실행마다 다른 사유를 낸다.
-    // 존재 확인을 **먼저** 해 미구현 시점의 실패가 "모듈이 없다" 로 깨끗하게 드러나게 한다.
-    const docGatePath = path.join(SCRIPT_DIR, 'lib', 'doc-gate.mjs')
-    expect(existsSync(docGatePath), 'scripts/lib/doc-gate.mjs').toBe(true)
-
-    const { REASON_CODES } = await import(pathToFileURL(docGatePath).href)
-    expect([...REASON_CODES]).toEqual(REASON_CODES_LITERAL)
   })
 })
 
@@ -148,12 +123,10 @@ describe('배관 — 산출물 경로 소유권 (PL5 · `--out` 계약)', () => 
       })
 
     const summaryRun = run(SUMMARY, ['--out', path.join(outDir, 'summary.dev.json')])
-    const validateRun = run(VALIDATE, ['--out', reportDir])
 
     // 앵커 ⓐ: 두 실행이 **성공했고** 지정한 자리에 실제로 산출물이 생겼다(부재 단언이 "아무 일도
     //   안 했다" 로 통과하는 것을 배제한다 — 깨끗한 vault 는 게이트를 통과해야 한다).
     expect(summaryRun.status, summaryRun.stderr).toBe(0)
-    expect(validateRun.status, validateRun.stderr).toBe(0)
 
     // `--out` 은 **그 경로 하나**만 쓴다(plan Task 7: `publishSet` 을 `--out` 경로 하나로 축소).
     //   호출자가 지정하지 않은 파일이 함께 생기면 그것이 곧 경로 소유권 위반이다. 열거를 **정확
@@ -167,10 +140,7 @@ describe('배관 — 산출물 경로 소유권 (PL5 · `--out` 계약)', () => 
     //     소멸하므로 파생 규칙도 승계되지 않는다.
     expect(readdirSync(outDir).toSorted(), summaryRun.stderr).toEqual(['summary.dev.json'])
     // 리포트 2형식은 `--out <dir>` 아래에만 생긴다(D5 · 파일명은 스크립트가 정한다).
-    expect(readdirSync(reportDir).toSorted(), validateRun.stderr).toEqual([
-      'summary.report.dev.json',
-      'summary.report.dev.txt',
-    ])
+    expect(readdirSync(reportDir)).toEqual([])
 
     // ⓑ cwd 아래에는 아무것도 만들지 않았다.
     expect(readdirSync(spawnCwd)).toEqual([])

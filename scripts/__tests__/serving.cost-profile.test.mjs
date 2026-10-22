@@ -162,7 +162,8 @@ function productionSources() {
   while (stack.length > 0) {
     const current = stack.pop()
     for (const entry of readdirSync(current, { withFileTypes: true })) {
-      if (entry.name === '__tests__') continue
+      if (entry.name === '__tests__' || (current === SCRIPTS_DIR && entry.name === 'test-utils'))
+        continue
       const child = path.join(current, entry.name)
       if (entry.isDirectory()) stack.push(child)
       else if (entry.isFile() && entry.name.endsWith('.mjs')) chunks.push(readFileSync(child, 'utf8')) // prettier-ignore
@@ -199,8 +200,8 @@ describe('조회 경로 git 프로파일 (PU4 · 🔴RED(flip) v3 P2: 조회가 
     //   `log`·`rev-list` 를 낸다 — 관측기(PATH shim)가 죽어 빈 배열인 상태를 배제한다.
     expect(warm.exitCode, warm.stderr).toBe(0)
     expect(warm.gitCalls.length).toBeGreaterThan(0)
-    expect(gitVerbs(warm).some((verb) => verb.startsWith('rev-list'))).toBe(true)
-    expect(gitVerbs(warm).some((verb) => verb.startsWith('log'))).toBe(true)
+    expect(verbCount(warm, 'rev-list')).toBeGreaterThan(0)
+    expect(verbCount(warm, 'log')).toBeGreaterThan(0)
 
     expect(hitFeeds.exitCode, hitFeeds.stderr).toBe(0)
     // 앵커: 조회가 git 을 **한 번이라도** 부른다(0건이면 아래 집합 단언이 사유를 못 가른다).

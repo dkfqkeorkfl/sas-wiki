@@ -78,7 +78,10 @@ const legacySubjectRe = (prefix) => new RegExp(`^${prefix}: `)
 
 /** Tier P = 프로덕션 소스(`scripts/**\/*.mjs` − `__tests__`). **주석까지** 문다(LS1). */
 const isProductionSource = (rel) =>
-  rel.startsWith('scripts/') && rel.endsWith('.mjs') && !rel.includes('__tests__/')
+  rel.startsWith('scripts/') &&
+  rel.endsWith('.mjs') &&
+  !rel.includes('__tests__/') &&
+  !rel.startsWith('scripts/test-utils/')
 
 /**
  * `it('<marker>…')` 블록의 줄 범위(1-based, 양끝 포함). 못 찾으면 `null`.
@@ -88,7 +91,9 @@ const isProductionSource = (rel) =>
  * (실측 :101·:121·:153·:188·:213). 텍스트 술어로는 CN1 의 것만 고를 수 없고, 넓히면 H2 위반이다.
  */
 function itBlockRange(lines, marker) {
-  const start = lines.findIndex((line) => line.includes(`it('${marker}`))
+  const start = lines.findIndex(
+    (line) => line.includes(`it('${marker}`) || line.includes(`it("${marker}`),
+  )
   if (start === -1) return null
   const end = lines.findIndex((line, index) => index > start && line === '  })')
   return end === -1 ? null : { end: end + 1, start: start + 1 }
@@ -135,9 +140,9 @@ const EXCEPTIONS = [
     },
     id: 'E2',
     liveness: (lines) =>
-      lines.some((line) => line.includes("it('CN1:")) &&
-      lines.some((line) => line.includes('buildContent(')),
-    path: 'scripts/__tests__/build.convention-scope.test.mjs',
+      lines.some((line) => /it\(['"]CN1:/.test(line)) &&
+      lines.some((line) => line.includes('inspectVault(')),
+    path: 'harness/wiki-documents/__tests__/document-integrity.convention-scope.test.mjs',
     why: 'grandfathering 케이스의 **정체가 legacy 접두사**다. 다른 접두사로 바꾸면 CN2 와 같은 케이스가 된다(D-C).',
   },
   {
@@ -147,7 +152,7 @@ const EXCEPTIONS = [
       // 앞선 앵커 2줄이 살아 있어야 FO8 의 부재 단언이 공허하지 않다(규범 B).
       lines.some((line) => line.includes('expect(message).not.toBeNull()')) &&
       lines.some((line) => line.includes('toMatch(/분리/)')),
-    path: 'scripts/lib/__tests__/invariants.feed-only.test.mjs',
+    path: 'harness/wiki-documents/__tests__/document-invariants.commits.test.mjs',
     why: '부재 단언은 표적을 이름으로 적을 수밖에 없다(FO8 — 진단 메시지가 없는 컨벤션을 안내하지 않는다).',
   },
   {
@@ -163,6 +168,13 @@ const EXCEPTIONS = [
     liveness: () => realHistoryPrefixCounts().total > 0,
     path: 'scripts/__tests__/helpers/seed-example-vault.mjs',
     why: '★ 이 시더가 **배포된 예제 vault(`test`·`main`)를 실제로 만들었다**. 히스토리 재작성 금지와 lockstep 이다(OQ-P6-1 = a).',
+  },
+  {
+    covers: (hit) => /\bmessage: '/.test(hit.text),
+    id: 'E5-harness',
+    liveness: () => realHistoryPrefixCounts().total > 0,
+    path: 'harness/test-utils/seed-example-vault.mjs',
+    why: '문서 검사 회귀도 같은 불변 이력 fixture를 사용한다. 가족 간 helper import를 피하는 사본이다.',
   },
   {
     covers: (hit, lines) => {
@@ -181,6 +193,13 @@ const EXCEPTIONS = [
       lines.some((line) => line.includes('seeded.examples')),
     path: 'scripts/__tests__/seed-example-vault.test.mjs',
     why: 'E5 를 검사하는 계약. E5 없이는 성립하지 않는다(OQ-P6-1 = a).',
+  },
+  {
+    covers: (hit) => hit.text.includes('const SUBJECTS'),
+    id: 'E8-harness',
+    liveness: (lines) => lines.some((line) => /it\(['"]FS4:/.test(line)),
+    path: 'harness/wiki-documents/__tests__/document-invariants.prefix.test.mjs',
+    why: '접두사 무관성의 정책 회귀로 옮긴 동일한 입력이다. 실제 기능 FS2와 판정 FS4의 책임을 나눈다.',
   },
   {
     covers: (hit) => hit.text.includes('const SUBJECTS'),
@@ -336,7 +355,7 @@ describe('레거시 스윕 — Tier P: 프로덕션 소스는 주석까지 문�
     // 앵커 ①: 대상 파일이 실재한다. ②: 아는 파일이 **필터에서 빠지지 않았다**(0건의 정체를 가른다).
     expect(production.length).toBeGreaterThanOrEqual(20)
     expect(production).toContain('scripts/lib/feed.mjs')
-    expect(production).toContain('scripts/lib/invariants.mjs')
+    expect(production).toContain('scripts/lib/parse-vault.mjs')
 
     const { hits } = scanTracked({
       files: production,
@@ -390,7 +409,7 @@ describe('예외 양방향 — 죽은 예외는 실패다 (LS3 pair · CX-6E)', 
     //   `covers()` 가 그 결과에 기대므로, 파싱이 **오늘 알려진 마커에서 실제로 무언가 찾는다**를
     //   직접 못박는다. 이게 없으면 파싱이 null 을 내도 "면제 0건" 이라는 간접 신호(위 dead 판정)로만
     //   드러나 itBlockRange 자체가 원인이라는 진단이 안 남는다.
-    const cn1Range = itBlockRange(readLines('scripts/__tests__/build.convention-scope.test.mjs'), 'CN1:') // prettier-ignore
+    const cn1Range = itBlockRange(readLines('harness/wiki-documents/__tests__/document-integrity.convention-scope.test.mjs'), 'CN1:') // prettier-ignore
     expect(cn1Range, 'itBlockRange 가 CN1 블록을 못 찾았다(E2 커버리지가 조용히 변질된다)').not.toBeNull() // prettier-ignore
     const seedVaultLines = readLines('scripts/__tests__/seed-example-vault.test.mjs')
     const seedRangeA = itBlockRange(seedVaultLines, '예제 커밋 17건이 ')

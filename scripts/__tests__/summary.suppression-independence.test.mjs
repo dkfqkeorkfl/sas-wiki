@@ -231,7 +231,7 @@ function publishFeeds(vault, env = 'dev', ignorePath) {
 
 describe('수용한 손실을 계약으로 (SU8 · 🔴RED flip · OQ-P5-6 무변경)', () => {
   it(
-    'SU8: malformed 억제 vault 에서 생성기는 exit 0 · `validate`·`feeds` 는 exit≠0',
+    'SU8: malformed 억제 vault 에서 생성기는 exit 0 · 명시적 `feeds --ignore` 는 exit≠0',
     { timeout: 300_000 },
     async () => {
       // ★ 이 케이스가 없으면 다음 사람이 "생성기가 조용해졌다" 를 회귀로 읽고 되돌린다. 억제가
@@ -248,11 +248,6 @@ describe('수용한 손실을 계약으로 (SU8 · 🔴RED flip · OQ-P5-6 무�
 
       // 앵커: 정상 억제 vault 에서는 셋 다 exit 0 이다(전부 죽는 환경이 아니다).
       expect((await buildStatus(clean.vault)).exitCode).toBe(0)
-      const cleanValidate = runGeneratorOnce({
-        args: ['--env', 'dev'],
-        script: 'validate.mjs',
-        vault: clean.vault,
-      })
       // ★ v3 P2(§4.5-③ · D15·D20) — `--count` 는 CLI 필수이고 억제는 **명시 인자**로만 걸린다.
       //   둘 다 안 주면 이 arm 의 exit≠0 사유가 「인자가 모자라다」로 바뀌어 케이스가 공허해진다.
       const cleanFeeds = runGeneratorOnce({
@@ -260,24 +255,16 @@ describe('수용한 손실을 계약으로 (SU8 · 🔴RED flip · OQ-P5-6 무�
         script: 'feeds.mjs',
         vault: clean.vault,
       })
-      expect(cleanValidate.exitCode).toBe(0)
       expect(cleanFeeds.exitCode).toBe(0)
-      expect(`${cleanValidate.stderr}${cleanFeeds.stderr}`).not.toContain('ignore-feeds')
+      expect(cleanFeeds.stderr).not.toContain('ignore-feeds')
 
       expect((await buildStatus(broken.vault)).exitCode).toBe(0)
-      const brokenValidate = runGeneratorOnce({
-        args: ['--env', 'dev'],
-        script: 'validate.mjs',
-        vault: broken.vault,
-      })
       const brokenFeeds = runGeneratorOnce({
         args: ['--env', 'dev', '--count', '5', '--ignore', path.join(broken.vault, IGNORE_FILE)],
         script: 'feeds.mjs',
         vault: broken.vault,
       })
-      expect(brokenValidate.exitCode).not.toBe(0)
       expect(brokenFeeds.exitCode).not.toBe(0)
-      expect(brokenValidate.stderr).toContain('ignore-feeds')
       expect(brokenFeeds.stderr).toContain('ignore-feeds')
 
       rmSync(path.join(broken.vault, IGNORE_FILE), { force: true })

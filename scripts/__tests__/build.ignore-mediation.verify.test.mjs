@@ -18,8 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
-import { checkInvariants } from '../lib/invariants.mjs'
+import { generatePayloads } from '../test-utils/generatedPayloads.mjs'
 import { cleanup, commit, initVault } from './helpers/tmp-git-vault.mjs'
 
 const { applyIgnoreFeeds } = await import(new URL('../lib/ignore.mjs', import.meta.url).href)
@@ -60,11 +59,11 @@ function seedFeedVault() {
 const ctx = { docId: null, docPath: null, entries: null, filtered: null, raw: null, suppressId: null, vault: null } // prettier-ignore
 const ids = (items) => items.map((item) => item.id)
 
-beforeAll(() => {
+beforeAll(async () => {
   ctx.vault = seedFeedVault()
 
   // raw = 빈-억제 빌드(ignore-feeds.json 부재 → 필터 항등). filtered = 억제 빌드.
-  ctx.raw = buildContent({ env: 'dev', vault: ctx.vault })
+  ctx.raw = await generatePayloads({ env: 'dev', vault: ctx.vault })
   const target = ctx.raw.feeds.items.find((item) => item.title === '알파 소식')
   ctx.suppressId = target.id
   ctx.docId = target.docs[0].id // 억제 피드가 가리키는 문서(살아남아야 한다)
@@ -72,7 +71,7 @@ beforeAll(() => {
   ctx.entries = [{ id: ctx.suppressId, when: WHEN }]
 
   writeFileSync(path.join(ctx.vault, 'ignore-feeds.json'), JSON.stringify(ctx.entries), 'utf8')
-  ctx.filtered = buildContent({ env: 'dev', vault: ctx.vault })
+  ctx.filtered = await generatePayloads({ env: 'dev', vault: ctx.vault })
 })
 
 afterAll(() => {
@@ -80,17 +79,17 @@ afterAll(() => {
 })
 
 describe('RED-A 우회불가(Complete Mediation) — 빌드 피드 출력이 필터를 반드시 통과', () => {
-  it('raw(빈-억제) 산출에 억제 대상 id 가 존재한다 (#1 대조군)', () => {
+  it('raw(빈-억제) 산출에 억제 대상 id 가 존재한다 (#1 대조군)', async () => {
     expect(ids(ctx.raw.feeds.items)).toContain(ctx.suppressId)
   })
 
-  it('억제 빌드 산출 == applyIgnoreFeeds(raw, entries) (멤버십·순서 일치 → 우회 경로 부재) (#2)', () => {
+  it('억제 빌드 산출 == applyIgnoreFeeds(raw, entries) (멤버십·순서 일치 → 우회 경로 부재) (#2)', async () => {
     const expected = applyIgnoreFeeds(ctx.raw.feeds.items, ctx.entries)
 
     expect(ids(ctx.filtered.feeds.items)).toEqual(ids(expected))
   })
 
-  it('억제 id 는 산출 feeds payload(직렬화 포함) 어디에도 노출되지 않는다 (#3)', () => {
+  it('억제 id 는 산출 feeds payload(직렬화 포함) 어디에도 노출되지 않는다 (#3)', async () => {
     // validate 는 디스크에 쓰지 않는다 — 최종 산출은 반환 payload 다. 직렬화 문자열까지 훑어 억제 id 가
     //   어떤 필드로도 새지 않음을 못 박는다(구: 디스크 wiki_feeds.json 대조 — Complete Mediation).
     expect(ids(ctx.filtered.feeds.items)).not.toContain(ctx.suppressId)
@@ -99,24 +98,30 @@ describe('RED-A 우회불가(Complete Mediation) — 빌드 피드 출력이 필
 })
 
 describe('RED-B 억제≠삭제 — 억제 피드가 가리킨 문서·본문은 생존', () => {
-  it('억제 피드의 대상 문서가 summary.docs 에 여전히 존재한다 (#4)', () => {
+  it('억제 피드의 대상 문서가 summary.docs 에 여전히 존재한다 (#4)', async () => {
     expect(ids(ctx.filtered.summary.docs)).toContain(ctx.docId)
   })
 
-  it('그 문서의 body·summary 콘텐츠가 억제 전과 동일하다(억제≠문서삭제) (#5)', () => {
+  it('그 문서의 body·summary 콘텐츠가 억제 전과 동일하다(억제≠문서삭제) (#5)', async () => {
     expect(ctx.filtered.body.docs[ctx.docPath]).toEqual(ctx.raw.body.docs[ctx.docPath])
     expect(ctx.filtered.summary.docs.find((doc) => doc.id === ctx.docId)).toEqual(
       ctx.raw.summary.docs.find((doc) => doc.id === ctx.docId),
     )
   })
 
-  it('억제 후 checkInvariants 가 통과한다(참조 무결성 유지 — dangling 불가) (#6)', () => {
+  it('억제 후 checkInvariants 가 통과한다(참조 무결성 유지 — dangling 불가) (#6)', async () => {
     const { body, feeds, summary } = ctx.filtered
 
-    expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
+    expect(summary.docs.length).toBeGreaterThan(0)
+    for (const item of feeds.items)
+      for (const doc of item.docs) {
+        const entry = summary.docs.find((entry) => entry.id === doc.id)
+        expect(entry).toBeDefined()
+        expect(Object.hasOwn(body.docs, entry.breadcrumb.join('/'))).toBe(true)
+      }
   })
 
-  it('억제 피드 콘텐츠만 소멸하고 문서는 살아있다(클릭 가능) (#7)', () => {
+  it('억제 피드 콘텐츠만 소멸하고 문서는 살아있다(클릭 가능) (#7)', async () => {
     // 피드 아이템(title)은 feeds 에서 사라지지만…
     expect(ctx.filtered.feeds.items.find((item) => item.title === '알파 소식')).toBeUndefined()
     // …문서 본문은 body 에 그대로다(문서는 여전히 열린다).

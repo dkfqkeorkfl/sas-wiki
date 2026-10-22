@@ -38,7 +38,6 @@ const REPO_ROOT = path.resolve(HERE, '..', '..') // /…/sas-wiki (기본값이 
 
 const SUMMARY = path.join(SCRIPT_DIR, 'summary.mjs')
 const FEEDS = path.join(SCRIPT_DIR, 'feeds.mjs')
-const VALIDATE = path.join(SCRIPT_DIR, 'validate.mjs')
 const PACKAGE_JSON = path.join(REPO_ROOT, 'package.json')
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa' // active, prod 가시
@@ -296,35 +295,6 @@ describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (RED 단계
   )
 })
 
-// ── V1: validate 도 동일 강등 — --env dev(--vault 생략) → exit0 · stats stdout(`[wiki] docs=`).
-//    RED 단계에서는 parseArgs:122 throw. validate 는 JSON 이 아니라 stats 를 stdout 에 낸다(다른 계약).
-describe('V1 — validate 기본 vault(REPO_ROOT) (RED 단계 회귀 가드)', () => {
-  // timeout: OQ-P1-2 (c) — 실측 **41,198ms**(> 기본 30s). `validate.mjs` 도 실 repo 를 전량 훑는다.
-  it(
-    'validate --env dev(--vault 생략) → exit0 · stdout 에 "[wiki] docs="',
-    { timeout: REAL_REPO_SPAWN_TIMEOUT },
-    () => {
-      const result = runCli(VALIDATE, ['--env', 'dev'], { cwd: REPO_ROOT })
-
-      expect(result.status).toBe(0) // RED 단계 신호였던 단언.
-      expect(result.stdout).toContain('[wiki] docs=')
-    },
-  )
-})
-
-// ── V2: env fail-closed 불변 — --vault <tmp> --env staging → exit≠0 · dev|prod 거부. 🟢 green(회귀).
-//    무엇을 깨면 red: 강등 리팩터가 validate 의 unknown-env fail-closed 를 깨면 staging 이 통과.
-describe('V2 — validate unknown-env 거부(fail-closed) (🟢 회귀)', () => {
-  it('validate --vault <tmp> --env staging → exit≠0 · 출력에 dev|prod 거부', () => {
-    const vault = makeVault()
-
-    const result = runCli(VALIDATE, ['--vault', vault, '--env', 'staging'])
-
-    expect(result.status).not.toBe(0)
-    expect(`${result.stderr}${result.stdout}`).toMatch(/dev\|prod/)
-  })
-})
-
 // ── T3: package.json 정적 드리프트 — 사람용 스크립트 추가 · validate 에서 `--vault` 제거.
 //    RED 단계에서는 scripts.summary undefined · validate 에 `--vault .` 잔존.
 describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)', () => {
@@ -340,6 +310,5 @@ describe('T3 — package.json 사람용 스크립트 (RED 단계 회귀 가드)'
     // `pnpm run wiki`가 exit 2로 죽지 않는다. 필수 인자 성질은 `wiki.file-arg.test.mjs` C-2가,
     // 여기서는 소비자가 실제로 실행하는 package script의 정확 문자열이 계약을 고정한다.
     expect(pkg.scripts.wiki).toBe('node scripts/wiki.mjs --file wiki/KOSPI/삼성전자/삼성전자.md')
-    expect(pkg.scripts.validate).not.toContain('--vault')
   })
 })

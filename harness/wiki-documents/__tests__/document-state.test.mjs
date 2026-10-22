@@ -1,47 +1,23 @@
-// @vitest-environment node
-//
-// P3 · Task 1 — 문서 단위 판정 단일화 (`scripts/lib/doc-gate.mjs` 신설) — tdd §3.1 (DG1~DG14)
-//
-// RED 사유(전 케이스 공통 · **미구현**): `scripts/lib/doc-gate.mjs` 가 **부재**하고 `judgeDocs`
-//   export 도 없다. 정적 named import 로 적으면 ESM 링크가 파일을 통째로 죽여 collection error 가
-//   되고(= 테스트 0건), rtk 래퍼는 그것을 PASS 로 오보고한다(tdd §2.4). 그래서 모듈 해석을 **런타임으로
-//   미루고**(dynamic import + catch) 케이스마다 명시적으로 실패시킨다 → DG1~DG14 가 **각각** red 가
-//   되고 어느 축이 미구현인지 즉시 보인다(`feed-survival.test.mjs:33-49` 관례 재사용).
-//
-// 이 파일이 확정하는 seam (tdd §3.0 — GREEN 은 이 형태로 구현한다):
-//   judgeDocs(parsedDocs, { deletedIdEvents?, runGit?, strayPaths?, wikiPrefix, wikiSchema })
-//     → { excluded: { id: string|null, message: string, path: string, reasonCode: string }[],
-//         visible: object[] }
-//     · excluded 는 **path 오름차순 정렬**(결정성) · 문서당 사유 **1개**(우선순위 7단계)
-//     · excluded[].path 는 **리포 상대 posix**(`wiki/<relPath>.md`) — `strayPaths` 와 같은 좌표계라야
-//       둘을 한 배열에 담아 정렬할 수 있다.
-//     · `runGit` 미주입 → **얕은 티어만**(ID_TAMPERED·DELETED_ID_REUSE 미실행 · git spawn 0)
-//
-// 사유 우선순위(OQ-P3-3 확정 · 싸고 근본적인 것 먼저):
-//   NO_FRONTMATTER > MISSING_TYPE > SCHEMA_VIOLATION > DUPLICATE_PATH > DUPLICATE_ID
-//     > ID_TAMPERED > DELETED_ID_REUSE
-//   중복 판정은 **1-pass** — 이미 다른 사유로 제외된 문서도 중복 계산에 **포함**한다(fail-closed·순서 무관).
-//
-// 자기참조 공허성 금지(tdd §2.3 규범 A): docId·경로·사유 문자열은 **전부 리터럴**이다 —
-//   `REASON_CODES`·`WIKI_PREFIX` 를 import 해 입력이나 기대값을 만들지 않는다. 상수와 리터럴의
-//   드리프트는 트립와이어 스펙(PL3)이 3자 대조로 따로 잡는다.
-//
-// 비용(tdd §7.3): 순수 함수 + 리터럴 입력. git·fs 접근은 스키마 1회 로드뿐 → 9p spawn 비용 0.
+// 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
 import { readFileSync } from 'node:fs'
+
 import path from 'node:path'
+
 import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
 // RED 시점에 이 모듈은 존재하지 않는다 → 로드 에러를 붙들었다가 케이스별로 되던진다.
-const loaded = await import(new URL('../doc-gate.mjs', import.meta.url).href).catch((error) => ({
-  // ★ collection error 회피(위 주석)를 위해 여전히 **넓게** 잡는다 — 그러나 "아직 없다" 라는 진단은
-  //   실제로 모듈 해석이 실패한 경우(`ERR_MODULE_NOT_FOUND`)로 좁힌다. 그 외 원인(문법 오류·import
-  //   하는 다른 모듈의 런타임 버그 등)까지 "미구현" 으로 오도하면 실제 버그가 "아직 코딩 안 함" 처럼
-  //   읽혀 원인 추적이 늦어진다 — 원문(`error.message`)은 두 경우 모두 그대로 싣는다.
-  __loadError: error instanceof Error ? error.message : String(error),
-  __notImplemented: error instanceof Error && error.code === 'ERR_MODULE_NOT_FOUND',
-}))
+const loaded = await import(new URL('../document-state.mjs', import.meta.url).href).catch(
+  (error) => ({
+    // ★ collection error 회피(위 주석)를 위해 여전히 **넓게** 잡는다 — 그러나 "아직 없다" 라는 진단은
+    //   실제로 모듈 해석이 실패한 경우(`ERR_MODULE_NOT_FOUND`)로 좁힌다. 그 외 원인(문법 오류·import
+    //   하는 다른 모듈의 런타임 버그 등)까지 "미구현" 으로 오도하면 실제 버그가 "아직 코딩 안 함" 처럼
+    //   읽혀 원인 추적이 늦어진다 — 원문(`error.message`)은 두 경우 모두 그대로 싣는다.
+    __loadError: error instanceof Error ? error.message : String(error),
+    __notImplemented: error instanceof Error && error.code === 'ERR_MODULE_NOT_FOUND',
+  }),
+)
 
 /** 아직 없는 seam 을 **케이스별** 명시 실패로 바꾼다(파일 통째 collection error 회피 · tdd §2.4). */
 function judge(parsedDocs, ctx) {
@@ -57,7 +33,10 @@ function judge(parsedDocs, ctx) {
   return loaded.judgeDocs(parsedDocs, ctx)
 }
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
+const HERE = path.dirname(
+  fileURLToPath(new URL('../../../scripts/lib/__tests__/doc-gate.test.mjs', import.meta.url)),
+)
+
 /** 생산 JSON Schema — 판정 **재료**(ctx 의존성)이지 기대값의 출처가 아니다(규범 A 위반 아님). */
 const WIKI_SCHEMA = JSON.parse(
   readFileSync(path.resolve(HERE, '..', '..', 'schema', 'wiki-doc.schema.json'), 'utf8'),
@@ -65,12 +44,18 @@ const WIKI_SCHEMA = JSON.parse(
 
 // 유효 UUIDv7 리터럴 — wiki-doc.schema.json 의 pattern 을 만족한다.
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
+
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
+
 const ID_C = '0192c000-0000-7000-8000-0000000000cc'
+
 const ID_DUP = '0192d000-0000-7000-8000-0000000000dd'
+
 const ID_TAMPER = '0192e000-0000-7000-8000-0000000000ee'
+
 /** id 줄을 마지막으로 바꾸기 바로 전의(= 지금과 다른) id — 사후 변경의 증거. */
 const ID_BEFORE_CHANGE = '0192f000-0000-7000-8000-0000000000ff'
+
 const BAD_ID = 'not-a-valid-uuid'
 
 /** 위키 루트 접두사 **리터럴** — `WIKI_PREFIX` 를 import 하지 않는다(규범 A). */
@@ -98,7 +83,9 @@ function fm(id, extra = {}) {
 const ctx = (extra = {}) => ({ wikiPrefix: WIKI_PREFIX, wikiSchema: WIKI_SCHEMA, ...extra })
 
 const pathsOf = (entries) => entries.map((entry) => entry.path)
+
 const reasonsOf = (entries) => entries.map((entry) => entry.reasonCode)
+
 const relPathsOf = (docs) => docs.map((entry) => entry.relPath)
 
 /**
@@ -134,10 +121,28 @@ function tamperingRunGit(idBeforeChange = ID_BEFORE_CHANGE) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// DG6~DG10 — 중복은 쌍이다 · 결정성 · 사유 우선순위 · 1-pass
+// ────────────────────────────────────────────────────────────────────────────
+
+/** DG6·DG7 이 공유하는 입력 — 같은 배열을 순서만 뒤집어 넣어 결정성을 대조한다. */
+const TWIN_DOCS = [
+  doc('company/정상', fm(ID_A)),
+  doc('concept/쌍둥이-A', fm(ID_DUP)),
+  doc('concept/쌍둥이-B', fm(ID_DUP)),
+]
+
+// ────────────────────────────────────────────────────────────────────────────
+// DG11~DG12 — 비용 티어(D-A): 깊은 검사는 runGit 을 준 호출에서만 돈다
+// ────────────────────────────────────────────────────────────────────────────
+
+/** DG11·DG12 가 공유하는 입력 — **runGit 주입 여부만** 다르다. */
+const TAMPERED_DOCS = [doc('company/변조', fm(ID_TAMPER))]
+
+// ────────────────────────────────────────────────────────────────────────────
 // DG1~DG5 — 오염 1종씩 (대조군 문서는 매번 살아남는다)
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('judgeDocs — 오염 1종씩 (DG1~DG5 · 🔴RED 미구현)', () => {
+describe('judgeDocs — 오염 1종씩', () => {
   it('DG1: 정상 문서 2건 → excluded 0 · visible 은 입력 순서를 보존한다 (대조군)', () => {
     // 이 대조군이 없으면 "전부 제외" 구현이 DG2~DG8 을 전부 통과한다.
     const docs = [doc('company/정상', fm(ID_A)), doc('concept/메모리', fm(ID_B))]
@@ -209,18 +214,7 @@ describe('judgeDocs — 오염 1종씩 (DG1~DG5 · 🔴RED 미구현)', () => {
   })
 })
 
-// ────────────────────────────────────────────────────────────────────────────
-// DG6~DG10 — 중복은 쌍이다 · 결정성 · 사유 우선순위 · 1-pass
-// ────────────────────────────────────────────────────────────────────────────
-
-/** DG6·DG7 이 공유하는 입력 — 같은 배열을 순서만 뒤집어 넣어 결정성을 대조한다. */
-const TWIN_DOCS = [
-  doc('company/정상', fm(ID_A)),
-  doc('concept/쌍둥이-A', fm(ID_DUP)),
-  doc('concept/쌍둥이-B', fm(ID_DUP)),
-]
-
-describe('judgeDocs — 중복·결정성·우선순위 (DG6~DG10 · 🔴RED 미구현)', () => {
+describe('judgeDocs — 중복·결정성·우선순위', () => {
   it('DG6: 같은 id 2건 → **둘 다** DUPLICATE_ID(정확히 2건) · 정상 문서만 visible', () => {
     // ★ PRD A.3 「둘 다 제외」. `toHaveLength(2)` 는 정확 일치(하한이 아니다) — 하나만 빼는 구현이 red.
     const result = judge(TWIN_DOCS, ctx())
@@ -300,14 +294,7 @@ describe('judgeDocs — 중복·결정성·우선순위 (DG6~DG10 · 🔴RED 미
   })
 })
 
-// ────────────────────────────────────────────────────────────────────────────
-// DG11~DG12 — 비용 티어(D-A): 깊은 검사는 runGit 을 준 호출에서만 돈다
-// ────────────────────────────────────────────────────────────────────────────
-
-/** DG11·DG12 가 공유하는 입력 — **runGit 주입 여부만** 다르다. */
-const TAMPERED_DOCS = [doc('company/변조', fm(ID_TAMPER))]
-
-describe('judgeDocs — 비용 티어 (DG11·DG12 · 🔴RED 미구현)', () => {
+describe('judgeDocs — 비용 티어', () => {
   it('DG11: runGit 주입 + id 줄의 바로 전 값이 다르다 → ID_TAMPERED', () => {
     // `validate.mjs:315`(불변 게이트) 흡수. stub 은 **리터럴 반환값을 가진 테스트 로컬 함수**다.
     const result = judge(TAMPERED_DOCS, ctx({ runGit: tamperingRunGit() }))
@@ -331,7 +318,7 @@ describe('judgeDocs — 비용 티어 (DG11·DG12 · 🔴RED 미구현)', () => 
 // DG13~DG14 — 경계값 · 리포트 순서 결정성
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('judgeDocs — 경계·정렬 (DG13 🔴RED · DG14 pair)', () => {
+describe('judgeDocs — 경계·정렬', () => {
   it('DG13: 빈 배열 + 빈 strayPaths → { excluded: [], visible: [] } · throw 없음', () => {
     expect(() => judge([], ctx({ strayPaths: new Set() }))).not.toThrow()
     expect(judge([], ctx({ strayPaths: new Set() }))).toEqual({ excluded: [], visible: [] })

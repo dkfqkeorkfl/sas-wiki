@@ -1,35 +1,23 @@
-// @vitest-environment node
-//
-// P3 · Task 2 — 파싱 엔진이 문서 제외를 **전 파생물에** 전파한다 (`parse-vault.mjs`) — tdd §3.2 (PG1~PG9)
-//
-// RED 사유(PG1~PG7 · **RED(flip)/RED**): 현행 `derive.mjs:53` 이 중복 id 를 만나면 **throw** 한다 →
-//   POLLUTED-BASE 에서 `parseVault` 자체가 죽는다(실측: `summary`·`wiki` 둘 다 exit 1). P3 는 그 판정을
-//   `doc-gate` 로 옮겨 **값**으로 만들고, 제외 문서를 `docs`·`tree`·`tags`·`bodies` 네 곳에서 함께
-//   빼며, 그 문서를 가리키던 피드를 `invalid-excluded` 로 **살려 둔다**.
-//   PG9 는 `FEED_REF_REASONS` 가 아직 3값이라 red 다.
-//
-// 계층 규칙(tdd §2.1 · P1·P2 이월): 이 파일이 다루는 것은 **HEAD 상태 계층**(지금 위키 루트에 무엇이
-//   있는가)과 **히스토리 정체성 계층**(어느 커밋이 무엇을 가리켰는가)의 접합부다. 제외는 HEAD 상태
-//   판정이고, 그 결과가 피드 사유로 내려간다.
-//
-// ★ 누출 벡터(이 phase 최대 리스크 · tdd §2.1): `headIds`(가시)와 `allHeadIds`(draft 포함)의 **차집합이
-//   곧 `draft-excluded`** 다. 제외 문서를 `allHeadIds` 에 그냥 남기면 `draft-excluded` 로, 그냥 빼면
-//   `deleted` 로 **각각 오분류**된다. 둘 다 틀렸다 — `invalidIds` 를 별도 집합으로 넘긴다(D-B).
-//
-// 자기참조 공허성 금지(규범 A): 문서 id·경로·사유 문자열은 helpers/polluted-vault 의 **리터럴**이다.
-//   PG9 만이 예외적으로 프로덕션 상수를 import 하는데, 그것이 이 스펙의 **주제**이기 때문이다(트립와이어).
+// 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
 import path from 'node:path'
+
 import { fileURLToPath } from 'node:url'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
-import { FEED_REF_REASONS } from '../lib/feed-survival.mjs'
-import { checkFeedResolution } from '../lib/invariants.mjs'
-import { parseVault } from '../lib/parse-vault.mjs'
-import { cleanup } from './helpers/tmp-git-vault.mjs'
+import { FEED_REF_REASONS } from '../../../scripts/lib/feed-survival.mjs'
+
+import { checkFeedResolution } from '../document-invariants.mjs'
+
+import { parseVault } from '../../../scripts/lib/parse-vault.mjs'
+import { collectHeadDocuments } from '../../../scripts/lib/head-state.mjs'
+import { makeGitRunner, memoizeGitRunner } from '../../../scripts/lib/git.mjs'
+import { auditHeadDocState } from '../document-state.mjs'
+
+import { cleanup } from '../../test-utils/tmp-git-vault.mjs'
+
 import {
   CONTROL_FEED_TITLE,
-  CONTROL_PATH,
   CONTROL_REL,
   CONTROL_TAG,
   ID_A,
@@ -44,26 +32,39 @@ import {
   TWIN_B_REL,
   TWIN_FEED_TITLE,
   TWIN_TAG,
-} from './helpers/polluted-vault.mjs'
+} from '../../test-utils/polluted-vault.mjs'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
+const HERE = path.dirname(
+  fileURLToPath(
+    new URL('../../../scripts/__tests__/build.doc-exclusion.test.mjs', import.meta.url),
+  ),
+)
+
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
 
 const tmps = []
+
 afterAll(() => cleanup(...tmps))
 
 // POLLUTED-BASE 는 이 파일의 7 케이스가 공유한다(시딩 = git 커밋 5회). env 별로 **한 번만** 파싱하고
 //   결과(또는 throw)를 값으로 붙들어 케이스마다 되던진다 — 9p spawn 비용을 줄이면서 각 케이스의
 //   실패 원인은 그대로 보인다(tdd §2.4 · §7.3).
 const polluted = seedPollutedVault()
+
 tmps.push(polluted.vault)
 
 const parsedCache = new Map()
+
 function parseOnce(vault, env) {
   const key = `${vault}\0${env}`
   if (!parsedCache.has(key)) {
     try {
-      parsedCache.set(key, { value: parseVault(vault, env, SCHEMA_DIR) })
+      const runGit = memoizeGitRunner(makeGitRunner(vault))
+      const headState = auditHeadDocState(collectHeadDocuments(vault), env, {
+        runGit,
+        schemaDir: SCHEMA_DIR,
+      })
+      parsedCache.set(key, { value: parseVault(vault, env, { runGit, headState }) })
     } catch (error) {
       parsedCache.set(key, { error })
     }
@@ -82,7 +83,9 @@ function mustParse(vault, env) {
 }
 
 const idsOf = (docs) => docs.map((doc) => doc.id)
+
 const titlesOf = (items) => items.map((item) => item.title)
+
 const bodyPathsOf = (bodies) => bodies.map((record) => record.breadcrumb.join('/'))
 
 /** tree 를 평탄화해 등장하는 모든 문서 id 를 모은다(폴더 깊이에 무관하게 "유령 노드" 를 잡는다). */
@@ -94,7 +97,7 @@ function treeIds(nodes) {
   return out
 }
 
-describe('제외 전파 — 파싱이 죽지 않고 사유를 값으로 낸다 (PG1 · 🔴RED(flip))', () => {
+describe('제외 전파 — 파싱이 죽지 않고 사유를 값으로 낸다 )', () => {
   it('PG1: POLLUTED-BASE 파싱이 throw 하지 않고 `stats.excluded` 가 DUPLICATE_ID 2건이다', () => {
     const { stats, wire } = mustParse(polluted.vault, 'dev')
 
@@ -110,7 +113,7 @@ describe('제외 전파 — 파싱이 죽지 않고 사유를 값으로 낸다 (
   })
 })
 
-describe('제외 전파 — 유령 노드 금지 (PG2 · 🔴RED)', () => {
+describe('제외 전파 — 유령 노드 금지', () => {
   it('PG2: 제외 문서 2건이 docs·tree·tags·bodies **네 곳 모두**에서 부재한다', () => {
     // ★ PRD D3 "유령 노드 금지". 네 곳을 **각각** 단언한다 — `tree` 만 빼먹는 구현이 흔하다.
     //   각 단언은 **대조군 존재/제외 부재의 쌍**이다(대칭). 앵커 없이 부재만 보면 payload 가 통째로
@@ -132,7 +135,7 @@ describe('제외 전파 — 유령 노드 금지 (PG2 · 🔴RED)', () => {
   })
 })
 
-describe('제외 전파 — 피드는 살고 연결만 끊긴다 (PG3~PG5 · 🔴RED)', () => {
+describe('제외 전파 — 피드는 살고 연결만 끊긴다', () => {
   it('PG3: 제외 문서를 가리킨 피드가 **생존**하고 그 `docs` 가 `[]` 다 (D-B)', () => {
     const { wire } = mustParse(polluted.vault, 'dev')
 
@@ -144,7 +147,7 @@ describe('제외 전파 — 피드는 살고 연결만 끊긴다 (PG3~PG5 · �
     expect(twin.docs).toEqual([])
   })
 
-  it('PG4: 그 참조가 `invalidExcludedRefs` 로 관측된다 (deleted 로 뭉개면 여기서만 red)', () => {
+  it('PG4: 그 참조가 `invalidExcludedRefs` 로 관측된다', () => {
     // ★ 오분류 탐지. `draft-excluded` 로 뭉개면 피드가 드랍돼 PG3 가 red 지만, `deleted` 로 뭉개면
     //   결론(생존·docs [])이 같아 **PG3·PG5 가 미발동**한다(tdd §6 CX7). 사유를 구분하는 관측 채널은
     //   이것뿐이다 — 없으면 "왜 비었는가" 를 영원히 알 수 없다.
@@ -177,7 +180,7 @@ describe('제외 전파 — 피드는 살고 연결만 끊긴다 (PG3~PG5 · �
   })
 })
 
-describe('제외 전파 — 진단 좌표 보존 (PG7 · 🔴RED)', () => {
+describe('제외 전파 — 진단 좌표 보존', () => {
   it('PG7: stray 문서를 가리킨 피드의 `{path, sha}` 가 `invalidExcludedRefs` 에 남는다', () => {
     // ★ F5. 현행은 이 진단이 `unresolvedPaths` 에 실려 `validate.cli.test.mjs:299` 가 **sha 앞 12자**를
     //   단언한다. 제외 모델로 옮기면서 이 채널을 안 만들면 **sha 가 증발**해 "어느 커밋이 깨진 문서를
@@ -213,7 +216,7 @@ describe('제외 전파 — 과잉 제외 가드 (PG8 · 대조군 vault)', () =
   })
 })
 
-describe('사유 상수 트립와이어 (PG9 · 🔴RED)', () => {
+describe('사유 상수 트립와이어', () => {
   it('PG9: `FEED_REF_REASONS` 가 리터럴 4값과 정렬 일치한다', () => {
     // 규범 A 는 "픽스처가 상수를 import 하지 말라" 이지 "상수를 검사하지 말라" 가 아니다. 그 대가로
     //   **여기 한 곳**에서만 코드와 리터럴을 맞댄다 — 코드가 사유를 늘렸는데 상수를 안 늘리면(또는

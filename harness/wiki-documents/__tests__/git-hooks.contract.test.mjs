@@ -21,13 +21,11 @@ describe('git 훅 연결', () => {
   it('pre-commit은 기존 ID 검사를 실행한다', () => {
     expect(commandsOf('pre-commit')).toEqual(['node scripts/check-doc-ids.mjs'])
   })
-  it('pre-push는 일반 테스트 뒤 기존 validate를 실행한다', () => {
+  it('pre-push는 문서 가드가 포함된 test를 실행한다', () => {
     const commands = commandsOf('pre-push')
-    expect(commands[0]).toBe('pnpm run test || exit 1')
-    expect(commands[1]).toBe('node scripts/validate.mjs --env dev || {')
-    expect(commands.at(-2)).toBe('exit 1')
-    expect(commands.join('\n')).toContain('git reset --soft "$(git merge-base HEAD @{upstream})"')
-    expect(commands.join('\n')).toContain('git add')
+    expect(commands[0]).toBe('pnpm run test || {')
+    expect(commands.join('\n')).toContain('exit 1')
+    expect(commands.filter((line) => /^(pnpm|node) /.test(line))).toEqual(['pnpm run test || {'])
   })
   it('uuid는 훅 전용 개발 의존성이다', () => {
     expect(pkg.devDependencies).toHaveProperty('uuid')
@@ -36,57 +34,33 @@ describe('git 훅 연결', () => {
 })
 
 describe('실제 pre-push의 순서와 실패 차단', () => {
-  it.each([
-    { testExit: 1, validateExit: 0, trace: ['pnpm:run test'], success: false },
-    {
-      testExit: 0,
-      validateExit: 1,
-      trace: ['pnpm:run test', 'node:scripts/validate.mjs --env dev'],
-      success: false,
-    },
-    {
-      testExit: 0,
-      validateExit: 0,
-      trace: ['pnpm:run test', 'node:scripts/validate.mjs --env dev'],
-      success: true,
-    },
-  ])(
-    'test 종료 $testExit / validate 종료 $validateExit',
-    ({ testExit, validateExit, trace, success }) => {
-      const dir = mkdtempSync(path.join(tmpdir(), 'wiki-hook-order-'))
-      const traceFile = path.join(dir, 'trace')
-      try {
-        for (const [name, variable] of [
-          ['pnpm', 'WIKI_TEST_EXIT'],
-          ['node', 'WIKI_VALIDATE_EXIT'],
-        ]) {
-          const file = path.join(dir, name)
-          writeFileSync(
-            file,
-            `#!/bin/sh\nprintf '%s:%s\\n' '${name}' "$*" >> "$WIKI_HOOK_TRACE"\nexit "$${variable}"\n`,
-          )
-          chmodSync(file, 0o755)
-        }
-        const result = spawnSync('sh', ['-e', path.join(repoRoot, '.husky/pre-push')], {
-          cwd: dir,
-          encoding: 'utf8',
-          timeout: 10000,
-          env: {
-            ...process.env,
-            PATH: `${dir}${path.delimiter}${process.env.PATH}`,
-            WIKI_HOOK_TRACE: traceFile,
-            WIKI_TEST_EXIT: String(testExit),
-            WIKI_VALIDATE_EXIT: String(validateExit),
-          },
-        })
-        expect(result.error).toBeUndefined()
-        expect(result.status === 0, result.stderr).toBe(success)
-        expect(readFileSync(traceFile, 'utf8').trim().split('\n')).toEqual(trace)
-        if (testExit === 0 && validateExit !== 0)
-          expect(result.stderr).toContain('validate 가 실패')
-      } finally {
-        rmSync(dir, { recursive: true, force: true })
-      }
-    },
-  )
+  it.each([0, 1])('test 종료 %s를 push에 전달한다', (testExit) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'wiki-hook-order-'))
+    const traceFile = path.join(dir, 'trace')
+    try {
+      const file = path.join(dir, 'pnpm')
+      writeFileSync(
+        file,
+        '#!/bin/sh\nprintf "%s\\n" "$*" >> "$WIKI_HOOK_TRACE"\nexit "$WIKI_TEST_EXIT"\n',
+      )
+      chmodSync(file, 0o755)
+      const result = spawnSync('sh', ['-e', path.join(repoRoot, '.husky/pre-push')], {
+        cwd: dir,
+        encoding: 'utf8',
+        timeout: 10000,
+        env: {
+          ...process.env,
+          PATH: dir + path.delimiter + process.env.PATH,
+          WIKI_HOOK_TRACE: traceFile,
+          WIKI_TEST_EXIT: String(testExit),
+        },
+      })
+      expect(result.error).toBeUndefined()
+      expect(result.status === 0, result.stderr).toBe(testExit === 0)
+      expect(readFileSync(traceFile, 'utf8').trim().split('\n')).toEqual(['run test'])
+      if (testExit !== 0) expect(result.stderr).toContain('test가 실패')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

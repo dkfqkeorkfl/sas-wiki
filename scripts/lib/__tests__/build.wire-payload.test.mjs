@@ -14,15 +14,15 @@ import { fileURLToPath } from 'node:url'
 import { cleanup, commit, feedCommit, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
 
 const { parseVault } = await import(new URL('../parse-vault.mjs', import.meta.url).href)
-const build = await import(new URL('../../validate.mjs', import.meta.url).href)
+const { runSummaryGenerator } = await import('../generator.mjs')
 
 const SCHEMA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'schema')
-const wireOf = (vault, env) => parseVault(vault, env, SCHEMA_DIR).wire
+const wireOf = (vault, env) => parseVault(vault, env).wire
 
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
 const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb'
 
-const SHAPE_KEYS = ['bodies', 'docs', 'generatedAt', 'ignore', 'items', 'sourceCommit', 'tags', 'tree'] // prettier-ignore
+const SHAPE_KEYS = ['bodies', 'docs', 'generatedAt', 'items', 'sourceCommit', 'tags', 'tree'] // prettier-ignore
 
 /** active 1(prod 가시) + draft 1(dev/ 폴더) + feed 1(active 문서 대상). */
 function seedVault(vault) {
@@ -81,7 +81,7 @@ describe('parseVault(...).wire — draft 필터 상속 (WP4 🟢회귀 · 좌표
 })
 
 describe('parseVault(...).wire — build.mjs 산출 회귀 0 (WP3 🟡CARRIED · 좌표 이동)', () => {
-  it('WP3: parseVault(...).wire.docs 가 buildContent summary.docs 와 필드까지 동일하다(파싱 엔진 공유)', () => {
+  it('WP3: 파싱과 실제 summary 생성의 문서 필드가 동일하다', async () => {
     const vault = initVault()
     try {
       seedVault(vault)
@@ -94,8 +94,8 @@ describe('parseVault(...).wire — build.mjs 산출 회귀 0 (WP3 🟡CARRIED ·
       const byId = (a, b) => a.id.localeCompare(b.id)
       const wireDocs = wireOf(vault, 'dev').docs.toSorted(byId)
       // `out` 은 buildContent() 가 받지 않는 옵션이다(죽은 픽스처였다 — makeOut() 을 걷어냈다).
-      const built = build.buildContent({ env: 'dev', vault })
-      const summaryDocs = built.summary.docs.toSorted(byId)
+      const built = await runSummaryGenerator({ env: 'dev', vault })
+      const summaryDocs = built.payload.docs.toSorted(byId)
 
       expect(summaryDocs).toEqual(wireDocs) // 같은 파싱 엔진이므로 buildContent 와 갈리지 않는다
     } finally {

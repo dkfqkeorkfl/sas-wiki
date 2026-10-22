@@ -144,7 +144,7 @@ describe('runSummaryGenerator — 캐시 발행 (GN1~GN3 · 🔴RED 미구현)',
     expect(keys).toEqual(ENVELOPE_KEYS)
   })
 
-  it('GN3: 클린 vault → status "clean" · excludedCount 0 · 아티팩트 발행', async () => {
+  it('GN3: 정상 입력을 생성하고 감사 상태를 반환하지 않는다', async () => {
     // ★ **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②). `summary.import-graph.test.mjs`(IG1·IG6)는
     //   "판정 경로가 렌더 툴체인을 정적으로 물지 않는다" 만 문으므로, **아예 재생성을 못 하는**
     //   구현도 거기서는 통과한다. 그 구멍을 이 케이스가 막는다 — "IG 와 무관" 이라며 지우면 IG1 이
@@ -153,8 +153,8 @@ describe('runSummaryGenerator — 캐시 발행 (GN1~GN3 · 🔴RED 미구현)',
 
     const result = await generate({ env: 'dev', vault })
 
-    expect(result.status).toBe('clean')
-    expect(result.excludedCount).toBe(0)
+    expect(result).not.toHaveProperty('status')
+    expect(result).not.toHaveProperty('excludedCount')
     expect(existsSync(artifactFile(vault))).toBe(true)
     expect(result.payload.docs.length).toBeGreaterThan(0)
   })
@@ -191,15 +191,15 @@ describe('runSummaryGenerator — 주입한 runGit 이 실제로 쓰인다 (FR7)
 })
 
 describe('runSummaryGenerator — 부분 성공과 경로 (GN4·GN5 · 🔴RED 미구현)', () => {
-  it('GN4: 오염 vault → status "partial" · excludedCount 2 · **캐시는 그래도 발행된다**', async () => {
+  it('GN4: 전체 감사 상태 없이 요청한 산출물을 생성한다', async () => {
     // ★ 부분 성공의 정의(D-D): 제외가 있어도 **나머지는 서빙 가능한 산출물**로 나간다. 앵커로 캐시
     //   안에 대조군이 실제로 들어 있음을 본다 — "빈 캐시를 쓰고 partial 이라 부르는" 구현을 배제.
     const vault = freshPolluted()
 
     const result = await generate({ env: 'dev', vault })
 
-    expect(result.status).toBe('partial')
-    expect(result.excludedCount).toBe(2)
+    expect(result).not.toHaveProperty('status')
+    expect(result).not.toHaveProperty('excludedCount')
     expect(existsSync(artifactFile(vault))).toBe(true)
     expect(readJson(artifactFile(vault)).docs.map((doc) => doc.id)).toContain(ID_A)
   })
@@ -302,9 +302,11 @@ describe('항상 생성한다 (RG1~RG3 · 🔴RED 미구현)', () => {
     const result = await generate({ env: 'dev', vault })
 
     // 앵커: 나머지 반환 키는 **여전히 있다**(반환이 통째로 비어서 통과하는 것을 배제).
-    for (const key of ['payload', 'sourceCommit', 'excludedCount', 'status']) {
+    for (const key of ['payload', 'sourceCommit', 'artifactPath']) {
       expect(result, key).toHaveProperty(key)
     }
+    expect(result).not.toHaveProperty('excludedCount')
+    expect(result).not.toHaveProperty('status')
 
     const removedStatusKey = ['regener', 'ated'].join('')
     expect(removedStatusKey in result).toBe(false)

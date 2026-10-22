@@ -1,51 +1,33 @@
-// @vitest-environment node
-//
-// P2 RED-12 · 실 vault 통합 (plan Task 12 / tdd §9) — **P2 의 진짜 수용 기준**
-//
-// 이 파일을 **가장 먼저** 쓴다. 나중에 쓰면 "구현이 낸 결과 = 기대값"이 되어(순환 논증)
-// 조용한 유실이 그대로 정답으로 박제된다 — 데이터 파이프라인에서 가장 위험한 함정이다.
-//
-// RED 사유(작성 시점):
-//   ① `lib/invariants.mjs` · `lib/payloads.mjs` 부재 → 모듈 해석 실패(파일 전체 RED).
-//   ② `buildContent(root, opts)` 가 아직 `--root` 단일 인자 계약이다 → `{ vault, out }` 미지원.
-//   ③ 3 페이로드(wiki_summary/feeds/body.json)와 스키마 3종이 아직 없다.
-//   ④ 신 커밋 컨벤션(cwiki/uwiki/feed)·rename 역인덱스·prune·anchor 강등 미구현.
-//
-// 금지(tdd §14.1 R3): `it.skipIf` / `describe.runIf` / early-return.
-//   이 테스트는 서브모듈에 의존하지 않고 임시 repo 를 스스로 시딩하므로(prepareSeedRepo)
-//   항상 결정적으로 실행된다 — 건너뛸 환경 조건 자체가 없다.
-//
-// **SHA 하드코딩 금지**(tdd §9.1 각주): vault 는 재제작 시 전 커밋 해시가 바뀐다.
-//   기대값은 git 에서 유도하거나(생성 커밋 = `--follow --diff-filter=A` 의 최신 A)
-//   구조적 관계로 단언한다(`feed.docs[0].id === summary.docs(tech/HBM).id`).
-//
-// 계약(GREEN 이 구현할 seam):
-//   buildContent({ vault, out, schema?, allowDeadlinks? })
-//     → { summary, feeds, body, stats } · <out>/wiki_{summary,feeds,body}.json 3파일 write
-//   stats = { prunedDocRefs: number, prunedFeeds: number, unpublishedFeedCommits: [{sha,subject}],
-//             unresolvedPaths: [{sha,path}], warnings: [{sha,reason}] }
-//   checkInvariants(summary, feeds, body) → 위반 시 throw, 정상이면 void
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { execFileSync } from 'node:child_process'
+
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+
 import { tmpdir } from 'node:os'
+
 import path from 'node:path'
+
 import { fileURLToPath } from 'node:url'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 
 import { seedVault } from './helpers/seed-example-vault.mjs'
+
 import { git } from './helpers/vault-facts.mjs'
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
 // 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
 // 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
 // coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
-const { checkInvariants } = await import(new URL('../lib/invariants.mjs', import.meta.url).href)
 
-const HERE = path.dirname(fileURLToPath(import.meta.url)) // scripts/wiki/__tests__
-const SCRIPT_DIR = path.resolve(HERE, '..') // scripts/wiki
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+// scripts/wiki/__tests__
+const SCRIPT_DIR = path.resolve(HERE, '..')
+// scripts/wiki
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 
 // 결정성: SOURCE_DATE_EPOCH 를 고정해 generatedAt 을 못 박는다(재빌드 byte-identical 의 전제).
@@ -53,12 +35,19 @@ const EPOCH = '1700000000'
 
 // 문서 슬러그(파일명) — 값이 아니라 **관계**로 단언하기 위한 좌표.
 const SAMSUNG = 'company/삼성전자'
+
 const HYNIX = 'company/SK하이닉스'
+
 const TSMC = 'company/TSMC'
-const HBM = 'tech/HBM' // 커밋 12 에서 concept/ → tech/ 로 이동
+
+const HBM = 'tech/HBM'
+// 커밋 12 에서 concept/ → tech/ 로 이동
 const MOC = 'moc/반도체'
-const ONDEVICE = 'concept/온디바이스-AI' // 커밋 14 에서 disable
-const SCRAP = 'concept/폐기예정-메모' // 커밋 16 에서 삭제
+
+const ONDEVICE = 'concept/온디바이스-AI'
+// 커밋 14 에서 disable
+const SCRAP = 'concept/폐기예정-메모'
+// 커밋 16 에서 삭제
 
 const BASE_IDENTITY = {
   GIT_AUTHOR_DATE: '1136239445 +0000',
@@ -145,8 +134,8 @@ beforeAll(() => {
 
   // in-process 호출 — 신규 lib(payloads·invariants)이 v8 커버리지에 잡히게 한다(tdd §11).
   // validate 는 파일을 쓰지 않으므로 결정성은 in-memory payload 2회 조립으로 대조한다(구: out1·out2).
-  ctx.result = buildContent({ vault: ctx.vault })
-  ctx.result2 = buildContent({ vault: ctx.vault })
+  ctx.result = parsePayloads({ vault: ctx.vault })
+  ctx.result2 = parsePayloads({ vault: ctx.vault })
 })
 
 afterAll(() => {
@@ -381,12 +370,6 @@ describe('실 vault ⑦ 전역 계약', () => {
     expect(validateItem(body, loadSchema(path.join(SCHEMA_DIR, 'body.schema.json')))).toEqual([])
   })
 
-  it('불변식 8종이 green 이다', () => {
-    const { body, feeds, summary } = ctx.result
-
-    expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
-  })
-
   it('sourceCommit 3종이 동일하고 vault HEAD 와 일치한다(불변식 7)', () => {
     const head = git(ctx.vault, ['rev-parse', 'HEAD'])
     const { body, feeds, summary } = ctx.result
@@ -427,35 +410,5 @@ describe('실 vault ⑦ 전역 계약', () => {
 
   it('빌드가 서브모듈 워킹트리를 더럽히지 않는다(--out 분리)', () => {
     expect(git(ctx.vault, ['status', '--porcelain'])).toBe('')
-  })
-})
-
-describe('실 vault ⑧ --out 리포트 파일 쓰기(in-memory 만 검증하면 쓰기 회귀가 안 보인다)', () => {
-  // 이 파일의 다른 모든 단언은 `ctx.result`(reportDir 없이 조립한 in-memory payload)만 본다 —
-  //   그래서 `--out` 이 실제로 디스크에 파일을 남기는지는 이 파일 어디에서도 확인되지 않았다
-  //   (416줄에 `existsSync` 가 0건이었다). 파일쓰기 경로가 통째로 회귀해도(예: 쓰기 호출이
-  //   조용히 no-op 이 되어도) exit/반환값만으로는 잡히지 않는다 — 실재를 직접 본다.
-  let outDir
-  let write
-
-  beforeAll(() => {
-    outDir = mkdtempSync(path.join(tmpdir(), 'wiki-vault-out-'))
-    ;({ report: write } = buildContent({ reportDir: outDir, vault: ctx.vault }))
-  })
-
-  afterAll(() => {
-    rmSync(outDir, { force: true, recursive: true })
-  })
-
-  it('report.jsonPath · report.txtPath 가 실제로 디스크에 쓰인다', () => {
-    expect(write.error).toBeNull()
-    expect(existsSync(write.jsonPath), write.jsonPath).toBe(true)
-    expect(existsSync(write.txtPath), write.txtPath).toBe(true)
-  })
-
-  it('쓰인 json 리포트는 이번 실행의 sourceCommit 을 담는다(빈 파일이 통과하는 것을 막는다)', () => {
-    const written = JSON.parse(readFileSync(write.jsonPath, 'utf8'))
-
-    expect(written.sourceCommit).toBe(ctx.result.summary.sourceCommit)
   })
 })

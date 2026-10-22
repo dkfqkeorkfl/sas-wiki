@@ -14,7 +14,7 @@ export default defineConfig({
       //   역인센티브다. P4 에서 실제로 발생했다: 헬퍼 2개를 더했더니 프로덕션은 그대로인데
       //   혼합 수치가 floor 밑으로 떨어졌다(실측 · 아래 표). `atomic-stress.mjs` 는 자식 프로세스로
       //   spawn 되는 드라이버라 in-process 계측이 **구조적으로 불가능**해 영구 페널티였다.
-      exclude: ['**/__tests__/**'],
+      exclude: ['**/__tests__/**', 'scripts/test-utils/**'],
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       reportsDirectory: 'logs/coverage',

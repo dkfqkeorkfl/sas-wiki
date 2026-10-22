@@ -379,7 +379,7 @@ describe('exit code 충돌 — 사유는 stderr 가 가른다 (CQ6 · 규범 P)'
   //   `node:util` 의 `parseArgs` 가 알 수 없는 인자에 던지는 throw 를 최상위 `.catch`(exit 1)로
   //   흘려보내는 CLI 가 있어, **같은 종류의 위반이 파일마다 다른 코드**로 나갔다(실측: 넷 중 둘이 1).
   //   그 상태에서는 위 CQ6 의 exit 2 단언도 "feeds 의 일부 갈래만" 보증하는 국소 계약이었다.
-  const ARG_CONTRACT_CLIS = ['feeds.mjs', 'summary.mjs', 'validate.mjs', 'wiki.mjs']
+  const ARG_CONTRACT_CLIS = ['feeds.mjs', 'summary.mjs', 'wiki.mjs']
 
   it('알 수 없는 인자는 네 엔드포인트에서 모두 exit 2 다', { timeout: 300_000 }, () => {
     // 앵커: 목록이 비면 아래 루프가 한 번도 돌지 않아 단언이 공허하게 통과한다.

@@ -1,38 +1,22 @@
-// @vitest-environment node
-//
-// P2 · Task 3·6·7 — 검증 경로(`buildContent`)의 생존 판정 · off-convention 제거 · 발행 실패의 침묵 제거
-//   tdd §3.3(BE1~BE3) · §3.6(PS1~PS5) · §3.7(IM4)
-//
-// **P3 Task 9 로 빌더가 하나가 됐다**(`buildFeedItems` 제거 · 검증 경로도 `collectFeedItems` 를 쓴다).
-//   작성 당시엔 서빙(`walkFeeds`)·검증(`buildFeedItems`) 두 벌이라 BE2 가 그 격차를 물었고, 지금은
-//   같은 코드를 **두 진입점**(`walkFeeds` / `buildContent`)에서 부르는 것이 같은 답을 내는지를 문다.
-//   단언은 그대로 두는 것이 맞다 — 배선이 어긋나면(env·headState 주입 실수) 여전히 갈릴 수 있다.
-//
-// RED 사유(라벨별):
-//   BE1·BE2  RED(flip) — 현행 `feed.mjs:140-141` 이 `docs 0` 이면 드랍 + `prunedFeeds++`.
-//                        뒤집히는 기존 단언: tdd §4 원장 ②(`feed.test.mjs:326`)·⑬·⑭.
-//   BE3      pair       — 생존 규칙이 사유를 `unresolved` 로 뭉개 통과하는 우회를 배제.
-//   PS1      RED(flip)  — 현행은 `stats.offConventionCommits` 에 집계한다(원장 ⑦). D-D 는 **제거**다.
-//   PS2·PS5  RED        — `stats.unpublishedFeedCommits` seam 부재(현행은 null 로 조용히 버린다).
-//   PS3      pin+RED    — 발행 자체는 지금도 통과하는 **pin**(R2 `\s+` 유지). 다만 "0건 리포트" 절은
-//                        새 seam 이라 지금 red 다. CX11 이 정규식을 좁히면 pin 절이 뒤집힌다.
-//   PS4      RED        — 요약 줄 warnings 항의 관측 표면(§7.4 `stats` 합산 계약).
-//   IM4      RED(flip)  — 현행은 fix·normal 둘 다 드랍한다.
-//
-// 자기참조 공허성(§2.3): 경로·subject·사유는 전부 리터럴이다. 부재 단언 앞에 **위험 실재 앵커**를 둔다.
-// 비용(§7.3): CLI 를 spawn 하지 않는다 — `buildContent` 를 import 해 in-process 로 문다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { rmSync, writeFileSync } from 'node:fs'
+
 import { tmpdir } from 'node:os'
+
 import path from 'node:path'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildContent, main } from '../validate.mjs'
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import { ID_A, T1, T2, seedSurvivalVault } from './helpers/survival-vault.mjs'
+
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const ID_D = '0192d000-0000-7000-8000-0000000000dd' // fix 피드가 가리키는 문서(삭제됨)
-const ID_E = '0192e000-0000-7000-8000-0000000000ee' // normal 피드가 가리키는 문서(삭제됨)
+const ID_D = '0192d000-0000-7000-8000-0000000000dd'
+// fix 피드가 가리키는 문서(삭제됨)
+const ID_E = '0192e000-0000-7000-8000-0000000000ee'
+// normal 피드가 가리키는 문서(삭제됨)
 
 /**
  * U+00A0 non-breaking space — `\s` 는 이것도 먹는다(R2 가 유지하기로 한 계약).
@@ -42,6 +26,7 @@ const ID_E = '0192e000-0000-7000-8000-0000000000ee' // normal 피드가 가리�
 const NBSP = '\u00A0'
 
 const titlesOf = (items) => items.map((item) => item.title)
+
 const docIdsOf = (items, title) =>
   items.find((item) => item.title === title)?.docs.map((doc) => doc.id)
 
@@ -77,11 +62,11 @@ function commitWithMessageFile(vault, message, date) {
   }
 }
 
-describe('buildContent — 검증 경로의 사유별 생존 (BE1·BE2 🔴RED(flip) · 원장 ②⑬⑭)', () => {
+describe('parsePayloads — 검증 경로의 사유별 생존 (BE1·BE2 🔴RED(flip) · 원장 ②⑬⑭)', () => {
   it('BE1: dev 3건 · 폐기 소식 docs [] · prunedDocRefs 1 · prunedFeeds **정확히 0**', () => {
     const vault = seedSurvivalVault()
     try {
-      const { feeds, stats } = buildContent({ env: 'dev', vault })
+      const { feeds, stats } = parsePayloads({ env: 'dev', vault })
 
       expect(feeds.items).toHaveLength(3) // 앵커: 개수가 먼저다
       expect(titlesOf(feeds.items)).toEqual(['폐기 소식', '실험 소식', '공개 소식'])
@@ -98,7 +83,7 @@ describe('buildContent — 검증 경로의 사유별 생존 (BE1·BE2 🔴RED(f
     const { walkFeeds } = await import(new URL('./helpers/walk-feeds.mjs', import.meta.url).href)
     const vault = seedSurvivalVault()
     try {
-      const { feeds, stats } = buildContent({ env: 'prod', vault })
+      const { feeds, stats } = parsePayloads({ env: 'prod', vault })
 
       expect(feeds.items).toHaveLength(2)
       expect(titlesOf(feeds.items)).toEqual(['폐기 소식', '공개 소식'])
@@ -116,15 +101,15 @@ describe('buildContent — 검증 경로의 사유별 생존 (BE1·BE2 🔴RED(f
     //   조용히 삼키면 여기서 잡힌다 — 생존 규칙의 도피로를 막는 짝이다.
     const vault = seedSurvivalVault()
     try {
-      expect(buildContent({ env: 'dev', vault }).stats.unresolvedPaths).toEqual([])
-      expect(buildContent({ env: 'prod', vault }).stats.unresolvedPaths).toEqual([])
+      expect(parsePayloads({ env: 'dev', vault }).stats.unresolvedPaths).toEqual([])
+      expect(parsePayloads({ env: 'prod', vault }).stats.unresolvedPaths).toEqual([])
     } finally {
       cleanup(vault)
     }
   })
 })
 
-describe('buildContent — off-convention 경고 제거 (PS1 🔴RED(flip) · 원장 ⑦ · D-D)', () => {
+describe('parsePayloads — off-convention 경고 제거 (PS1 🔴RED(flip) · 원장 ⑦ · D-D)', () => {
   it('PS1: 비-`feed:` 위키 커밋은 정상 저작이다 — offConventionCommits 키 자체가 없고 warning 도 없다', () => {
     const vault = initVault()
     try {
@@ -136,7 +121,7 @@ describe('buildContent — off-convention 경고 제거 (PS1 🔴RED(flip) · �
       writeDoc(vault, 'company/공개', { body: '## 정의\n\n조용한 손질.\n', id: ID_A, wikiRoot: 'wiki' }) // prettier-ignore
       commit(vault, 'chore: 문서 손질')
 
-      const { feeds, stats } = buildContent({ env: 'dev', vault })
+      const { feeds, stats } = parsePayloads({ env: 'dev', vault })
 
       // ★ 위험 실재 앵커: 픽스처가 비어 있지 않다 — 같은 vault 의 `feed:` 커밋이 피드를 실제로 만들었다.
       expect(titlesOf(feeds.items)).toEqual(['발행 소식'])
@@ -149,7 +134,7 @@ describe('buildContent — off-convention 경고 제거 (PS1 🔴RED(flip) · �
   })
 })
 
-describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 · R2)', () => {
+describe('parsePayloads — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 · R2)', () => {
   it('PS2: `feed:` 인데 헤드라인이 없는 커밋은 조용히 사라지지 않고 정확히 1건 리포트된다 (🔴RED)', () => {
     const vault = initVault()
     try {
@@ -162,7 +147,7 @@ describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 ·
       //   space 를 strip 하므로 subject 형태를 추측하지 않는다(tdd §3.6 실측표).
       expect(git(vault, ['log', '-1', '--format=%s'])).toBe('feed:')
 
-      const { feeds, stats } = buildContent({ env: 'dev', vault })
+      const { feeds, stats } = parsePayloads({ env: 'dev', vault })
 
       expect(stats.unpublishedFeedCommits).toHaveLength(1)
       expect(stats.unpublishedFeedCommits[0]).toEqual({ sha, subject: 'feed:' })
@@ -186,38 +171,11 @@ describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 ·
       // 앵커: NBSP 바이트가 커밋 subject 에 실제로 보존됐다(셸/인코딩이 삼키지 않았다).
       expect(git(vault, ['log', '-1', '--format=%s'])).toBe(`feed:${NBSP}공백아닌구분자 소식`)
 
-      const { feeds, stats } = buildContent({ env: 'dev', vault })
+      const { feeds, stats } = parsePayloads({ env: 'dev', vault })
 
       expect(titlesOf(feeds.items)).toEqual(['공백아닌구분자 소식'])
       expect(stats.unpublishedFeedCommits).toEqual([])
     } finally {
-      cleanup(vault)
-    }
-  })
-
-  it('PS4: 미발행 커밋은 요약 줄 warnings 항에 합산된다(§7.4 stats 합산 계약) (🔴RED)', async () => {
-    const vault = initVault()
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
-    try {
-      writeDoc(vault, 'company/공개', { id: ID_A, wikiRoot: 'wiki' })
-      commit(vault, 'chore: 문서 생성')
-      writeDoc(vault, 'company/공개', { body: '## 정의\n\n헤드라인 없는 갱신.\n', id: ID_A, wikiRoot: 'wiki' }) // prettier-ignore
-      commit(vault, 'feed:')
-
-      expect(git(vault, ['log', '-1', '--format=%s'])).toBe('feed:') // 앵커: 위험이 실재한다
-
-      await main(['--vault', vault, '--env', 'dev'])
-      const printed = spy.mock.calls.flat().join('\n')
-      const warningTotal = Number(/\bwarnings=(\d+)\b/u.exec(printed)?.[1] ?? Number.NaN)
-      const warningDetails = printed
-        .split('\n')
-        .filter((line) => /\]\s+(unpublished-feed|deadlink|warning):/u.test(line))
-      const unpublishedDetails = warningDetails.filter((line) => line.includes('unpublished-feed:'))
-
-      expect(unpublishedDetails.length, '앵커: 미발행 피드 상세가 출력되지 않음').toBeGreaterThan(0)
-      expect(warningTotal, '요약 warnings 가 상세 경고 개수와 다름').toBe(warningDetails.length)
-    } finally {
-      spy.mockRestore()
       cleanup(vault)
     }
   })
@@ -234,7 +192,7 @@ describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 ·
 
       expect(git(vault, ['log', '-1', '--format=%s'])).toBe('feed:제목붙임') // 앵커
 
-      const { feeds, stats } = buildContent({ env: 'dev', vault })
+      const { feeds, stats } = parsePayloads({ env: 'dev', vault })
 
       expect(stats.unpublishedFeedCommits).toHaveLength(1)
       expect(stats.unpublishedFeedCommits[0].sha).toBe(sha)
@@ -245,7 +203,7 @@ describe('buildContent — 발행 실패의 침묵 제거 (PS2·PS3·PS4·PS5 ·
   })
 })
 
-describe('buildContent — importance: fix 의 D9 예외 (IM4 🔴RED(flip))', () => {
+describe('parsePayloads — importance: fix 의 D9 예외 (IM4 🔴RED(flip))', () => {
   it('IM4: 참조가 전멸한 fix 피드는 드랍되고, 같은 픽스처의 normal 피드는 생존한다', () => {
     // SV6·SV7 의 실 git 통합 대응. **짝 비교**라 "fix 는 항상 드랍"·"항상 생존" 둘 다 배제된다.
     const vault = initVault()
@@ -266,7 +224,7 @@ describe('buildContent — importance: fix 의 D9 예외 (IM4 🔴RED(flip))', (
       // ★ 위험 실재 앵커: 그 커밋이 정말 `Importance: fix` 트레일러를 달고 만들어졌다.
       expect(git(vault, ['log', '--format=%s%n%b'])).toContain('Importance: fix')
 
-      const { feeds } = buildContent({ env: 'dev', vault })
+      const { feeds } = parsePayloads({ env: 'dev', vault })
 
       expect(titlesOf(feeds.items)).toContain('일반 소식') // normal + 0 docs → 생존(D9)
       expect(docIdsOf(feeds.items, '일반 소식')).toEqual([])

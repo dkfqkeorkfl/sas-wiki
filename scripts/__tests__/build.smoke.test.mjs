@@ -1,40 +1,37 @@
-// @vitest-environment node
-//
-// P2 RED-11 · 빌드 파이프라인 스모크(임시 repo 자체 시딩 · 실 git · 결정적) — tdd §6.11
-//
-// **전면 재작성**(기존 8건): 시딩 컨벤션(`post(<해시>)` → `cwiki`/`uwiki`/`feed`)·산출 파일
-//   (`content.json` → 3 페이로드)·단언 대상이 전부 교체됐다. 단언을 약화한 것이 아니라 **새 계약으로 옮겼다**.
-//
-// RED 사유: `buildContent({ vault, out })` 계약·3 페이로드·`lib/invariants.mjs` 미구현.
-//
-// 실 vault(`seed-example-vault.mjs`)를 쓰지 않는다 — 스모크는 **최소 시나리오**를 자체 시딩한다
-//   (빠르고, 실패 시 원인이 좁다). 실 vault 통합은 `build.vault.test.mjs` 가 맡는다.
-//
-// **in-process 호출**(execFileSync 아님): 신규 lib(payloads·invariants)이 v8 커버리지에 잡혀야
-//   전역 floor 가 내려가지 않는다(tdd §11). CLI 계약은 `build.cli.test.mjs` 가 subprocess 로 본다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { execFileSync } from 'node:child_process'
+
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+
 import { tmpdir } from 'node:os'
+
 import path from 'node:path'
+
 import { fileURLToPath } from 'node:url'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import { loadSchema, validateItem } from '../lib/schema-validator.mjs'
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
 // 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
 // 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
 // coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
-const { checkInvariants } = await import(new URL('../lib/invariants.mjs', import.meta.url).href)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
+
 const SCHEMA_DIR = path.resolve(HERE, '..', 'schema')
-const EPOCH = '1700000000' // → 2023-11-14T22:13:20.000Z
+
+const EPOCH = '1700000000'
+// → 2023-11-14T22:13:20.000Z
 
 // ── 결정성 6필드 (git t/test-lib.sh test_tick 관례) ──────────────────────────
 const NAME = 'SAS Wiki Bot'
+
 const EMAIL = 'bot@sas.wiki'
+
 let tick = 1_136_239_445
 
 const ctx = { ids: {}, prevEpoch: undefined, result: null, result2: null, vault: '' }
@@ -77,6 +74,7 @@ function nextDate() {
 // frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일). id 출처가 frontmatter 로 반전됐다.
 // 시딩 시 파일에 써 커밋하므로 재빌드(out1·out2)는 같은 id 를 읽어 byte-identical 이 유지된다.
 let idSeq = 0
+
 function nextDocId() {
   return `0192f0d0-0000-7000-8000-${(idSeq += 1).toString(16).padStart(12, '0')}`
 }
@@ -170,8 +168,8 @@ beforeAll(() => {
 
   // 결정성 검증용 2회 조립(같은 입력·같은 SOURCE_DATE_EPOCH). validate 는 파일을 쓰지 않으므로
   // in-memory payload 를 대조한다(구: out1·out2 byte-identical).
-  ctx.result = buildContent({ vault })
-  ctx.result2 = buildContent({ vault })
+  ctx.result = parsePayloads({ vault })
+  ctx.result2 = parsePayloads({ vault })
 })
 
 afterAll(() => {
@@ -197,12 +195,6 @@ describe('build.smoke — 3 페이로드 산출', () => {
     )
     expect(validateItem(feeds, loadSchema(path.join(SCHEMA_DIR, 'feeds.schema.json')))).toEqual([])
     expect(validateItem(body, loadSchema(path.join(SCHEMA_DIR, 'body.schema.json')))).toEqual([])
-  })
-
-  it('불변식 8종이 green 이다', () => {
-    const { body, feeds, summary } = ctx.result
-
-    expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
   })
 
   it('docs[] 는 정확히 1키(id)만 갖는다', () => {

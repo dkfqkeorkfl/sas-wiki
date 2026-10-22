@@ -52,10 +52,11 @@ const DELETED_BACKED_TITLE = '폐기예정 메모 관련 소식'
 const NEW_TEST_FILES = [
   'scripts/lib/__tests__/feed-survival.test.mjs',
   'scripts/lib/__tests__/git-walk.survival-reason.test.mjs',
-  'scripts/lib/__tests__/invariants.feed-only.test.mjs',
+  'harness/wiki-documents/__tests__/document-invariants.commits.test.mjs',
   'scripts/__tests__/build.feed-survival.test.mjs',
   'scripts/__tests__/build.contract-shape.test.mjs',
-  'scripts/__tests__/validate.deadlinks.test.mjs',
+  'harness/wiki-documents/__tests__/document-integrity.deadlinks.test.mjs',
+  'harness/wiki-documents/__tests__/document-invariants.extra-fields.test.mjs',
   'scripts/__tests__/feeds.env-leak.verify.test.mjs',
 ]
 

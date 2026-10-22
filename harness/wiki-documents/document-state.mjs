@@ -1,13 +1,15 @@
 import path from 'node:path'
 
-import { DOC_ID_FIELD, findDuplicateIds, isDocId, judgeDocId } from './doc-id.mjs'
+import { DOC_ID_FIELD, findDuplicateIds, isDocId, judgeDocId } from '../../scripts/lib/doc-id.mjs'
+import { isDraft } from '../../scripts/lib/draft.mjs'
+import { createHeadDocState, docPath, WIKI_PREFIX } from '../../scripts/lib/head-state.mjs'
 import {
   anyMarkdown,
   collectDeletedDocEvents,
   readFrontmatterFieldChange,
   readIdAtDeletion,
-} from './git.mjs'
-import { validateItem } from './schema-validator.mjs'
+} from '../../scripts/lib/git.mjs'
+import { loadSchema, validateItem } from '../../scripts/lib/schema-validator.mjs'
 
 export const REASON_CODES = [
   'NO_FRONTMATTER',
@@ -128,11 +130,6 @@ export function judgeDocs(parsedDocs, ctx) {
   }
 }
 
-/** 문서 → 리포 상대 posix 경로. 제외 목록의 좌표계이므로 **비교하는 쪽도 이 함수를 써야** 한다. */
-export function docPath(doc, wikiPrefix) {
-  return `${wikiPrefix}${doc.relPath}.md`.split(path.sep).join('/')
-}
-
 function setIssue(issues, doc, reasonCode, message, { force = false } = {}) {
   if (!force && issues.has(doc)) return
   issues.set(doc, { message, reasonCode })
@@ -146,4 +143,41 @@ function groupsBy(values, getKey) {
     out.get(key).push(value)
   }
   return out
+}
+
+/** 감사 결과를 공용 상태 투영에 전달한다. 파싱·가시성·피드 해석을 복제하지 않는다. */
+export function auditHeadDocState(snapshot, env, { runGit, schemaDir }) {
+  const { parsedDocs, strayDocPaths } = snapshot
+  const candidates = createHeadDocState(snapshot, env).visibleDocs
+  const judged = judgeDocs(candidates, {
+    runGit,
+    strayPaths: strayDocPaths,
+    wikiPrefix: WIKI_PREFIX,
+    wikiSchema: loadSchema(path.join(schemaDir, 'wiki-doc.schema.json')),
+  })
+  const collisions = env === 'dev' ? new Map() : findDraftPublicIdCollisions(parsedDocs)
+  const collisionPaths = new Set([...collisions.values()].flat().map((doc) => docPath(doc)))
+  const collisionExcluded = [...collisions].flatMap(([id, docs]) =>
+    docs.map((doc) => ({
+      id,
+      message: `중복 id 발견: ${id}`,
+      path: docPath(doc),
+      reasonCode: 'DUPLICATE_ID',
+    })),
+  )
+  const excluded = [
+    ...judged.excluded.filter((entry) => !collisionPaths.has(entry.path)),
+    ...collisionExcluded,
+  ].sort((a, b) => a.path.localeCompare(b.path, 'ko'))
+  return createHeadDocState(snapshot, env, excluded)
+}
+
+/** prod에서만 숨겨지는 draft가 공개 문서의 ID를 재사용하는 그룹. */
+function findDraftPublicIdCollisions(parsedDocs) {
+  return new Map(
+    [...findDuplicateIds(parsedDocs, (doc) => doc.frontmatter?.id)].filter(([, docs]) => {
+      const flags = docs.map((doc) => isDraft(doc))
+      return flags.includes(true) && flags.includes(false)
+    }),
+  )
 }

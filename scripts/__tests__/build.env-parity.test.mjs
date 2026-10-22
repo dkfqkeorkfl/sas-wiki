@@ -1,30 +1,14 @@
-// @vitest-environment node
-//
-// P1 · RED — env parity · 문서 후보 집합(`everWikiPaths`) 구성 (tdd §3.5 EP1~EP3)
-//
-// 이 파일이 무는 것: dev·prod 의 prune 수치가 **갈리는 방향**과, 그 갈림이 draft 배제 좌표까지
-//   포함해서 계산되는가. plan 최대 GOTCHA — 문서 후보 집합을 `pathIndex.keys()` 만으로 만들면
-//   **prod 가 깨진다**(반증자 실측: prune 7→1 · prunedFeeds 6→1 · warnings 0→5).
-//   draft 문서는 prod 의 `pathIndex` 에 아예 없으므로, 그 문서를 가리킨 피드가 "설명된 prune"이 아니라
-//   **"문서를 하나도 가리키지 않는 피드" warning** 으로 떨어진다 → `warnings` `[]` 단언이 그것을 잡는다.
-//
-// RED 사유 — 전부 **RED(root)**:
-//   · EP1·EP2 는 새 루트(`wiki/`)에 시딩하므로 GREEN 이전 코드(`<vault>/vault/wiki` 스캔)에는
-//     문서가 0건이고 피드 경로도 옛 prefix 와 매칭되지 않는다 → items 0 · warnings 2.
-//   · EP3 는 옛 루트 시딩 + `git mv` 라 피드 경로는 옛 prefix 와 매칭되지만 HEAD 문서가 0건 →
-//     역인덱스가 비어 unresolved → `checkFeedResolution` 이 throw.
-//   케이스 고유의 물림은 GREEN 이후 §5 **CF6** 가 증명했다(당시 좌표: `buildFeedItems` 의 `everWikiPaths`
-//   에서 `excludedFeedRefs` 만 제거). P3 Task 9 로 그 구현이 사라졌고, 지금 같은 자리를 지키는 것은
-//   `collectFeedItems` 의 `allHeadIds`(draft 포함 rename 계보)다 — 거기서 draft 문서를 빼면 여기가 red 다.
-//
-// 규범 A(자기참조 금지): 경로는 리터럴이고 `wikiRoot` 를 매 호출 명시한다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import { cleanup, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
-const ID_A = '0192a000-0000-7000-8000-0000000000aa' // 공개 문서
-const ID_B = '0192b000-0000-7000-8000-0000000000bb' // draft 문서(`dev/` 폴더 백스톱)
+const ID_A = '0192a000-0000-7000-8000-0000000000aa'
+// 공개 문서
+const ID_B = '0192b000-0000-7000-8000-0000000000bb'
+// draft 문서(`dev/` 폴더 백스톱)
 
 const titlesOf = (items) => items.map((item) => item.title)
 
@@ -59,7 +43,7 @@ describe('env parity — dev·prod 가 실제로 갈린다 (EP1·EP2)', () => {
     // 구현을 배제한다.
     const vault = seedEnvVault('wiki')
     try {
-      const result = buildContent({ env: 'dev', vault })
+      const result = parsePayloads({ env: 'dev', vault })
 
       expect(result.summary.docs).toHaveLength(2)
       expect(result.feeds.items).toHaveLength(2)
@@ -77,7 +61,7 @@ describe('env parity — dev·prod 가 실제로 갈린다 (EP1·EP2)', () => {
     // 빠져 그 피드가 "문서 0개" warning 으로 떨어진다 — `warnings` `[]` 가 그것을 잡는다.
     const vault = seedEnvVault('wiki')
     try {
-      const result = buildContent({ env: 'prod', vault })
+      const result = parsePayloads({ env: 'prod', vault })
 
       expect(result.summary.docs).toHaveLength(1)
       expect(result.feeds.items).toHaveLength(1)
@@ -100,7 +84,7 @@ describe('env parity × 루트 이관의 교차 (EP3)', () => {
       git(vault, ['mv', 'vault/wiki', 'wiki'])
       commitAt(vault, 'chore: 문서 루트 이관', '2026-06-01T00:00:00Z')
 
-      const result = buildContent({ env: 'prod', vault })
+      const result = parsePayloads({ env: 'prod', vault })
 
       expect(result.summary.docs).toHaveLength(1)
       expect(result.feeds.items).toHaveLength(1)

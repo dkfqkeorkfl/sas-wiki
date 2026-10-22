@@ -7,7 +7,7 @@
 // 메시지 계약: **무엇이 무엇을 못 찾았는지**를 담는다. "invariant 1 violated" 류는 대량 실패 시
 // 원인 추적이 불가능하다.
 
-import { getCommitDocStatuses, underWikiPrefix } from './git.mjs'
+import { getCommitDocStatuses, underWikiPrefix } from '../../scripts/lib/git.mjs'
 
 /**
  * A+D 동시 발생(문서 id 소실 시그니처)을 접두사 무관하게 잡는다.

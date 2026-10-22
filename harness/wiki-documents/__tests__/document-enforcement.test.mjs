@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -23,21 +23,29 @@ function probe({
   return withProbe(({ root, write, copy, run }) => {
     copy(guard)
     copy(rules)
+    copy('scripts/lib/head-state.mjs')
+    copy('scripts/lib/draft.mjs')
+    write(
+      'scripts/lib/git.mjs',
+      'export const GIT_HISTORY_TIMEOUT_MS = 1000; export const makeGitRunner = () => () => ""; export const memoizeGitRunner = (run) => run;',
+    )
     if (!empty) write(`wiki/${file}`, body)
     write(
       'scripts/lib/parse.mjs',
-      `import { collectMarkdownFilesRecursive, parseMarkdownFile as parse } from ${JSON.stringify(parser)}
-       export { collectMarkdownFilesRecursive }
+      `import { collectMarkdownFilesRecursive, derivePathAndBreadcrumb, parseMarkdownFile as parse } from ${JSON.stringify(parser)}
+       import { appendFileSync } from 'node:fs'
+       export { collectMarkdownFilesRecursive, derivePathAndBreadcrumb }
        export function parseMarkdownFile(file) {
+         appendFileSync(new URL('../../parses', import.meta.url), file + '\\n')
          if (${parseError}) throw new Error('fixture parse failure')
          return parse(file)
        }`,
     )
     write(
-      'scripts/validate.mjs',
+      'harness/wiki-documents/document-integrity.mjs',
       `import { appendFileSync } from 'node:fs'
-       export function buildContent({ env, onReport }) {
-         appendFileSync(new URL('../calls', import.meta.url), env + '\\n')
+       export function inspectVault({ env, onReport }) {
+         appendFileSync(new URL('../../calls', import.meta.url), env + '\\n')
          if (${buildError}) throw new Error('fixture-sha wiki/missing.md unresolved')
          const error = ${reportError ? "'fixture report write failure'" : 'null'}
          onReport({ env, sourceCommit: 'fixture-sha', summary: { total: 1, included: 1, excluded: 0 },
@@ -50,7 +58,15 @@ function probe({
        }`,
     )
     const result = run()
-    return { ...result, calls: readFileSync(path.join(root, 'calls'), 'utf8').trim().split('\n') }
+    return {
+      ...result,
+      parses: existsSync(path.join(root, 'parses'))
+        ? readFileSync(path.join(root, 'parses'), 'utf8').trim().split('\n')
+        : [],
+      calls: existsSync(path.join(root, 'calls'))
+        ? readFileSync(path.join(root, 'calls'), 'utf8').trim().split('\n')
+        : [],
+    }
   })
 }
 
@@ -59,6 +75,8 @@ describe('문서 집행의 검출력과 실패 전달', () => {
     const result = probe()
     expect(result.status, result.output).toBe(0)
     expect(result.calls).toEqual(['dev', 'prod'])
+    expect(result.parses).toHaveLength(1)
+    expect(result.parses[0]).toContain(`wiki/${file}`)
   })
 
   it.each([
@@ -102,5 +120,7 @@ describe('문서 집행의 검출력과 실패 전달', () => {
     expect(result.status, result.output).toBe(0)
     expect(result.output).toContain('fixture warning')
     expect(result.output).toContain('missing')
+    expect(result.output).toContain('total=1 included=1 excluded=0')
+    expect(result.output).toContain('warnings=1')
   })
 })

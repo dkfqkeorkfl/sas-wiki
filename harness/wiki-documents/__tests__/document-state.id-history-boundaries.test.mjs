@@ -1,20 +1,12 @@
-// @vitest-environment node
-//
-// P1 · V1 (hidden — GREEN 후 재실행 의도) — 불변 게이트 경계 독립 재단언 — tdd §2 hidden / §3 Task 3
-//
-// 목적(spec-gaming 방지): visible R4/R5 에 오버피팅해도 V1 이 진짜 불변식을 재검한다. 그래서 R5 와
-//   **다른 리터럴·경로**(UUIDv7 B/C · 다른 문서)로 세 케이스를 독립 단언한다. GREEN 완료 후 메인이
-//   재실행해 게이트가 R5 시나리오에만 맞춘 하드코딩이 아님을 확인한다(현재는 게이트 부재라 tamper 가 RED).
-//
-//   · 정상   : id 를 바꾼 커밋이 없음                       → build PASS
-//   · 변조   : id 를 바꾼 커밋의 바로 전 id ≠ 현재 id       → build FAIL
-//   · 등록 전 : 커밋된 이력에 id 부재(작업 트리에 처음 넣음) → build PASS (false-fail 금지)
+// 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
 import { describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
-import { cleanup, commit, initVault, makeOut, writeDoc } from './helpers/tmp-git-vault.mjs'
+import { inspectVault } from '../document-integrity.mjs'
+
+import { cleanup, commit, initVault, makeOut, writeDoc } from '../../test-utils/tmp-git-vault.mjs'
 
 const UUIDV7_B = '0192f0c0-8000-7000-9abc-0123456789ab'
+
 const UUIDV7_C = '0192f0c1-0000-7000-b000-000000000003'
 
 describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
@@ -31,7 +23,7 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
       })
       commit(vault, 'chore: 온디바이스 AI 본문 갱신')
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }
@@ -49,7 +41,7 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
       // bare toThrow() 는 **아무 이유로나** 실패해도 통과한다 — 게이트가 진짜 변조 사유
       // (doc-gate.mjs 의 ID_TAMPERED)로 막았는지, 아니면 무관한 예외(예: 스키마 오류)로 우연히
       // 막혔는지 구별하지 못한다. 정체를 물어 진짜 게이트가 발화했음을 증명한다.
-      expect(() => buildContent({ out, vault })).toThrow(/ID_TAMPERED/)
+      expect(() => inspectVault({ out, vault })).toThrow(/ID_TAMPERED/)
     } finally {
       cleanup(vault, out)
     }
@@ -65,7 +57,7 @@ describe('V1 불변 게이트 경계 재단언(hidden verify)', () => {
       commit(vault, 'chore: 온디바이스 AI 문서 생성')
       writeDoc(vault, 'concept/온디바이스-AI', { id: UUIDV7_B, title: '온디바이스 AI' }) // 마이그레이션: working tree id(미커밋)
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }

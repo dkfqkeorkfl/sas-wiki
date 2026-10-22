@@ -22,7 +22,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { envEnumError } from './lib/cli-env.mjs'
 import { LIVE_WALK_TIMEOUT_MS, isCursorFormat, walkCursorPage } from './lib/feed-cursor.mjs'
-import { checkGitAvailable, makeGitRunner } from './lib/git.mjs'
+import {
+  checkGitAvailable,
+  GIT_HISTORY_TIMEOUT_MS,
+  makeGitRunner,
+  memoizeGitRunner,
+} from './lib/git.mjs'
 import { makeFeedItemResolver } from './lib/git-walk.mjs'
 import { loadIgnoreFeedsAt } from './lib/ignore.mjs'
 import { buildFeeds } from './lib/payloads.mjs'
@@ -48,7 +53,7 @@ const EPOCH = '1970-01-01T00:00:00.000Z'
  * hang 주입 지점을 코드에 새로 심어야 하는데, 그 자체가 실사용 동기 없는 새 표면이다. 이 값은
  * "정상 케이스를 절대 건드리지 않는다"는 코드 대조로만 판정한다.
  */
-const RESOLVE_BACKSTOP_TIMEOUT_MS = 600_000
+const RESOLVE_BACKSTOP_TIMEOUT_MS = GIT_HISTORY_TIMEOUT_MS
 
 /**
  * feeds 엔드포인트 — 커서 위치에서 한 페이지를 **git 워크로 계산**한다.
@@ -86,7 +91,12 @@ export async function feeds(vault, env = 'prod', window = {}) {
   //     비용 분포와 무관한 별개 위험이다. 그래서 **백스톱**만 건다: 정상 가변비용에는 절대 걸리지
   //     않을 만큼 넉넉하되(아래), 완전 hang 은 결국 끝낸다.
   const walkGit = makeGitRunner(vaultDir, { timeoutMs: LIVE_WALK_TIMEOUT_MS })
-  const resolveGit = makeGitRunner(vaultDir, { timeoutMs: RESOLVE_BACKSTOP_TIMEOUT_MS })
+  const resolveGit = memoizeGitRunner(
+    makeGitRunner(vaultDir, {
+      timeoutMs: RESOLVE_BACKSTOP_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    }),
+  )
   // git 자체의 가용성은 워크보다 **먼저** 가른다 — 여기서 끊지 않으면 러너 실패가 커서 해석 실패
   //   (= 빈 페이지)로 접혀 「피드 끝」으로 오독된다. spawn 타임아웃(D23)도 이 지점에서 드러난다.
   checkGitAvailable(walkGit)

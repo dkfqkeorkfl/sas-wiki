@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "sas-wiki/schema/report.schema.json",
   "title": "summary_report",
-  "description": "검증 리포트 — 관측 채널(wire 아님). 예전 `inputs.env` 중첩은 제거됐다 — 같은 값을 두 곳에 두지 않는다. 리포트 출력은 validate.mjs 소유다.",
+  "description": "문서 집행 리포트 — 관측 채널(wire 아님). 하네스가 실제 문서를 검사할 때 생성하며 빌드의 필수 산출물이 아니다.",
   "type": "object",
   "additionalProperties": false,
   "required": [

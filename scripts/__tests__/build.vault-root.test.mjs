@@ -1,35 +1,15 @@
-// @vitest-environment node
-//
-// P1 · RED — 문서 루트 이관 등가 · 삭제 이력 (tdd §3.1 MV1~MV5 · §3.4 DL1·DL2)
-//
-// 이 파일이 무는 것: `vault/wiki/` → `wiki/` 이관이 **과거 피드를 파괴하지 않는다**는 것.
-//   PRD Success Metric("이관 전후 피드 생존 · docs 연결 동일")의 헤르메틱 표현이다.
-//
-// **두 진입점을 다 문다**(tdd §3.0): `git-walk.mjs walkFeeds`(서빙)와 `buildContent`(검증) 두 경로가
-//   같은 이관 vault 에 같은 답을 내는지 본다. 작성 당시엔 두 경로가 **서로 다른 빌더**였고(P3 Task 9 가
-//   `buildFeedItems` 를 제거해 `collectFeedItems` 하나로 통합), 지금은 같은 빌더를 다른 배선으로 부른다.
-//   짝(MV1=walkFeeds · MV2=buildContent)을 유지하는 이유는 배선 자체가 어긋날 수 있기 때문이다.
-//
-// RED 사유 — 라벨별로 다르다(tdd §2.2):
-//   · MV1·MV2·MV3·DL1 = **RED(root)**: `loadHeadDocs`·`parseVault` 가 `<vault>/vault/wiki` 를 스캔하므로
-//     이관 후 **HEAD 문서 0건** → 피드가 전부 resolve 실패한다(walkFeeds 는 빈 배열, buildContent 는
-//     `checkFeedResolution` 이 throw). 케이스 고유의 물림은 GREEN 이후 §5 CF1·CF5 가 증명한다.
-//   · MV4 = **pair**: 순수 git 동작(`git mv` 가 R100 으로 기록되는가)이라 **현행에서도 통과**한다.
-//     `git mv` 가 D+A 로 기록되면 `created`·`id` 가 리셋된다(PRD Technical Risk 1위) — 그 회귀 감지기다.
-//   · MV5·DL2 = **pair**: GREEN 이후 항상 통과해야 하는 짝 가드. 다만 규범 B(카운트 하한)를 앞세워
-//     **지금은 red** 다 — 하한이 없으면 "양쪽 다 0건이라 등가"라는 공허한 통과가 된다.
-//
-// 규범 A(자기참조 금지): 이 파일의 경로는 전부 리터럴(`'vault/wiki'` · `'wiki'`)이다. 헬퍼
-//   `writeDoc` 의 기본값에도 기대지 않고 **매 호출 `wikiRoot` 를 명시**한다 — GREEN(Task 8)이 기본값을
-//   뒤집어도 이 스펙들은 영향받지 않는다. 상수 드리프트 감지는 PR5 트립와이어가 담당한다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { describe, expect, it } from 'vitest'
 
 import { walkFeeds } from './helpers/walk-feeds.mjs'
-import { buildContent } from '../validate.mjs'
+
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
+
 import { cleanup, feedCommit, git, initVault, writeDoc } from './helpers/tmp-git-vault.mjs'
 
 // 유효 UUIDv7(스키마 pattern 준수) — 문서 정체성. 이관해도 바뀌지 않는다.
 const ID_A = '0192a000-0000-7000-8000-0000000000aa'
+
 const ID_B = '0192b000-0000-7000-8000-0000000000bb'
 
 const titlesOf = (items) => items.map((item) => item.title)
@@ -127,11 +107,11 @@ describe('이관 등가 — 서빙 경로 walkFeeds (MV1)', () => {
   })
 })
 
-describe('이관 등가 — 검증 경로 buildContent (MV2·MV3)', () => {
+describe('이관 등가 — 검증 경로 parsePayloads (MV2·MV3)', () => {
   it('MV2: 같은 vault 를 검증 경로로 빌드해도 동일한 피드가 나온다(이중 빌더 격차 가드)', () => {
     const { vault } = seedMigratedVault()
     try {
-      const result = buildContent({ env: 'dev', vault })
+      const result = parsePayloads({ env: 'dev', vault })
 
       expect(result.feeds.items).toHaveLength(3)
       expect(titlesOf(result.feeds.items)).toEqual(['소식3', '소식2', '소식1'])
@@ -153,7 +133,7 @@ describe('이관 등가 — 검증 경로 buildContent (MV2·MV3)', () => {
     // 못박아 두지 않으면 나중에 이 정상 동작이 회귀로 오인된다(plan Task 9 의 명시 사항).
     const { vault } = seedMigratedVault()
     try {
-      const result = buildContent({ env: 'dev', vault })
+      const result = parsePayloads({ env: 'dev', vault })
       const doc = result.summary.docs.find((entry) => entry.id === ID_A)
 
       expect(result.summary.docs).toHaveLength(2)
@@ -214,7 +194,7 @@ describe('삭제 이력 — 이관 전 경로의 삭제를 설명한다 (DL1·DL
     // 찾지 못해 그 피드가 unresolved 가 되고 **빌드가 죽는다**(fail-loud 게이트).
     const vault = seedDeletionVault()
     try {
-      const result = buildContent({ env: 'dev', vault })
+      const result = parsePayloads({ env: 'dev', vault })
 
       expect(result.feeds.items).toHaveLength(2)
       expect(titlesOf(result.feeds.items)).toEqual(['폐기 소식', '생존 소식'])
@@ -232,7 +212,7 @@ describe('삭제 이력 — 이관 전 경로의 삭제를 설명한다 (DL1·DL
     // "삭제 이력이 있으면 무조건 prune" 하는 과잉 구현을 red 로 만든다(feed.mjs:87-99 주석 참조).
     const vault = seedDeletionVault()
     try {
-      const result = buildContent({ env: 'dev', vault })
+      const result = parsePayloads({ env: 'dev', vault })
       const survived = result.feeds.items.find((item) => item.title === '생존 소식')
 
       expect(survived).toBeDefined()

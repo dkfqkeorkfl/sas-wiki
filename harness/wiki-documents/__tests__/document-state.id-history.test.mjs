@@ -1,23 +1,23 @@
-// @vitest-environment node
-//
-// P1(통합) · R5 — 불변 게이트: id 줄의 마지막 변경 직전 id ≠ 현재 id 면 build fail — tdd §3 Task 3
-//
-// RED 사유(작성 당시): build 에 불변 게이트가 **없었고**, frontmatter id 를 무시하고 git-hash 를
-//   주입했으므로 frontmatter id 를 사후 변조해도 build 가 조용히 성공했다. → id 줄을 마지막으로 바꾼
-//   커밋의 바로 전 id 와 지금 id 를 대조해 다르면 실패시키는 게이트(ID_TAMPERED)가 green 조건이다.
-//
-// 경계(false-fail 금지 · anti-over-fire): 직전 값이 유효한 id 가 아닌 문서(처음 등록)는 반드시
-//   **PASS** — 비교할 기준이 없다. 게이트가 처음 등록을 "차이"로 오판하면 id 를 처음 넣는 커밋이
-//   전부 false-fail 한다.
+// 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
 import { describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
+import { inspectVault } from '../document-integrity.mjs'
+
 import { readFileSync, writeFileSync } from 'node:fs'
+
 import path from 'node:path'
 
-import { cleanup, commit, git, initVault, makeOut, writeDoc } from './helpers/tmp-git-vault.mjs'
+import {
+  cleanup,
+  commit,
+  git,
+  initVault,
+  makeOut,
+  writeDoc,
+} from '../../test-utils/tmp-git-vault.mjs'
 
 const UUIDV7_A = '0192f0c0-8000-7000-8000-0123456789ab'
+
 const UUIDV7_B = '0192f0c0-8000-7000-9abc-0123456789ab'
 
 describe('R5 build 불변 게이트 — 사후 id 변조 차단', () => {
@@ -31,14 +31,14 @@ describe('R5 build 불변 게이트 — 사후 id 변조 차단', () => {
       commit(vault, 'chore: HBM id 변조')
 
       // 현행: 게이트 부재 + git-hash 주입 → 변조가 통과 → build 성공(no-throw) → 이 단언이 RED.
-      expect(() => buildContent({ out, vault })).toThrow(/ID_TAMPERED/u)
+      expect(() => inspectVault({ out, vault })).toThrow(/ID_TAMPERED/u)
     } finally {
       cleanup(vault, out)
     }
   })
 })
 
-describe('R5 경계(green-stay) — 처음 등록하는 id 는 게이트를 통과한다', () => {
+describe('R5 경계 — 처음 등록하는 id 는 게이트를 통과한다', () => {
   it('커밋된 이력에 id 가 없던 문서에 처음 넣는 id 는 build 가 실패하지 않는다(false-fail 금지)', () => {
     const vault = initVault()
     const out = makeOut()
@@ -50,7 +50,7 @@ describe('R5 경계(green-stay) — 처음 등록하는 id 는 게이트를 통�
       commit(vault, 'chore: HBM 문서 생성')
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' }) // 마이그레이션: working tree id(미커밋)
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }
@@ -69,7 +69,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_B, title: 'HBM' }) // 변경: B
       commit(vault, 'chore: HBM id 변경')
 
-      expect(() => buildContent({ out, vault })).toThrow(/ID_TAMPERED/u)
+      expect(() => inspectVault({ out, vault })).toThrow(/ID_TAMPERED/u)
     } finally {
       cleanup(vault, out)
     }
@@ -88,7 +88,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' })
       commit(vault, 'chore: HBM id 되돌림')
 
-      expect(() => buildContent({ out, vault })).toThrow(/ID_TAMPERED/u)
+      expect(() => inspectVault({ out, vault })).toThrow(/ID_TAMPERED/u)
     } finally {
       cleanup(vault, out)
     }
@@ -107,7 +107,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_B, title: 'HBM' })
       commit(vault, 'chore: HBM 새 id 삽입')
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }
@@ -122,7 +122,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_A, title: 'HBM' })
       commit(vault, 'chore: HBM id 채움')
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }
@@ -140,7 +140,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       )
       commit(vault, 'chore: 따옴표만 변경')
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }
@@ -157,7 +157,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       commit(vault, 'chore: HBM 삭제')
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_B, title: 'HBM' }) // 커밋 전 새 문서
 
-      expect(() => buildContent({ out, vault })).not.toThrow()
+      expect(() => inspectVault({ out, vault })).not.toThrow()
     } finally {
       cleanup(vault, out)
     }
@@ -172,7 +172,7 @@ describe('불변 게이트 기준 = id 줄을 마지막으로 바꾼 커밋의 �
       writeDoc(vault, 'tech/HBM', { id: UUIDV7_B, title: 'HBM' })
       commit(vault, 'chore: HBM id 변경')
 
-      expect(() => buildContent({ out, vault })).toThrow(
+      expect(() => inspectVault({ out, vault })).toThrow(
         new RegExp(`원래 id\\(${UUIDV7_A}\\)`, 'u'),
       )
     } finally {

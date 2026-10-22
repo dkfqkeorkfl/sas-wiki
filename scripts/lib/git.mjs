@@ -529,7 +529,7 @@ function canonicalPath(file) {
  * @param {string} cwd
  * @param {{ timeoutMs?: number }} [options]
  */
-export function makeGitRunner(cwd, { timeoutMs } = {}) {
+export function makeGitRunner(cwd, { timeoutMs, killSignal } = {}) {
   return (args, { encoding = 'utf8', input } = {}) =>
     execFileSync('git', args, {
       cwd,
@@ -539,7 +539,23 @@ export function makeGitRunner(cwd, { timeoutMs } = {}) {
         ? { stdio: ['ignore', 'pipe', 'pipe'] }
         : { input, stdio: ['pipe', 'pipe', 'pipe'] }),
       ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+      ...(killSignal === undefined ? {} : { killSignal }),
     })
+}
+
+/** 이력 해석의 비상 상한. 커서 배치의 짧은 시간 예산과 별개다. */
+export const GIT_HISTORY_TIMEOUT_MS = 600_000
+
+/** 한 실행의 성공 질의만 공유한다. stdin·encoding 차이와 실패는 숨기지 않는다. */
+export function memoizeGitRunner(runGit) {
+  const cache = new Map()
+  return (args, options = {}) => {
+    const key = JSON.stringify([args, options.input ?? null, options.encoding ?? null])
+    if (cache.has(key)) return cache.get(key)
+    const value = runGit(args, options)
+    cache.set(key, value)
+    return value
+  }
 }
 
 /** HEAD 의 파일 내용. HEAD 가 없거나(커밋 0건) HEAD 에 그 경로가 없으면 `undefined`. */

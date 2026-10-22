@@ -16,7 +16,7 @@
 // 규범 F: 체인 실행은 **tmp vault 에서만** 돈다. 실 리포에서 돌리면 `cache/` 가 phase 중간 형태로 남아
 //   다른 케이스를 오염시킨다.
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -32,9 +32,9 @@ const SCRIPTS_DIR = path.resolve(HERE, '..')
 const REPO_ROOT = path.resolve(SCRIPTS_DIR, '..')
 
 /** 체인 스텝 순서 — **계약이다**(D3). 검증을 생성 뒤에 두면 「서빙 데이터 = 검증 통과」가 깨진다. */
-const CHAIN_ORDER = ['validate', 'summary', 'feeds']
+const CHAIN_ORDER = ['summary', 'feeds']
 /** 리네임 이후에도 남아야 하는 기존 엔트리 — 소비자가 `<wikiRoot>/scripts/<name>.mjs` 를 spawn 한다. */
-const EXISTING_SCRIPTS = ['validate', 'summary', 'feeds', 'wiki', 'test']
+const EXISTING_SCRIPTS = ['summary', 'feeds', 'wiki', 'test']
 
 /**
  * 옛 모듈 파일명 — **조각을 이어 붙인다.**
@@ -86,65 +86,6 @@ describe('리네임 결속 (RN1~RN4 · pin)', () => {
     expect(outcome.resolved, `scripts/lib/${OLD_MODULE} 가 아직 살아 있다`).toBe(false)
     expect(outcome.code).toBe('ERR_MODULE_NOT_FOUND')
   })
-
-  it('RN3: **디렉토리로 스코프한** 옛 지정자 4종의 히트가 0이다', () => {
-    // ★ 스코프가 계약이다. 스코프 없이 `'../validate.mjs'` 를 금지하면 `scripts/__tests__/` 19파일이
-    //   가리키는 **게이트 스크립트**(`scripts/validate.mjs`)까지 잡혀 영원히 충족 불가능해진다
-    //   (tdd §3.1 RN3 정정). 아래 좌표는 그 정정본이다.
-    // ★ 지정자 리터럴은 모듈 상단 `OLD_MODULE` 이 조각으로 만든다 — `scripts/**` 스코프가 **이 파일
-    //   자신**을 포함하므로 리터럴로 적으면 스캐너가 자기 자신을 물고, 그 red 의 "수리" 가 자기
-    //   제외가 된다(규범 H). RN2 의 import 경로도 같은 조각을 쓴다.
-    const old = OLD_MODULE
-    const { files } = listTracked(REPO_ROOT)
-    const scoped = (prefix) => files.filter((rel) => rel.startsWith(prefix))
-
-    // 앵커 ①: 게이트 스크립트를 가리키는 **정당한** 참조는 살아 있어야 한다(19파일 · 실측).
-    const gateRefs = scanTracked({
-      files: scoped('scripts/__tests__/'),
-      pattern: new RegExp(`'\\.\\./${old}'`, 'u'),
-      repoRoot: REPO_ROOT,
-    })
-    expect(new Set(gateRefs.hits.map((hit) => hit.path)).size).toBeGreaterThanOrEqual(19)
-
-    // 앵커 ②: 새 이름이 **프로덕션 4파일**에 정확히 배선됐고, 리포 전체로는 19파일 이상이 쓴다.
-    //   ☞ 총합을 정확 일치로 못박지 않는 이유: 테스트 파일이 늘 때마다 이 숫자가 흔들리고, 그러면
-    //     "숫자를 맞추려고" 가드를 고치게 된다. **계약이 사는 곳은 프로덕션 배선**이다(4 = 게이트
-    //     스크립트 1 + `lib/` 3 · 실측). C2 시점 총합은 22 다(신규 스펙 3파일 포함).
-    const renamed = scanTracked({
-      files: scoped('scripts/'),
-      pattern: /schema-validator\.mjs/u,
-      repoRoot: REPO_ROOT,
-    })
-    const renamedFiles = [...new Set(renamed.hits.map((hit) => hit.path))]
-    const production = renamedFiles.filter((rel) => !rel.includes('__tests__'))
-
-    expect(production.toSorted()).toEqual([
-      'scripts/lib/doc-gate.mjs',
-      'scripts/lib/head-state.mjs',
-      'scripts/lib/ignore.mjs',
-      'scripts/validate.mjs',
-    ])
-    expect(renamedFiles.length).toBeGreaterThanOrEqual(19)
-
-    const quotedSpecifier = (specifier) => {
-      const escaped = specifier.replaceAll('.', '\\.')
-      return new RegExp(`['"\u0060]${escaped}['"\u0060]`, 'u')
-    }
-    const offenders = [
-      ...scanTracked({ files: scoped('scripts/lib/'), pattern: quotedSpecifier(`./${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
-      ...scanTracked({ files: scoped('scripts/lib/__tests__/'), pattern: quotedSpecifier(`../${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
-      ...scanTracked({ files: scoped('scripts/'), pattern: quotedSpecifier(`../lib/${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
-      ...scanTracked({ files: scoped('scripts/'), pattern: quotedSpecifier(`./lib/${old}`), repoRoot: REPO_ROOT }).hits, // prettier-ignore
-    ].map((hit) => `${hit.path}:${hit.line}`)
-
-    expect(offenders, '옛 모듈 지정자가 남아 있다').toEqual([])
-  })
-
-  it('RN4: 게이트 스크립트 `scripts/validate.mjs` 는 **여전히 존재한다**', () => {
-    // ★ 리네임의 목적이 그쪽과의 이름 충돌 해소다. 이 앵커가 없으면 "둘 다 지웠다" 가 통과한다.
-    expect(existsSync(path.join(SCRIPTS_DIR, 'validate.mjs'))).toBe(true)
-    expect(existsSync(path.join(SCRIPTS_DIR, 'lib', 'schema-validator.mjs'))).toBe(true)
-  })
 })
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -162,7 +103,7 @@ describe('빌드 체인 선언 (BD1·BD2 · 🔴RED 미구현)', () => {
     expect(typeof scripts['build-dev'], 'pnpm build-dev').toBe('string')
   })
 
-  it('BD2: 두 체인이 `validate → summary → feeds` 순서이고 `&&` 로 이어진다', () => {
+  it('BD2: 두 체인이 `summary → feeds` 순서이고 `&&` 로 이어진다', () => {
     // ★ 순서가 계약이다(D3) — 검증을 생성 뒤에 두면 「서빙 데이터 = 검증 통과」 보장이 깨진다.
     //   `;` 는 앞 스텝의 실패를 삼키므로 금지다. 다만 **텍스트만으로는 exit 삼킴을 못 잡는다** —
     //   그 축은 BD3 가 실패 주입으로 문다.
@@ -184,38 +125,20 @@ describe('빌드 체인 선언 (BD1·BD2 · 🔴RED 미구현)', () => {
 })
 
 describe('빌드 체인 실행 (BD3~BD5 · 🔴RED 미구현)', () => {
-  it('BD3: 검증 실패는 exit≠0 이고 **캐시를 갱신하지 않는다**', { timeout: 900_000 }, () => {
-    // ★ D3 의 **유일한 결정적 관측점**이다. "validate 가 맨 앞이므로 순서로 보장된다" 는 주장이고,
-    //   `&&` 가 실제로 그 보장을 만드는지는 **실패를 주입해야만** 안다.
-    // ★ GREEN 계약: 체인의 `--out` 는 `--vault` 에서 **파생**되어야 한다.
-    //   고정 상대경로를 쓰면 tmp 재조준이 무의미해지고 실 리포 `cache/` 를 오염시킨다(규범 F).
-    const clean = seedCleanVault()
-    const polluted = seedPollutedVault()
-    tmps.push(clean.vault, polluted.vault)
-
-    // 앵커 ①: 정상 vault 에서는 exit 0 이고 캐시가 **실제로 갱신된다**.
-    const ok = runPackageScript('build-dev', { vault: clean.vault })
-    expect(ok.exitCode, `${ok.stderr}${ok.stdout}`).toBe(0)
-    expect(existsSync(summaryArtifact(clean.vault, 'dev'))).toBe(true)
-
-    // 오염 vault 에 **직전 세대 캐시**를 만들어 둔다 — 그것이 "갱신되지 않았다" 의 관측 대상이다.
-    //   체인이 아니라 생성기 CLI 를 직접 부른다(체인은 여기서 실패하는 것이 관측 대상이므로).
-    const artifact = summaryArtifact(polluted.vault, 'dev')
-    const seedRun = spawnSync(
-      process.execPath,
-      [path.join(SCRIPTS_DIR, 'summary.mjs'), '--vault', polluted.vault, '--env', 'dev', '--out', artifact], // prettier-ignore
-      { encoding: 'utf8', env: gitSafeEnv(polluted.vault), maxBuffer: 64 * 1024 * 1024 },
-    )
-    expect(existsSync(artifact), `선행 캐시 생성 실패: ${seedRun.stderr}`).toBe(true)
-    const before = statSync(artifact).mtimeMs
-    const beforeContent = readFileSync(artifact, 'utf8')
-
-    const failed = runPackageScript('build-dev', { vault: polluted.vault })
-
-    // 앵커 ②: 실패 실행 **전후 캐시 mtime 이 동일**하다(비-0 만 보고 넘어가면 반쪽 갱신을 놓친다).
-    expect(failed.exitCode, `${failed.stderr}${failed.stdout}`).not.toBe(0)
-    expect(statSync(artifact).mtimeMs).toBe(before)
-    expect(readFileSync(artifact, 'utf8')).toBe(beforeContent)
+  it('BD3: summary 쓰기가 실패하면 feeds를 갱신하지 않는다', { timeout: 180000 }, () => {
+    const { vault } = seedCleanVault()
+    tmps.push(vault)
+    const ok = runPackageScript('build-dev', { vault })
+    expect(ok.exitCode, ok.stderr).toBe(0)
+    const artifact = feedsArtifact(vault, 'dev')
+    const before = readFileSync(artifact, 'utf8')
+    git(vault, ['commit', '--allow-empty', '-m', 'chore: 다음 세대'])
+    rmSync(summaryArtifact(vault, 'dev'))
+    mkdirSync(summaryArtifact(vault, 'dev'))
+    const failed = runPackageScript('build-dev', { vault })
+    expect(failed.exitCode, failed.stderr).not.toBe(0)
+    expect(failed.stderr).toMatch(/EISDIR|directory/i)
+    expect(readFileSync(artifact, 'utf8')).toBe(before)
   })
 
   it(

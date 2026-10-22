@@ -59,7 +59,12 @@ export function loadIgnoreFeeds(vaultDir, schemaDir = SCHEMA_DIR) {
  */
 export function loadIgnoreFeedsAt(ignorePath, schemaDir = SCHEMA_DIR) {
   if (!fs.existsSync(ignorePath)) return []
-  const entries = JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
+  let entries
+  try {
+    entries = JSON.parse(fs.readFileSync(ignorePath, 'utf8'))
+  } catch (error) {
+    throw new Error(`${ignorePath}: ${error.message}`, { cause: error })
+  }
   const errors = validateItem(
     entries,
     loadSchema(path.join(schemaDir, 'ignore-feeds.schema.json')),

@@ -152,7 +152,7 @@ describe('종료코드 — 성공 경로 (XC1·XC2 · 🔴RED 미구현)', () =>
 
     expect(result.status).toBe(0)
     expect(JSON.parse(result.stdout).docs.length).toBeGreaterThan(0)
-    expect(result.stderr).toMatch(/excluded=2/)
+    expect(result.stderr).not.toContain('excluded=')
   })
 })
 
@@ -221,15 +221,9 @@ describe('종료코드 — 호출 계약 위반은 2 다 (XC5·XC6 · 🔴RED(fl
     expect(output).toContain('prod')
   })
 })
-
-describe('종료코드 — 문턱 초과는 3, 산출물은 있다 (XC7 · 🔴RED 미구현)', () => {
-  it('XC7: `--max-excluded=0` + 오염 2건 → exit 3 · 캐시는 존재하고 스키마를 통과한다', () => {
-    // ★ D-D "3 은 산출물 있음". 파일 존재를 함께 확인해야 "그냥 죽는" 구현이 배제된다 — 3 과 1 의
-    //   차이는 **호출자가 산출물을 써도 되는가** 하나뿐이다.
-    // ★ 동시에 **IG 의 짝 가드**다(tdd §3.2 · §10.3-4 ②) — 실패 종료 경로에서도 발행이 살아 있음을
-    //   무는 유일한 자리라, IG1 이 구조만 보고 통과하는 것을 기능 쪽에서 받쳐 준다.
+describe('감사 옵션은 생성 계약에서 제거된다', () => {
+  it('제거한 옵션은 exit 2이며 파일을 만들지 않는다', () => {
     const vault = freshPolluted()
-
     const result = runCli(SUMMARY, [
       '--vault',
       vault,
@@ -239,16 +233,9 @@ describe('종료코드 — 문턱 초과는 3, 산출물은 있다 (XC7 · 🔴R
       '--out',
       artifactFile(vault),
     ])
-
-    expect(result.status, result.stderr).toBe(3)
-    expect(existsSync(artifactFile(vault))).toBe(true)
-    expect(
-      validateItem(
-        JSON.parse(readFileSync(artifactFile(vault), 'utf8')),
-        loadSchema(path.join(SCHEMA_DIR, 'summary.schema.json')),
-        'cache/summary.<env>.json',
-      ),
-    ).toEqual([])
+    expect(result.status, result.stderr).toBe(2)
+    expect(result.stderr).toContain('--max-excluded')
+    expect(existsSync(artifactFile(vault))).toBe(false)
   })
 })
 

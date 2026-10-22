@@ -32,6 +32,7 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { feeds } from '../../feeds.mjs'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
@@ -82,7 +83,7 @@ function seedAsymmetricVault() {
 }
 
 // P5 D-I: deepDocGate 는 근절됐다(무시되는 인자였다).
-const parseDeep = (vault) => parseVault(vault, 'dev', SCHEMA_DIR).wire
+const parseDeep = (vault) => parseVault(vault, 'dev').wire
 const maxOf = (values) => values.toSorted().at(-1)
 
 describe('deriveGeneratedAt 시그니처 — items 는 인자에서 사라진다 (GA1 · 🔴RED 오늘 2인자)', () => {
@@ -194,7 +195,7 @@ describe('빈 집합 경계값 (GA4 · 🔴RED 시그니처 미축소)', () => {
 })
 
 describe('억제 독립 + 누출 폐쇄 (GA5 · 🔴RED 억제된 항목의 ts 가 값에 남는다)', () => {
-  it('GA5: 억제해도 값이 같고, 그 값은 **억제된 항목의 ts 가 아니다**', () => {
+  it('GA5: 억제해도 값이 같고, 그 값은 **억제된 항목의 ts 가 아니다**', async () => {
     const { feedId, vault } = seedAsymmetricVault()
     const ignorePath = path.join(vault, IGNORE_FILE)
     const suppressedTs = new Date(FEED_TS).toISOString()
@@ -204,9 +205,9 @@ describe('억제 독립 + 누출 폐쇄 (GA5 · 🔴RED 억제된 항목의 ts �
     writeFileSync(ignorePath, JSON.stringify([{ id: feedId, when: IGNORE_WHEN }]), 'utf8')
     const withIgnore = parseDeep(vault)
 
-    // 앵커 ①: 억제가 **실제로 걸린다** — 같은 vault 의 억제 후 페이지에서 그 피드가 사라진다.
-    //   (`pageFeeds` 는 여기서 부르지 않는다 — 억제 목록이 로드됐는지만 wire 로 확인한다.)
-    expect(withIgnore.ignore.map((entry) => entry.id)).toContain(feedId)
+    // 같은 vault의 명시적 억제는 실제 피드 페이지에 적용된다. 파서는 억제 파일을 읽지 않는다.
+    const page = await feeds(vault, 'dev', { count: 50, ignore: ignorePath })
+    expect(page.items.map((item) => item.id)).not.toContain(feedId)
     // 앵커 ②: 억제 대상 항목이 **여전히 아티팩트 재료**에 있다(억제 전 전량 — D-C).
     expect(withIgnore.items.map((item) => item.id)).toContain(feedId)
 

@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # id 변경 판별(ID_TAMPERED, git blame)·피드는 git 전체 이력을 읽는다. 얕은 클론이면
-          # validate 가 멈춘다.
+          # 문서 집행과 생성의 이력 전제가 충족되지 않는다.
           fetch-depth: 0
           persist-credentials: false
 
@@ -43,5 +43,4 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run format:check
       - run: pnpm run test:coverage
-      - run: pnpm run validate
       - run: pnpm run build

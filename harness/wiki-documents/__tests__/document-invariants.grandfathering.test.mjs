@@ -1,45 +1,31 @@
-// @vitest-environment node
-//
-// P6 · F-8 종결 — grandfathering 라인의 등가성과 사유 재홈 (GF1~GF3) — tdd §3.8 · plan Task 6 · D-C
-//
-// ── 결론이 먼저다 ───────────────────────────────────────────────────────────────────────────
-// `invariants.mjs` 의 `if (statuses.length === 0) continue` 를 **무는 테스트는 원리적으로 쓸 수 없다.**
-//   `statuses = []` 이면 `added`·`deleted` 가 **둘 다 빈 배열**이므로 뒤 조건
-//   `added.length > 0 && deleted.length > 0` 이 **항상 false** 다. 즉 그 줄은 순수 단축(`.filter()` 2회
-//   절약)이고 **관측 가능한 행동 차이가 0**이다 — 교과서적 **등가 변이(equivalent mutant)**.
-//
-// plan D-C 는 _"무는 케이스를 세우거나 라인을 지운다 — 둘 중 하나"_ 로 열어 뒀지만 실제로는
-// **선택지가 하나뿐**이다. 열린 선택지로 두면 구현자가 "무는 케이스" 를 억지로 짜다가 **공허한
-// 케이스를 하나 더 만든다**(이 리포에는 그 전력이 있다 — 감사 대응 가드가 3회 연속 결함원이었다).
-//
-// ── GF1 은 그 결론을 *주장*이 아니라 *관측*으로 만든다 ──────────────────────────────────────
-// 두 변종(라인 있음 / 없음)을 **tmp 사본으로 나란히 로드**해 같은 입력 행렬에 돌리고 throw 여부와
-// 메시지를 전량 비교한다. 이것은 **§8-7 의 전 스위트 관측을 대체하지 않는다** — 전 스위트는
-// "다른 테스트가 그 줄을 무는가" 를 재고, 여기는 "그 줄이 행동을 바꾸는가" 를 잰다. 둘 다 필요하다.
-// ★ 만약 여기서 차이가 관측되면 **등가성 판정이 틀린 것이므로 삭제를 중단**하고 그 케이스를 F-8 의
-//   답으로 승격한다(§8-7 불일치 처리 · §12-⑥ 철회).
-//
-// ── RED/green 현황 (작성 시점 실측) ────────────────────────────────────────────────────────
-//   GF1  측정  — 지금도 green(등가). Task 6 착륙 **후에도** green 이어야 한다(변종을 양쪽에서 만든다)
-//   GF2  pair  — 지금도 green. **삭제가 보호를 줄이지 않았다**를 못박는다
-//   GF3  🔴RED — 근거 주석이 아직 **그 줄에** 붙어 있다. 줄과 함께 사라지면 다음 사람이 "왜 빈
-//                statuses 를 위반으로 안 보나" 를 재발명한다 → 함수 도크로 **재홈**해야 green
+// 문서 검사 정책의 정상·위반 회귀. 실제 wiki 대신 격리 fixture를 사용한다.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+
 import { tmpdir } from 'node:os'
+
 import path from 'node:path'
+
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { checkCommitConventions } from '../invariants.mjs'
+import { checkCommitConventions } from '../document-invariants.mjs'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
+const HERE = path.dirname(
+  fileURLToPath(
+    new URL('../../../scripts/lib/__tests__/invariants.grandfathering.test.mjs', import.meta.url),
+  ),
+)
+
 const REPO_ROOT = path.resolve(HERE, '..', '..', '..')
-const INVARIANTS_PATH = path.join(REPO_ROOT, 'scripts/lib/invariants.mjs')
+
+const INVARIANTS_PATH = path.join(REPO_ROOT, 'harness/wiki-documents/document-invariants.mjs')
+
 const WIKI_PREFIX = 'wiki/'
 
 /** ★ 변이 앵커 — 리터럴이다(규범 A). 이 두 문자열이 없으면 하네스가 **VACUOUS** 로 죽어야 한다. */
 const STATUSES_ANCHOR = 'const statuses = getCommitDocStatuses('
+
 const EARLY_CONTINUE = 'if (statuses.length === 0) continue'
 
 /** sha → `git show --name-status` stdout. 기존 `invariants.feed-only.test.mjs:36` 패턴 재사용. */
@@ -89,7 +75,7 @@ async function loadVariants() {
     throw new Error(`VACUOUS: statuses 앵커가 ${anchorCount}개다(1개여야 한다)`)
 
   const gitUrl = pathToFileURL(path.join(REPO_ROOT, 'scripts/lib/git.mjs')).href
-  const rebase = (text) => text.replace("from './git.mjs'", `from '${gitUrl}'`)
+  const rebase = (text) => text.replace("from '../../scripts/lib/git.mjs'", `from '${gitUrl}'`)
 
   // 라인 유무와 **무관하게** 두 변종을 결정적으로 만든다 — Task 6 착륙 전후 모두 동작한다.
   const withoutLine = source
@@ -172,7 +158,7 @@ describe('F-8 — 삭제가 보호를 줄이지 않는다 (GF2 pair)', () => {
   })
 })
 
-describe('F-8 — 사유 재홈 (GF3 🔴RED)', () => {
+describe('F-8 — 사유 재홈', () => {
   it('GF3: grandfathering 근거가 `checkCommitConventions` 함수 도크에 있고 CN1·FO7 을 지목한다', () => {
     // 🔴 왜 지금 red 인가: 근거 주석이 **삭제 예정인 그 줄 위에** 붙어 있고(`invariants.mjs:19-21`),
     //   함수 도크(`:11`)는 _"커밋 subject 규약이 …"_ 한 줄뿐이라 CN1·FO7 을 지목하지 않는다.

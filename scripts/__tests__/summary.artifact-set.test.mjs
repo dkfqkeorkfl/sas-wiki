@@ -44,7 +44,6 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCRIPTS_DIR = path.resolve(HERE, '..')
 const SUMMARY_CLI = path.join(SCRIPTS_DIR, 'summary.mjs')
 const FEEDS_CLI = path.join(SCRIPTS_DIR, 'feeds.mjs')
-const VALIDATE_CLI = path.join(SCRIPTS_DIR, 'validate.mjs')
 
 /** 산출물 3종의 경로 — **리터럴 조립**이다(규범 A). 정확 형태의 계약은 PL9 가 한 번만 고정한다. */
 const summaryFile = (vault, env) => path.join(vault, 'cache', `summary.${env}.json`)
@@ -140,9 +139,6 @@ const publishFeeds = (vault, env = 'dev') =>
     ['--vault', vault, '--env', env, '--count', '200', '--out', feedsFile(vault, env)],
     vault,
   )
-const publishReport = (vault, env = 'dev') =>
-  runCli(VALIDATE_CLI, ['--vault', vault, '--env', env, '--out', path.join(vault, 'logs')], vault)
-
 /** active 문서 2건 + 그중 하나를 가리키는 `feed:` 1건. feedId(12hex)를 함께 돌려준다. */
 function seedVault() {
   const vault = initVault()
@@ -178,13 +174,13 @@ function rollGeneration(vault, marker) {
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'))
 
-describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds 아티팩트 미발행)', () => {
+describe('생성 2종 — 두 생성 파일이 같은 세대다 (FA5 · 🔴RED feeds 아티팩트 미발행)', () => {
   // ★ 타임아웃 상향 사유(OQ-P1-2 = c · 전역 상향 금지): Task 7 이 발행 주체를 셋으로 가르면서 이
   //   케이스의 Arrange 가 in-process 호출 1회에서 **CLI spawn 3회**가 됐다. spawn 마다 vault 를 다시
   //   파싱하므로 실측 15.3 s 로 기본 30 s 에 근접한다 — 9p 마운트 경합이 겹치면 넘는다.
   //   단언은 한 줄도 바뀌지 않았다(타임아웃은 계약이 아니다).
   it(
-    'FA5: 빌드가 세 파일을 내고 셋의 `sourceCommit` 이 서로 같다',
+    'FA5: 빌드가 두 생성 파일을 내고 두 파일의 `sourceCommit` 이 서로 같다',
     { timeout: 300_000 },
     async () => {
       const { vault } = seedVault()
@@ -215,18 +211,16 @@ describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds �
 
       const summaryRun = publishSummary(vault)
       const feedsRun = publishFeeds(vault)
-      const reportRun = publishReport(vault)
 
       expect(summaryRun.status, summaryRun.stderr).toBe(0)
       expect(feedsRun.status, feedsRun.stderr).toBe(0)
-      expect(reportRun.status, `${reportRun.stderr}${reportRun.stdout}`).toBe(0)
 
       // 🔴 v3 P1(§4.1 「죽는 앵커」 · 규범 L 상 앵커 교체는 flip = RED 커밋 소관): 발행 주체가
       //   summary · feeds · validate 셋으로 갈렸으므로, "한 생성기 실행이 셋을 썼다" 가 아니라
-      //   **빌드가 세 파일을 실제로 냈다**를 관측한다.
+      //   **빌드가 두 생성 파일을 실제로 냈다**를 관측한다.
       expect(existsSync(summaryFile(vault, 'dev'))).toBe(true)
       expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
-      expect(existsSync(reportFile(vault, 'dev'))).toBe(true)
+      expect(existsSync(reportFile(vault, 'dev'))).toBe(false)
       expect(readJson(summaryFile(vault, 'dev')).docs.length).toBeGreaterThan(0)
 
       // 🔴 v3 P1(§4.10 「조용한 통과」 최상단 · §4.1 「가장 위험한 변이」의 이 phase 대표 실례):
@@ -237,7 +231,6 @@ describe('발행 3종 — 세 파일이 같은 세대다 (FA5 · 🔴RED feeds �
       const generations = [
         readJson(summaryFile(vault, 'dev')).sourceCommit,
         readJson(feedsFile(vault, 'dev')).sourceCommit,
-        readJson(reportFile(vault, 'dev')).sourceCommit,
       ]
 
       // ★ **값 존재 앵커**(SG1·SG2 와 동형) — 같은 공허의 **직접 해독제**다. `undefined` 는 40자리 hex
@@ -272,7 +265,7 @@ describe('쓰기 순서 계약 — summary 먼저, feeds 나중 (FA6 · 🔴RED 
       expect(publishSummary(vault).status).toBe(0)
       expect(publishFeeds(vault).status).toBe(0)
 
-      // 앵커 ⓪: 1회차가 **실제로 세 파일을 냈고** 축에 값이 있다(빈 값끼리 비교해 통과하는 것을 배제).
+      // 앵커 ⓪: 1회차가 **실제로 두 생성 파일을 냈고** 축에 값이 있다(빈 값끼리 비교해 통과하는 것을 배제).
       expect(existsSync(summaryFile(vault, 'dev'))).toBe(true)
       expect(existsSync(feedsFile(vault, 'dev'))).toBe(true)
       const firstSummary = generationOf(summaryFile)
@@ -315,7 +308,7 @@ describe('쓰기 순서 계약 — summary 먼저, feeds 나중 (FA6 · 🔴RED 
 describe('버전은 하나다 — 5 산출물 공용 (FA10 · 🔴RED(flip) v3 P1 · D29 리셋)', () => {
   // ★ 타임아웃 상향 사유(OQ-P1-2 = c): 위와 같다 — Arrange 가 spawn 2회가 되며 실측 12.9 s.
   it(
-    'FA10: `SCHEMA_VERSION === 1` 이고 다섯 산출물의 버전이 서로 같다',
+    'FA10: `SCHEMA_VERSION === 1` 이고 네 기능 산출물의 버전이 서로 같다',
     { timeout: 300_000 },
     async () => {
       // ★ 분리 금지 pin 의 확장. 페이로드별로 쪼개면 소비자 `WikiDataProvider` 부팅 게이트가
@@ -323,7 +316,6 @@ describe('버전은 하나다 — 5 산출물 공용 (FA10 · 🔴RED(flip) v3 P
       const { vault } = seedVault()
       await generate({ env: 'dev', vault })
       await generateFeeds({ env: 'dev', vault })
-      expect(publishReport(vault).status).toBe(0)
 
       if (typeof feedsModule.feeds !== 'function') {
         throw new Error('[RED] scripts/feeds.mjs 에 feeds export 가 없다')
@@ -335,10 +327,9 @@ describe('버전은 하나다 — 5 산출물 공용 (FA10 · 🔴RED(flip) v3 P
       expect([
         readJson(summaryFile(vault, 'dev')).schemaVersion,
         readJson(feedsFile(vault, 'dev')).schemaVersion,
-        readJson(reportFile(vault, 'dev')).schemaVersion,
         wireFeeds.schemaVersion,
         wireBody.schemaVersion,
-      ]).toEqual([SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION])
+      ]).toEqual([SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION])
     },
   )
 })
@@ -419,9 +410,9 @@ describe('빌드가 억제를 적용한다 (IW1 · FA11 축 교체 · 🔴RED `-
       // 앵커: 같은 문자열이 `--count 200`·`--out` 을 **여전히** 담고 순서가 validate → summary → feeds 다.
       expect(scripts[name], `${name} 앵커: --count 200`).toContain('--count 200')
       expect(scripts[name], `${name} 앵커: --out`).toContain('--out')
-      const order = ['validate.mjs', 'summary.mjs', 'feeds.mjs'].map((step) => scripts[name].indexOf(step)) // prettier-ignore
+      const order = ['summary.mjs', 'feeds.mjs'].map((step) => scripts[name].indexOf(step)) // prettier-ignore
       expect(order[0], `${name} 순서`).toBeLessThan(order[1])
-      expect(order[1], `${name} 순서`).toBeLessThan(order[2])
+      expect(order[0], `${name} 존재`).toBeGreaterThanOrEqual(0)
 
       expect(scripts[name], `현행: ${scripts[name]}`).toContain('--ignore')
     }

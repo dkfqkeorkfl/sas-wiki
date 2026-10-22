@@ -1,28 +1,26 @@
-// @vitest-environment node
-//
-// P1(통합) · R8 — 실 vault 빌드 수렴 (Task 1~4 착지 후 green) — tdd §3 Task 4
-//
-// RED 사유(수렴 · tdd §6-4): 마이그레이션(Task 4)이 실 6문서 frontmatter 에 UUIDv7 을 써 넣은 뒤에야
-//   산출물 doc id 가 UUIDv7 이 된다. 현행은 doc id 를 git 해시 12자로 유도하므로, 아래 "doc id=UUIDv7"
-//   단언이 실패한다(현재 실측: 12-hex). 스키마만 먼저 UUIDv7 로 바뀌고 마이그레이션이 안 됐다면 build
-//   자체가 12-hex 주입을 거부해 throw 한다 — 어느 쪽도 유효 RED(의도된 미구현)다.
-//
-// 폭 3종 동시(오전환 0): doc id=UUIDv7 · feed id=12-hex(D6 KEEP) · sourceCommit=40-hex(불가침).
-//   feed id·sourceCommit 단언은 green-stay(지금도·GREEN 후에도 통과) — doc id 만 전환됨을 못박는다.
+// 파싱·생성·피드의 실제 기능 결과를 확인한다.
 import { mkdtempSync, rmSync } from 'node:fs'
+
 import { tmpdir } from 'node:os'
+
 import path from 'node:path'
+
 import { fileURLToPath } from 'node:url'
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { buildContent } from '../validate.mjs'
+import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
 
 const UUIDV7_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+
 const HEX12_RE = /^[0-9a-f]{12}$/u
+
 const HEX40_RE = /^[0-9a-f]{40}$/u
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const VAULT = path.resolve(HERE, '..', '..') // sas-wiki 리포 루트(wiki/ 를 품는다)
+
+const VAULT = path.resolve(HERE, '..', '..')
+// sas-wiki 리포 루트(wiki/ 를 품는다)
 
 // 이 스펙만 **실 vault**(tmp 시딩이 아닌 서브모듈 자체)를 빌드한다. vitest.config.js 가 결정성용으로
 // GIT_CONFIG_GLOBAL=/dev/null 을 걸어 전역 safe.directory 예외가 사라지므로, 컨테이너에서 vault 가
@@ -43,7 +41,7 @@ beforeAll(() => {
   // ★ `env` 를 빼면 안 된다. 기본값이 `prod` 인데 이 vault 의 문서는 전부 `wiki/dev/` 아래라
   //   prod 에서는 문서 모집단이 통째로 비어(docs=0) 아래 단언들이 빈 배열끼리 비교하는 공허
   //   통과가 된다. 여기서 `dev` 를 명시하는 것이 이 파일의 검사 대상을 존재하게 만드는 조건이다.
-  ctx.result = buildContent({ env: 'dev', out: ctx.out, vault: VAULT })
+  ctx.result = parsePayloads({ env: 'dev', out: ctx.out, vault: VAULT })
   // 실제 67문서 vault 빌드는 순차 재현에서 78s였다. 다른 hook의 기본 60s 제한은 유지한다.
 }, 120_000)
 
