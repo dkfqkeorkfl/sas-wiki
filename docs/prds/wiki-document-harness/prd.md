@@ -89,12 +89,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                | Description                                 | Status      | Parallel | Depends | PRP Plan                                |
-| --- | -------------------- | ------------------------------------------- | ----------- | -------- | ------- | --------------------------------------- |
-| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete    | -        | -       | [plan](P1.document-enforcement/plan.md) |
-| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | complete    | -        | 1       | [plan](P2.harness-regression/plan.md)   |
-| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | complete    | -        | 2       | [plan](P3.runtime-separation/plan.md)   |
-| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | in-progress | -        | 3       | [plan](P4.delivery-pipeline/plan.md)    |
+| #   | Phase                | Description                                 | Status   | Parallel | Depends | PRP Plan                                |
+| --- | -------------------- | ------------------------------------------- | -------- | -------- | ------- | --------------------------------------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete | -        | -       | [plan](P1.document-enforcement/plan.md) |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | complete | -        | 1       | [plan](P2.harness-regression/plan.md)   |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | complete | -        | 2       | [plan](P3.runtime-separation/plan.md)   |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | complete | -        | 3       | [plan](P4.delivery-pipeline/plan.md)    |
 
 ### Phase Details
 
@@ -123,6 +123,7 @@
 - Goal: 자동 게이트부터 운영 산출물 저장까지 연결한다.
 - Scope: 계약 C8–C10의 sas-wiki 내부 최종 배선·CI 저장·가이드·전체 검증. 상위 소비자는 영향만 확인해 별도 작업으로 보고한다.
 - Success signal: 기능·문서 테스트와 coverage, 수동 회귀, 실제 prod 빌드가 통과하며 CI 산출물 입력이 맞다. 로컬 커밋만 완료하고 실제 배포하지 않는다.
+- Result: CI의 실제 prod 봉투/세대 확인과 공식 SHA의 한 세트 저장을 연결했다. event·SHA·run/attempt와 비덮어쓰기로 PR/main/재실행을 구분한다. 최종 자동 100파일·1,029건, 수동 36파일·279건, coverage 89.32/83.18/94.32/90.38%(statements/branches/functions/lines), 실제 prod/dev 빌드·CI 확인 shell·기준선 비교가 통과했다. 전체 9차원과 추가 3관점을 직접 감사해 기능 사례 배치·자원 경로·미사용 준비를 보완했다. 계약 C1–C10의 목표를 유지한다. 부모 포인터·wiki·ID·의존성은 바꾸지 않았고 원격 push/CI/upload/릴리즈는 실행하지 않았다. 기존 개발 의존성 경고와 별도 린트 도입, README에 기록한 부모 호환성 조치는 남는다.
 
 ### Parallelism Notes
 
@@ -130,16 +131,17 @@
 
 ## Decisions Log
 
-| Decision    | Choice                                     | Alternatives                          | Rationale                                   |
-| ----------- | ------------------------------------------ | ------------------------------------- | ------------------------------------------- |
-| 명세 구성   | PRD + contract + 해당 phase plan           | 요구/이전/검수 별도 상시 문서         | 사용자 승인한 역할 분리·중복 갱신 방지      |
-| 하네스 위치 | sas-wiki/harness 아래 분야 구분            | frontend 소유·하네스 파일 평탄 배치   | 사용자 지정                                 |
-| 명명·분류   | 부모 rules·decisions의 이름·종류·의미 유지 | 자동·수동별 폴더·별도 종류 추가       | 사용자 정정, 같은 분야의 `__tests__`에 배치 |
-| 실행 정책   | 자동 제품 검사·수동 회귀                   | CI에서 전체 하네스 반복               | 사용자 최신 정정                            |
-| 검사 심각도 | 기존 판정 보존                             | 경고를 오류로 강화                    | 재배치와 정책 변경 구분                     |
-| 작업 제한   | 기존 feature 브랜치·로컬 커밋              | push·PR·릴리즈 발행                   | 기존 승인 범위                              |
-| 수정 경계   | sas-wiki 내부만 변경                       | 부모 저장소 소비처까지 함께 수정      | 사용자 명시 제약                            |
-| 환경 대체   | Codex가 지침·산출물·검수를 수행            | 실행 불가한 호출을 수행한 것으로 간주 | 사용자 승인한 환경 적응                     |
+| Decision    | Choice                                                | Alternatives                          | Rationale                                   |
+| ----------- | ----------------------------------------------------- | ------------------------------------- | ------------------------------------------- |
+| 명세 구성   | PRD + contract + 해당 phase plan                      | 요구/이전/검수 별도 상시 문서         | 사용자 승인한 역할 분리·중복 갱신 방지      |
+| 하네스 위치 | sas-wiki/harness 아래 분야 구분                       | frontend 소유·하네스 파일 평탄 배치   | 사용자 지정                                 |
+| 명명·분류   | 부모 rules·decisions의 이름·종류·의미 유지            | 자동·수동별 폴더·별도 종류 추가       | 사용자 정정, 같은 분야의 `__tests__`에 배치 |
+| 실행 정책   | 자동 제품 검사·수동 회귀                              | CI에서 전체 하네스 반복               | 사용자 최신 정정                            |
+| 검사 심각도 | 기존 판정 보존                                        | 경고를 오류로 강화                    | 재배치와 정책 변경 구분                     |
+| 진행 방식   | 남은 페이즈는 자율 진행, 중대한 이슈·목표 변경만 조율 | 단계마다 확인                         | 사용자 최신 지시. 계획·검수·근거는 유지     |
+| 작업 제한   | 기존 feature 브랜치·로컬 커밋                         | push·PR·릴리즈 발행                   | 기존 승인 범위                              |
+| 수정 경계   | sas-wiki 내부만 변경                                  | 부모 저장소 소비처까지 함께 수정      | 사용자 명시 제약                            |
+| 환경 대체   | Codex가 지침·산출물·검수를 수행                       | 실행 불가한 호출을 수행한 것으로 간주 | 사용자 승인한 환경 적응                     |
 
 ## Research Summary
 
@@ -161,4 +163,4 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 �
 - [contract.md](contract.md): 조율·갱신할 수 있는 합의 목표 — 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
 - 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
 
-_Status: specification completeness verified; P1–P3 complete; P4 in progress_
+_Status: specification and implementation completeness verified; P1–P4 complete; local commits only_
