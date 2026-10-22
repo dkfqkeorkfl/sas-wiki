@@ -186,6 +186,16 @@ git diff --check
 
 ## Notes
 
+### Completion Evidence
+
+- 실제 경로에 검사기 이동·가드 교체·기본 수집을 적용했다. 규칙 모듈은 원본과 동일하며 위키 본문·ID·생산 API는 변경하지 않았다.
+- 최종 전체 검증: `pnpm run test:coverage --maxWorkers=1 --reporter=verbose --coverage.reportOnFailure`가 exit 0으로 종료했다. 111개 파일·1,211개 테스트가 통과했다. 결과 로그는 `logs/verification/coverage-run-final.log`에 있다.
+- 커버리지: statements 90.26%, branches 82.72%, functions 95.63%, lines 91.52%. 기존 기준 86/76/92/89를 충족했다.
+- 기존 작성 규칙 회귀 96건을 임시 설정으로 별도 실행해 통과했다. 새 실제 문서 가드 70건과 기존 gate·스크립트 검증은 위 전체 실행에 포함됐다. 이 개수는 실행 당시 관측값이며 이후 문서·테스트 수를 고정하는 계약이 아니다.
+- 전체 `format:check`와 `git diff --check`를 통과했다. 구현 감사와 P1 요구 대응 검수도 통과했으며 추가 리팩터링은 필요하지 않았다.
+- 측정으로 확인한 기존 테스트 두 사례의 시간 예산 보완은 구현과 별도 커밋했다. 의존성 변경은 없으며 앞선 의존성 감사의 기존 개발 의존성 11건(high 3/moderate 7/low 1)은 이번 범위에서 수정하지 않았다.
+- P1만 완료했다. 수동 회귀 분야·명령 정리(P2), 기능 경계와 validate 제거(P3), 최종 훅·CI·가이드(P4)는 미착수다. 저장소 변경과 커밋은 sas-wiki 내부에만 적용했고 원격 push는 하지 않았다.
+
 SAS Research: 생략 — 기존 내부 Vitest 수집·파서·검사 함수만 사용하며 신규 외부 의존·버전 판단이 없다. 사실·패턴·호출 경로는 위 Mandatory Reading의 비보호 원본에서 확인했다.
 
 공식 Skill 호출·Claude 전용 위임은 현재 도구로 실행하지 않았고 Codex가 계획을 작성했다. 계획 완전성 검수와 실제 구현·검증은 별개다. `/tmp`의 과거 초안·검수 메모는 참고 자료이며 최종 계약이나 이 계획의 구현 완료 증거가 아니다.

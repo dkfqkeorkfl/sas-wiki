@@ -89,12 +89,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                | Description                                 | Status      | Parallel | Depends | PRP Plan                                |
-| --- | -------------------- | ------------------------------------------- | ----------- | -------- | ------- | --------------------------------------- |
-| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | in-progress | -        | -       | [plan](P1.document-enforcement/plan.md) |
-| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | pending     | -        | 1       | -                                       |
-| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending     | -        | 2       | -                                       |
-| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending     | -        | 3       | -                                       |
+| #   | Phase                | Description                                 | Status   | Parallel | Depends | PRP Plan                                |
+| --- | -------------------- | ------------------------------------------- | -------- | -------- | ------- | --------------------------------------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete | -        | -       | [plan](P1.document-enforcement/plan.md) |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | pending  | -        | 1       | -                                       |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending  | -        | 2       | -                                       |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending  | -        | 3       | -                                       |
 
 ### Phase Details
 
@@ -156,4 +156,4 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 �
 - [contract.md](contract.md): 조율·갱신할 수 있는 합의 목표 — 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
 - 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
 
-_Status: specification completeness verified; P1 plan verified, implementation in progress_
+_Status: specification completeness verified; P1 complete; P2–P4 pending_
