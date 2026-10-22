@@ -3,8 +3,8 @@ id: '01a04241-e1d9-7056-911d-e6e827e17adc'
 title: SpaceX
 type: company
 status: active
-aliases: ['Space Exploration Technologies Corp.', 'SPCX', 'xAI', 'SpaceXAI']
-tags: ['일론머스크', '우주산업', '위성통신', 'AI인프라', 'AI데이터센터', '지배구조']
+aliases: ["스페이스X", "Space Exploration Technologies", "xAI", "Grok", "SPCX"]
+tags: ["우주산업", "위성통신", "AI인프라", "일론머스크", "지배구조"]
 meta:
   ticker: 'SPCX'
   sector: '우주항공·위성통신·AI인프라'
@@ -13,70 +13,186 @@ meta:
 
 ## 개요
 
-SpaceX(정식명 Space Exploration Technologies Corp.)는 2002년 Elon Musk가 설립한 우주발사·위성통신 기업으로, Falcon 9 재사용 발사체·Dragon 우주선·Starlink 위성통신·Starshield 국방용 위성 서비스를 핵심사업으로 한다. 2026-02-02 AI 기업 xAI를 전액 주식교환 방식으로 흡수합병해 Grok·Colossus AI 컴퓨트 사업까지 편입했고, 창업 이래 유지해온 비상장 지위를 접고 2026-06-12 나스닥(티커 SPCX)에 상장했다. xAI는 합병으로 독립법인 지위를 잃었으므로 이 문서 "AI 사업" 절에서 SpaceX의 한 사업부문으로 다룬다. [[NASDAQ/Tesla]]와는 별도 법인이며, 두 회사의 지배구조 비교·합병 시나리오는 [[GroupX/Tesla-SpaceX-합병논의]]에 정본을 둔다.
+SpaceX는 발사·우주수송, Starlink 위성통신, AI 모델·컴퓨팅 서비스를 운영하는 나스닥 상장사다. 공시 사업부문은 Space·Connectivity·AI로 나뉘며, xAI 사업은 합병 후 연결 범위에 포함된다. [공식 사업 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm).
 
-## 기존 핵심사업의 해자 — Tesla 자동차보다 강한 전환비용
+## 재무
 
-Starlink·Starshield·Falcon 9·Dragon과 NASA·미국 우주군·국가정찰국(NRO) 등 정부·국방 발사 계약은 발사 신뢰성·발사빈도·payload integration·보안 인증·정부 승인 등의 진입장벽이 있어 일반 소비재보다 사업자 교체가 어렵다. 다만 이것이 "성장이 보장된 기업"을 의미하지는 않는다 — 미국 정부는 오히려 단일 사업자 의존(single point of failure) 위험을 줄이기 위해 ULA·Blue Origin·Rocket Lab 등 경쟁 발사기업을 함께 육성하고 있다.
+연결 기준. 금액 단위는 백만 미국달러이며 회계연도와 결산일을 함께 표시했다. 비율은 반올림 전 금액으로 계산한다.
 
-## 2025년 재무실적(xAI 합병 전, SpaceX 단독)
+### 연결 실적 — 최근 5개년
 
-- 매출 약 $18.7B, 영업손실 약 -$2.6B, 순손실 약 -$4.9B, 총자산 약 $92.1B[^wiki-spacex]
+| 회계연도 | 결산일 | 매출액 | 영업이익 | 영업이익률 | 순이익(공시 기준) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| FY2021 | 확인 필요 | 확인 필요 | 확인 필요 | 확인 필요 | 확인 필요 |
+| FY2022 | 확인 필요 | 확인 필요 | 확인 필요 | 확인 필요 | 확인 필요 |
+| FY2023 | 2023-12-31 | 10,387.0 | -3,505.0 | -33.74% | -4,628.0 |
+| FY2024 | 2024-12-31 | 14,015.0 | 466.0 | 3.33% | 791.0 |
+| FY2025 | 2025-12-31 | 18,674.0 | -2,589.0 | -13.86% | -4,937.0 |
 
-이 수치는 xAI 편입(2026-02) 이전 SpaceX 단독 실적이다. 같은 2025년 xAI는 별도 법인으로 매출 약 $3.2B, 영업손실 약 -$6.4B를 기록한 것으로 알려졌다(아래 "AI 사업" 절 참고).[^wiki-xai] 두 법인의 2025년 실적은 합병 전 개별 실적이라는 점에 유의해야 한다.
+출처: [SEC IPO 투자설명서](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm), [공식 연차·사업 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 중단영업과 인수·부문 재편으로 과거 비교 수치가 재작성될 수 있다.
 
-## 2026년 AI 인프라 투자
+FY2021·FY2022는 동일 연결 범위의 자료를 확보하지 못했다. 공개된 비교 실적은 FY2023부터이며, xAI를 포함한 재작성 연결 수치다. 상환전환우선주는 일반 자본총계와 별도 표시되므로 부채비율을 읽을 때 구분한다.
 
-2026년 2분기 SpaceX 매출은 약 $7.81B, 영업손실은 약 -$0.14B, 총 설비투자(CAPEX)는 약 $18.37B(이 중 AI 관련 약 $15.83B), 상반기 영업현금흐름은 약 $3.47B, 상반기 CAPEX는 약 $28.48B 수준으로 알려져 있다. 다만 이 세부 분기 수치는 발화자·매체가 특정되지 않은 인용치로, SpaceX의 공식 분기보고서나 이름이 확인되는 언론 보도로 재확인되지 않았다 — 최신 공시 대조가 필요하다. 방향성(매출 대비 극단적으로 높은 AI 자본투자) 자체는 아래 IPO 이후 밸류에이션·상장 이후 주가 변동성과는 대체로 정합적이다.
+### 사업부문별 실적 — 최근 3개년
 
-## 2026-06 나스닥 상장(IPO)
+| 부문·수익원 | 주요 사업 | FY2023 | FY2024 | FY2025 (연결 대비) |
+| --- | ---: | ---: | ---: | ---: |
+| Space | 발사·우주수송·개발 계약 | 3,557.0 | 3,796.0 | 4,086.0 (21.9%) |
+| Connectivity | Starlink 위성통신 | 3,869.0 | 7,599.0 | 11,387.0 (61.0%) |
+| AI | Grok·X 광고·구독·컴퓨팅 | 2,961.0 | 2,620.0 | 3,201.0 (17.1%) |
 
-2026-06-11 장 마감 후 공모가 주당 $135, 공모주식 약 5.566억 주로 확정돼 목표 조달액 약 $75B, 기업가치 약 $1.75~1.77T 규모의 사상 최대 IPO로 보도됐다. 2026-06-12 나스닥 상장 첫날 종가는 $160.95(공모가 대비 +19%)로 마감해 시가총액이 약 $2.2T까지 올라섰고, 초과배정옵션(overallotment)이 전량 행사되며 총 조달액은 약 $85.7B까지 확대됐다.[^spacex-ir-closing] 개인투자자에게 공모물량의 최대 30%를 배정한 점도 대형 미국 IPO로는 이례적이라는 평가를 받았다.[^cnbc-ipo] 상장 이후 주가는 변동성이 컸다 — 2026-08-07 보도에 따르면 한때 공모가 부근까지 조정됐던 주가가 락업 만료를 앞두고 우려가 완화되며 반등해 시가총액이 약 $327B 늘었다고 전해지는데, 이는 보도 시점 기준 추정이라 이후에도 계속 바뀔 수 있다.[^bloomberg-lockup]
+**부문별 영업이익**
 
-## Musk의 지배구조 — Class A/B 초의결권
+| 부문 | FY2023 | FY2024 | FY2025 |
+| --- | ---: | ---: | ---: |
+| Space | -1.0 | 21.0 | -657.0 |
+| Connectivity | 469.0 | 2,006.0 | 4,423.0 |
+| AI | -3,973.0 | -1,561.0 | -6,355.0 |
 
-SpaceX는 Class A(1주 1표)·Class B(1주 10표) 이중 의결권 구조를 유지한다.[^fool-musk-spacex] 2026-06-30 기준 SEC 공시로 확인된 내용은 다음과 같다.
+Space는 발사·우주개발, Connectivity는 Starlink 통신, AI는 Grok·광고·컴퓨팅 서비스를 포함한다. 공동지배하의 결합 회계에 따라 투자설명서의 과거 비교 실적도 xAI·X 사업을 반영한다. 이 표를 합병 전 SpaceX 단독 실적으로 해석하면 안 된다.
 
-- Musk 경제적 지분 약 48.4%(약 64.2억 주 — Class A 약 8.5억 주, Class B 약 55.7억 주 등)
-- Musk 의결권 약 82~84%(Class B 발행주식의 93.6%를 보유)
+출처: [공식 사업·부문 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm).
 
-이는 [[NASDAQ/Tesla]]의 1주 1표 구조·Musk 실질지분 약 19.9%와 근본적으로 다른 지배구조이며, 두 회사의 자본배분·의사결정 방식 차이는 [[GroupX/Tesla-SpaceX-합병논의]]에서 비교한다.
+### 지역별 매출 — 최근 3개년
 
-## AI 사업
+| 지역 | FY2023 | FY2024 | FY2025 |
+| --- | ---: | ---: | ---: |
+| 미국 | 7,473.0 (71.9%) | 10,008.0 (71.4%) | 12,966.0 (69.4%) |
+| 아일랜드 | 1,047.0 (10.1%) | 1,371.0 (9.8%) | 1,827.0 (9.8%) |
+| 캐나다 | 447.0 (4.3%) | 582.0 (4.2%) | 764.0 (4.1%) |
+| 기타 국가 | 1,420.0 (13.7%) | 2,054.0 (14.7%) | 3,117.0 (16.7%) |
+| 연결 | 10,387.0 | 14,015.0 | 18,674.0 |
 
-### Colossus 데이터센터
+출처: [연차보고서의 지역별 매출](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 고객 소재지·청구지·법인 소재지 등 회사별 집계 기준을 따르며, 생산국 비중과 구분한다.
 
-xAI는 2023년 설립돼 OpenAI·Google·Anthropic보다 늦게 출발한 후발주자였고, Grok 모델을 빠르게 경쟁 수준으로 끌어올리기 위해 대규모 GPU 클러스터 Colossus를 구축했다. 멤피스 South Memphis의 옛 Electrolux 공장 부지에 Nvidia H100 GPU 약 10만 장 규모로 122일 만에 지어진 Colossus 1은 2024년 중반~후반 가동을 시작했고 이후 H200·B200 GPU로 증설됐다. 인근 Whitehaven 부지의 Colossus 2는 2026년 1월경 Nvidia GB200급 프로세서 약 11만 장(약 210MW)으로 가동을 시작한 뒤 GB300급 클러스터가 추가돼 2026년 중반 기준 30만~35만 장 이상 규모로 알려졌으며, 두 사이트를 합치면 2026년 중반 기준 약 1GW의 컴퓨트 용량을 갖춘 것으로 보도된다.[^wiki-colossus] 2025년 말에는 최종적으로 100만 장 이상까지 확장하는 계획이 알려졌다.[^wiki-xai] 이 수치들은 여러 매체 보도를 종합한 백과사전 서술을 근거로 하며, 개별 1차 계약서나 SpaceX 공식 발표로 전량 재확인되지는 않았다.
+### 부채·차입 — 최근 5개년
 
-### 외부 컴퓨트 임대 — Anthropic·Google
+| 항목 | FY2021 | FY2022 | FY2023 | FY2024 | FY2025 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 부채총계 | 확인 필요 | 확인 필요 | 확인 필요 | 31,258.0 | 50,754.0 |
+| 자본총계 | 확인 필요 | 확인 필요 | 확인 필요 | 4,863.0 | 2,573.0 |
+| 부채비율 | 확인 필요 | 확인 필요 | 확인 필요 | 642.77% | 1,972.56% |
+| 유동비율 | 확인 필요 | 확인 필요 | 확인 필요 | 136.61% | 144.64% |
+| 총차입금·리스부채(외부 집계) | 확인 필요 | 확인 필요 | 확인 필요 | 15,434.0 | 24,454.0 |
+| 순현금(+)/순부채(−), 같은 집계 | 확인 필요 | 확인 필요 | 확인 필요 | -3,249.0 | 293.0 |
+| 현금·단기투자(외부 집계) | 확인 필요 | 확인 필요 | 확인 필요 | 12,185.0 | 24,747.0 |
 
-xAI/Grok 내부 워크로드가 Colossus 용량을 항상 전량 소비하지는 않아, SpaceX는 남는 용량을 외부 AI 기업에 임대하는 사업을 키워왔다. 2026년 5월 Anthropic이 Colossus 1의 컴퓨트 용량 전체를 매입하는 계약을 체결했으며, 계약 규모는 월 약 $1.25B로 추정된다(Yahoo Finance, Daniel Howley 기자, 2026-05-06 보도).[^yahoo-anthropic] 2026-06-05에는 Google이 xAI 데이터센터의 컴퓨트 용량을 구매하며 월 약 $920M을 지급하기로 했다고 CNBC(Lora Kolodny 기자)가 단독 보도했고,[^cnbc-google] 다음날 뉴욕타임스는 이 계약의 총 규모를 약 $30B로 추정 보도했다(월 지급액을 약 32개월치로 환산한 값과 대체로 부합한다).[^nyt-google] 다른 매체를 종합한 보도는 이 계약이 GPU 약 11만 장에, 2026년 10월부터 2029년 6월까지 적용된다고 전하지만 개별 계약서로 확인되지는 않는다.[^wiki-colossus]
+출처: [공식 재무제표](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm), [차입·현금 집계](https://stockanalysis.com/stocks/spcx/financials/). 부채비율은 부채총계 ÷ 자본총계, 유동비율은 유동자산 ÷ 유동부채다. 외부 집계의 차입금은 리스 포함 범위가 회사 IR의 순차입금 정의와 다를 수 있어 회사 발표 순차입금과 혼합하지 않았다.
 
-이 계약들의 실제 해지조항이나 조기종료 조건, 그리고 Musk 개인이 계약기간과 관련해 언급했다고 알려진 발언(예: "180일" 등)은 공개된 자료(SpaceX 공식 IR, 위키피디아 SpaceX·Colossus·xAI 문서)에서 확인되지 않는다. SEC EDGAR에 공개된 SpaceX 상장서류(S-1)나 로이터·CNBC 보도에서도 이 세부 조항은 확인되지 않았다. 즉 계약기간·해지조항에 대해서는 공식 자료도, 이름이 확인되는 언론 보도·발언 인용도 확보하지 못한 상태이며 확인 필요로 남긴다 — 근거가 되는 원문 출처를 알고 있다면 보완이 필요하다.
+**채권·비공모 조달**
 
-### 왜 계속 증설하는가 — 공급부족 베팅과 공급과잉 위험
+| 구분 | 내용 |
+| --- | ---: |
+| 채권 발행·만기·금리 | 2026년 6월 선순위 무담보채 250억달러 발행. 만기 2031·2033·2036·2046·2056년, 표면금리 5.350~6.650%. 브리지론 상환 등에 사용했다. [2026-06-30 10-Q, Debt](https://www.sec.gov/Archives/edgar/data/1181412/000162828026052535/spcx-20260630.htm). [차입금 주석](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm) |
+| 신용등급 변경 이력 | 변경일·변경 전후 등급 확인 필요; 회차별 등급과 발행인 등급을 구분 |
+| 사모대출·은행차입·기타 비공모 조달 | 유무·잔액·총조달 대비 비중 확인 필요; 공시를 확인하지 않은 항목을 ‘없음’으로 간주하지 않음 |
 
-SpaceX/xAI의 베팅은 "AI 컴퓨트 수요 증가속도가 공급 증가속도를 계속 앞선다"는 가정에 있다. 그러나 이는 확인된 사실이 아니라 투자 가설이다. Bull 시나리오에서는 수요가 공급을 지속적으로 앞질러 높은 이용률·임대가격이 유지되고 CAPEX가 빠르게 회수된다. Bear 시나리오에서는 Anthropic·Google·Microsoft·Amazon·Meta·Oracle·OpenAI 등이 각자 자체 데이터센터를 대규모로 완공하면서 현재 Colossus 고객이 이탈할 수 있다 — GPU는 세대교체(H100/H200→Blackwell→Rubin)가 빨라 감가상각·기술노후화 위험이 크고, 공급과잉이 오면 임대가격 하락·이용률 하락·계약 조기종료가 동시에 나타날 수 있다. Adjusted EBITDA 흑자와 감가상각을 반영한 실제 영업손익은 다른 개념이므로, GPU 감가상각이 큰 이 사업의 경제성을 "EBITDA 흑자"만으로 완전히 검증됐다고 보지 않는다.
+### 설비투자(CAPEX)·R&D — 최근 3개년
 
-### Grok과 Tesla Physical AI의 관계
+| 연도 | CAPEX(현금 지출) | 계획 대비 증감 | 연구개발비 | 매출 대비 R&D |
+| --- | ---: | ---: | ---: | ---: |
+| FY2023 | 4,415.0 | 확인 필요 | 2,105.0 | 20.3% |
+| FY2024 | 11,163.0 | 확인 필요 | 3,464.0 | 24.7% |
+| FY2025 | 20,737.0 | 확인 필요 | 8,643.0 | 46.3% |
 
-Grok(소비자용 챗봇 서비스)과 xAI 기반모델 기술은 구분해야 한다. Grok의 소비자 점유율이 ChatGPT보다 낮다고 해서 Musk의 전체 AI 전략이 자동으로 실패하는 것은 아니다 — [[NASDAQ/Tesla]]의 Optimus·Cybercab·Starlink 등이 xAI 기술을 함께 사용할 수 있기 때문이다. 다만 Optimus·Cybercab에는 perception·planning·actuator control 등 별도의 물리적 AI 스택이 필요해 xAI/Grok과 완전히 동일한 기술은 아니며, "미래 Optimus를 위해 지금 Grok이 반드시 frontier여야 했다"는 인과관계는 과도한 사후 해석으로 표시한다.
+출처: [연차·사업보고서의 현금흐름·연구개발 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm), [현금흐름 집계](https://stockanalysis.com/stocks/spcx/financials/). CAPEX는 원칙적으로 유형자산 취득 현금 지출이며 인수대금·리스 신규 인식과 구분한다. R&D는 비용 인식액 기준으로 자산화 개발비를 포함한 회사의 총 연구개발 투자액과 다를 수 있다. 설비투자는 잉여현금흐름(FCF)을 줄이므로 배당·매입 재원과 함께 확인한다.
 
-Tesla·SpaceX가 공동 추진하는 반도체 프로젝트 Terafab의 목적·투자규모·리스크는 [[GroupX/Tesla-SpaceX-합병논의#Terafab]]에 통합 서술한다.
+## 경쟁사
 
-## Starship과 궤도 컴퓨팅(장기·미확정 비전)
+| 시장 | 주요 경쟁사 | 연간 점유율 정본 |
+| --- | ---: | ---: |
+| 우주발사 | ULA·Blue Origin·Rocket Lab | 정본 자료 확인 필요 |
+| 위성통신 | Eutelsat OneWeb·Amazon Leo | 정본 자료 확인 필요 |
+| AI 모델·인프라 | Alphabet·Meta·OpenAI·Anthropic·CoreWeave | 정본 자료 확인 필요 |
 
-Starship(완전재사용 초대형 발사체)은 발사비용을 낮춰 장기적으로 우주 기반 AI 데이터센터("orbital compute") 구상을 뒷받침하는 인프라로 논의된다. 다만 이는 2026-08-27 기준 상용화된 사업이 아니라 장기 비전이다. 궤도 데이터센터가 성립하려면 Starship 완전재사용, 낮은 kg당 발사비, 대규모 우주 전력·열방출, 방사선 대응, 궤도상 유지보수 등 여러 전제가 동시에 충족돼야 한다는 것이 이 위키의 자체 분석이다. 현재 시점에서는 전망/베팅 단계로 표시하며, 지상 데이터센터(Colossus) 수준의 현재 사업으로 취급하지 않는다.
+출처: [사업·경쟁 환경 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 점유율은 연간 자료를 확보한 시장의 경쟁 문서에서 다룬다.
 
-## 각주
+## 생산시설·제조역량
 
-[^spacex-ir-closing]: SpaceX IR, "Announces Closing of Initial Public Offering, Including Full Exercise of Underwriters' Option to Purchase Additional Shares", ir.spacex.com, 2026-06(확인일 2026-08-27)
-[^cnbc-ipo]: CNBC, "SpaceX IPO takeaways: SPCX closes at $161, jumping 19% after record debut", cnbc.com, 2026-06-12
-[^bloomberg-lockup]: Bloomberg, "SpaceX Shares Rally 23%, Approach IPO Price After Lockup Expiration", bloomberg.com, 2026-08-07
-[^fool-musk-spacex]: The Motley Fool, "Elon Musk Owns 48.4% of SpaceX, a New Filing Shows. Here's Why That Matters for Everyone Else Holding the Stock.", fool.com, 2026-08-22(SEC Schedule 13G 인용)
-[^wiki-spacex]: Wikipedia, "SpaceX" 문서(2025년 재무제표·Musk 지분 서술), en.wikipedia.org/wiki/SpaceX(확인일 2026-08-27)
-[^wiki-xai]: Wikipedia, "xAI (company)" 문서(2025년 재무·Colossus 확장계획·SpaceX 합병 서술), en.wikipedia.org/wiki/XAI_(company)(확인일 2026-08-27)
-[^wiki-colossus]: Wikipedia, "Colossus (supercomputer)" 문서(Colossus 1·2 규모, Anthropic·Google 임대계약 서술), en.wikipedia.org/wiki/Colossus_(supercomputer)(확인일 2026-08-27) — 개별 1차 계약서 미확인
-[^yahoo-anthropic]: Yahoo Finance, Daniel Howley, "Anthropic to rent all AI capacity at SpaceX's Colossus data center", 2026-05-06 보도(위키피디아 "Colossus (supercomputer)" 문서 경유 확인, 2026-08-27) — 추정
-[^cnbc-google]: CNBC, Lora Kolodny, "Google to pay SpaceX $920 million a month for compute capacity at xAI data centers", 2026-06-05(위키피디아 "xAI (company)" 문서 경유 확인, 2026-08-27) — 추정
-[^nyt-google]: The New York Times, Kate Conger, "SpaceX Has $30 Billion Deal to Provide Google With A.I. Computing Power", 2026-06-06(위키피디아 "SpaceX" 문서 경유 확인, 2026-08-27) — 추정
+국가별 품목별 생산·출하·생산능력 비중을 비교한다. 아래는 회사 사업·자산 공시에서 확인한 주요 국가이며, 전체 국가 목록과 정량 비중은 확인 필요다. 비중을 추정하거나 보간하지 않았다.
+
+| 품목·기능 | 국가 | FY2023 | FY2024 | FY2025 |
+| --- | ---: | ---: | ---: | ---: |
+| 발사체·위성 제조 | 미국 | 확인 필요 | 확인 필요 | 확인 필요 |
+| 위성통신 지상 인프라 | 미국 | 확인 필요 | 확인 필요 | 확인 필요 |
+| AI 컴퓨팅 | 미국 | 확인 필요 | 확인 필요 | 확인 필요 |
+
+출처: [공식 사업·자산·생산거점 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 나라별 매출 비중을 생산 비중으로 대체하지 않는다.
+
+발사 실패·일정 지연·위성 교체비용·주파수와 국가별 통신 인허가가 사업 위험이다. AI 사업은 컴퓨팅 장비와 전력에 선행투자가 필요하며 감가상각과 차입 이자가 크다. 조정 EBITDA와 영업이익을 구분한다.
+
+## 주주 구성
+
+| 주주·항목 | 보유 비중 | 공시 기준일·산정 기준 |
+| --- | ---: | ---: |
+| Elon Musk | 의결권 82.4% / 82.3% | 2026년 IPO 투자설명서의 공모 후 예상; 기본 공모 / 초과배정 전량 행사 가정 |
+| 기관·외국인 합계 | 확인 필요 | 같은 기준일의 공시 합계 미확인 |
+| 자기주식 | 확인 필요 | 종류별 발행주식과 동일한 기준일의 잔액 미확인 |
+
+Elon Musk가 차등의결권 주식을 통해 지배력을 보유한다. IPO 투자설명서가 제시한 공모 후 의결권은 기본 공모와 초과배정 행사 여부에 따라 달라지며, 이 예상치를 이후 실제 지분 공시와 섞지 않는다.
+
+출처: [주주·실질보유 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 기관의 실질보유·의결권·수탁 보유는 서로 다르며 개별 신고일이 다른 지분율을 합산하지 않는다.
+
+## 주식·ETF 등 대표 상품
+
+### 주식 종류
+
+| 종류 | 종목코드 | 주식 수·기준일 | 의결권 | 배당·전환 조건 |
+| --- | ---: | ---: | ---: | ---: |
+| Class A | SPCX | 확인 필요 | 1주 1표 | 상장 보통주 |
+| Class B | 비상장 | 확인 필요 | 1주 10표 | 차등의결권; 전환 조건은 투자설명서 참조 |
+
+출처: [주식자본·정관 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 주식 수는 종류별 발행주식 또는 자사주 제외 유통주식인지 함께 확인한다.
+
+### 관련 ETF
+
+| 대표 ETF | 추종 지수 | 종목 선정 | 비중 결정 규칙 |
+| --- | ---: | ---: | ---: |
+| 확인 필요 | 확인 필요 | 신규 상장 이후 편입·편출 공시 확인 필요 | 방법론·구성종목 원문 확인 필요 |
+
+출처: [지수·상품 방법론](https://indexes.nasdaqomx.com/docs/Methodology_NDX.pdf)(2026-10-21 확인). 현재 편입 비중을 고정값으로 적지 않는다. 편입·편출은 해당 지수와 ETF의 구성종목 공시를 따른다.
+
+## 배당·주주환원 정책
+
+| 회계연도 | 현금배당 총액(지급 기준) | 주당배당금(원/달러) | 총지급액 ÷ 공시 순이익 |
+| --- | ---: | ---: | ---: |
+| FY2023 | 0.0 | 0.000 | 순손실로 산정하지 않음 |
+| FY2024 | 0.0 | 0.000 | 0.0% |
+| FY2025 | 0.0 | 0.000 | 순손실로 산정하지 않음 |
+
+출처: [연간 배당·자본변동 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm), [배당 집계](https://stockanalysis.com/stocks/spcx/financials/). 주당배당금은 해당 회계연도 공시의 선언·지급 기준이며, 현금흐름표의 지급액은 전기 결산배당을 포함할 수 있다. 회사의 공식 배당성향과 이 표의 지급액 비율은 산정 기준이 다를 수 있다.
+
+투자설명서는 사업 투자와 확장을 위해 이익을 유보하고 현금배당을 예상하지 않는다고 설명한다. 공모 신주 발행과 임직원 주식보상은 기존 주주의 지분을 희석할 수 있다.
+
+| 회계연도 | 자사주 매입 현금 지출 | 회계상 소각·보유 처리 |
+| --- | ---: | ---: |
+| FY2023 | 확인 필요 | 확인 필요 |
+| FY2024 | 확인 필요 | 확인 필요 |
+| FY2025 | 확인 필요 | 확인 필요 |
+
+출처: [현금흐름·자기주식 주석](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm).
+
+배당은 현금 지급이며, 자사주는 매입 결의·실제 취득·소각 완료를 구분한다. 매입만으로 발행주식 총수가 줄어드는 것은 아니며 주식보상·신주 발행과 함께 순변화를 확인한다.
+
+## 투자자산으로서의 특징
+
+위성통신·발사 사업과 대규모 AI 인프라 투자가 함께 있는 기업이다. 부문별 영업손익을 분리해야 연결 적자의 원인과 통신사업의 현금창출력을 구분할 수 있다. 차등의결권 때문에 경제적 지분과 의사결정 권한도 다르다.
+
+## 연도별 주요 이슈
+
+| 날짜 | 카테고리 | 내용 | 상태 |
+| --- | ---: | ---: | ---: |
+| 2026-02-02 | M&A | xAI 결합; 과거 비교 재무에도 공동지배 결합 회계 적용 | 완료 |
+| 2026-06 | 자금조달 | Class A 주식 IPO와 나스닥 상장 | 완료 |
+| 2026-06 | 채권발행 | 선순위 무담보채 발행으로 브리지론 차환; 재무의 채권 항목 참조 | 완료 |
+
+출처: [공식 연차·사업 공시](https://www.sec.gov/Archives/edgar/data/1181412/000162828026042639/spaceexplorationtechnologi.htm). 계획·계약 체결·실행 완료를 구분한다.
+
+## 관련 문서
+
+- [[NASDAQ/Tesla]]
+- [[GroupX/일론머스크-그룹]]
+- [[GroupX/Tesla-SpaceX-합병논의]]
+- [[concept/AI-데이터센터-생태계]]
+- [[NASDAQ/SpaceX/AI사업과-우주개발]]
+- [[TREND/2026-08/2026-08-04 Tesla·SpaceX 2분기 실적과 AI 투자|2026년 2분기 실적·투자 스냅샷]]
