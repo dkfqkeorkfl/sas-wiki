@@ -2,7 +2,7 @@
 
 ## Summary
 
-생성·조회가 작성 규칙과 전체 ID 이력을 감사하는 결합을 제거한다. 같은 파서·가시성·렌더·피드 해석을 재사용하는 하네스 검사로 기존 판정과 진단을 보존한 뒤 validate CLI와 실행 참조를 제거한다. 이 문서는 조사와 구현 계획이며, 사용자 확인 전에는 제품 코드·테스트·훅·CI를 수정하지 않는다.
+생성·조회가 작성 규칙과 전체 ID 이력을 감사하는 결합을 제거한다. 같은 파서·가시성·렌더·피드 해석을 재사용하는 하네스 검사로 기존 판정과 진단을 보존한 뒤 validate CLI와 실행 참조를 제거한다. 이 문서는 사용자 승인 후 실행한 계획이다. 구현·검증 결과는 아래에 기록한다.
 
 ## User Story
 
@@ -42,25 +42,25 @@
 
 모든 경로는 별도 표시가 없으면 sas-wiki 기준이다. 줄 번호는 조사 시점의 탐색 좌표이고 구현·주석의 영구 인용은 파일:심볼로 쓴다.
 
-| Priority | File                                                                                | Lines / Section                                         | Why                                         |
-| -------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------- |
-| P0       | ../contract.md                                                                      | C1–C10                                                  | 책임·전체 규칙·실패·작업 범위               |
-| P0       | scripts/validate.mjs                                                                | buildContent 58–140, 정책 273–345, 보고 400–465         | 이전 순서·심각도·진단·보고 실패             |
-| P0       | scripts/lib/head-state.mjs                                                          | loadHeadDocState·findDraftPublicIdCollisions            | 수집과 감사의 실제 결합                     |
-| P0       | scripts/lib/doc-gate.mjs                                                            | judgeDocs 전체                                          | 사유 우선순위·ID 이력·삭제 재사용           |
-| P0       | scripts/lib/parse-vault.mjs                                                         | parseVault·memoize·assertHistoryIntegrity               | 공유 파싱·억제 위생·Git 캐시                |
-| P0       | scripts/lib/git-walk.mjs                                                            | collectFeedItems·buildResolveContext·resolveDocRef      | 전체 피드와 사유 분류·빈 페이지 관용        |
-| P0       | scripts/lib/generator.mjs, scripts/summary.mjs, scripts/feeds.mjs                   | 생성기·CLI·러너 구성                                    | 기능 경계·출력·고속 워크/해석 예산          |
-| P0       | harness/wiki-documents/**tests**/document-rules.guard.test.mjs                      | 전체                                                    | 실제 파일·두 환경·보고·빈 입력 집행         |
-| P0       | scripts/lib/invariants.mjs                                                          | 전체                                                    | 커밋 규약·참조·불변식                       |
-| P1       | scripts/lib/git.mjs                                                                 | getFileHistory·readFrontmatterFieldChange·makeGitRunner | 값 도출과 감사·자식 종료                    |
-| P1       | scripts/lib/derive.mjs, payloads.mjs, ignore.mjs, feed-survival.mjs                 | 공개 함수                                               | 유지할 기능 구현                            |
-| P1       | scripts/wiki.mjs, scripts/lib/artifact.mjs                                          | wiki·캐시 소비 검증                                     | 단일 파일 처리와 필요한 경계 검증           |
-| P1       | package.json, .husky/pre-push, .github/workflows/ci.yml                             | 실행 명령                                               | 삭제할 CLI의 실제 소비자                    |
-| P1       | 아래 소비처 대응표의 테스트·지원 코드                                               | 해당 describe·import                                    | 실질 보호 승계·자동 기능 검사 유지          |
-| P1       | vitest.config.js, vitest.harness.config.js                                          | 수집·환경·coverage                                      | P2 분리와 제품 분모 보존                    |
-| P2       | /workspace/docs/prds/convention-harness-unification/rules.md, decisions.md          | R-B1·B2·B4, R-N13–18·N26·N27, 5절                       | 읽기 전용 부모 규칙                         |
-| P2       | /workspace/scripts/wiki-dev-server/**tests**/wikiSetup.contract.source-scan.test.ts | 272–281                                                 | 상위 소비자의 validate 존재 고정. 수정 금지 |
+| Priority | File                                                                                  | Lines / Section                                         | Why                                         |
+| -------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------- |
+| P0       | ../contract.md                                                                        | C1–C10                                                  | 책임·전체 규칙·실패·작업 범위               |
+| P0       | scripts/validate.mjs                                                                  | buildContent 58–140, 정책 273–345, 보고 400–465         | 이전 순서·심각도·진단·보고 실패             |
+| P0       | scripts/lib/head-state.mjs                                                            | loadHeadDocState·findDraftPublicIdCollisions            | 수집과 감사의 실제 결합                     |
+| P0       | scripts/lib/doc-gate.mjs                                                              | judgeDocs 전체                                          | 사유 우선순위·ID 이력·삭제 재사용           |
+| P0       | scripts/lib/parse-vault.mjs                                                           | parseVault·memoize·assertHistoryIntegrity               | 공유 파싱·억제 위생·Git 캐시                |
+| P0       | scripts/lib/git-walk.mjs                                                              | collectFeedItems·buildResolveContext·resolveDocRef      | 전체 피드와 사유 분류·빈 페이지 관용        |
+| P0       | scripts/lib/generator.mjs, scripts/summary.mjs, scripts/feeds.mjs                     | 생성기·CLI·러너 구성                                    | 기능 경계·출력·고속 워크/해석 예산          |
+| P0       | `harness/wiki-documents/__tests__/document-rules.guard.test.mjs`                      | 전체                                                    | 실제 파일·두 환경·보고·빈 입력 집행         |
+| P0       | scripts/lib/invariants.mjs                                                            | 전체                                                    | 커밋 규약·참조·불변식                       |
+| P1       | scripts/lib/git.mjs                                                                   | getFileHistory·readFrontmatterFieldChange·makeGitRunner | 값 도출과 감사·자식 종료                    |
+| P1       | scripts/lib/derive.mjs, payloads.mjs, ignore.mjs, feed-survival.mjs                   | 공개 함수                                               | 유지할 기능 구현                            |
+| P1       | scripts/wiki.mjs, scripts/lib/artifact.mjs                                            | wiki·캐시 소비 검증                                     | 단일 파일 처리와 필요한 경계 검증           |
+| P1       | package.json, .husky/pre-push, .github/workflows/ci.yml                               | 실행 명령                                               | 삭제할 CLI의 실제 소비자                    |
+| P1       | 아래 소비처 대응표의 테스트·지원 코드                                                 | 해당 describe·import                                    | 실질 보호 승계·자동 기능 검사 유지          |
+| P1       | vitest.config.js, vitest.harness.config.js                                            | 수집·환경·coverage                                      | P2 분리와 제품 분모 보존                    |
+| P2       | /workspace/docs/prds/convention-harness-unification/rules.md, decisions.md            | R-B1·B2·B4, R-N13–18·N26·N27, 5절                       | 읽기 전용 부모 규칙                         |
+| P2       | `/workspace/scripts/wiki-dev-server/__tests__/wikiSetup.contract.source-scan.test.ts` | 272–281                                                 | 상위 소비자의 validate 존재 고정. 수정 금지 |
 
 ## Discovery and Traces
 
@@ -184,63 +184,63 @@ it.each(['dev', 'prod'])(
 
 ### 기능·정책·실행 파일
 
-| File                                                                                        | Action           | Responsibility                                                                                    |
-| ------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------- |
-| scripts/lib/head-state.mjs                                                                  | UPDATE           | 원문 수집/상태 투영 공개, 감사·스키마 의존 제거                                                   |
-| scripts/lib/parse-vault.mjs                                                                 | UPDATE           | 상태/러너 주입, 기능 결과만 조립, 불필요한 억제·위생/전량 커밋 수집 제거                          |
-| scripts/lib/generator.mjs                                                                   | UPDATE           | 새 파싱 API·bounded runner·처리 context 사용, 감사 상태 반환 제거                                 |
-| scripts/summary.mjs                                                                         | UPDATE           | 감사 옵션·exit 3·상태 통지 제거, 기능 stdout·out·실패 보존                                        |
-| scripts/feeds.mjs, scripts/lib/git.mjs                                                      | UPDATE           | 해석 러너의 메모/백스톱 공유·종료 신호. 커서 워크 예산 유지                                       |
-| scripts/lib/git-walk.mjs                                                                    | UPDATE           | raw/audited 상태 주입과 진단 유지, 이전 API 주석 정정                                             |
-| scripts/lib/derive.mjs, draft.mjs, ignore.mjs, summary-endpoint.mjs                         | UPDATE           | 이전 감사/명령을 설명하는 주석·파싱 API의 실제 참조만 정정                                        |
-| scripts/lib/doc-gate.mjs                                                                    | MOVE             | harness/wiki-documents/document-state.mjs. 소유 변경 후 scripts 재export 없음                     |
-| scripts/lib/invariants.mjs                                                                  | MOVE             | harness/wiki-documents/document-invariants.mjs. 기능 소비자 0 확인 후 이전                        |
-| scripts/validate.mjs                                                                        | REMOVE / EXTRACT | 정책을 document-integrity/document-report에 승계하고 argv·main·usage·엔트리 제거                  |
-| scripts/schema/report.schema.json                                                           | UPDATE           | 검사 보고서 소유 설명 정정, 데이터 형태 유지                                                      |
-| harness/wiki-documents/**tests**/document-rules.guard.test.mjs                              | UPDATE           | 원문·러너 공유, 새 inspector 호출, 기존 실제 집행·보고 보존                                       |
-| harness/wiki-documents/**tests**/document-enforcement.test.mjs                              | UPDATE           | 새 inspector seam을 fixture stub으로 격리, 기존 무력화/실패 전달 유지                             |
-| harness/wiki-documents/**tests**/git-hooks.contract.test.mjs, ci-pipeline.contract.test.mjs | UPDATE           | validate 단계 제거에 맞춘 수동 연결 계약                                                          |
-| package.json, .husky/pre-push, .github/workflows/ci.yml                                     | UPDATE           | validate 명령·build/훅/CI 호출 제거. 그 밖의 설치·권한·checkout 유지                              |
-| README.md                                                                                   | UPDATE           | 현재 검사 책임·명령·보고·생성 선행 조건을 실제 동작과 함께 갱신                                   |
-| vitest.config.js                                                                            | UPDATE IF NEEDED | 새 scripts/test-utils만 제품 계측에서 제외. include/floor 유지. 기능 코드를 지원 코드로 빼지 않음 |
+| File                                                                                          | Action           | Responsibility                                                                                    |
+| --------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------- |
+| scripts/lib/head-state.mjs                                                                    | UPDATE           | 원문 수집/상태 투영 공개, 감사·스키마 의존 제거                                                   |
+| scripts/lib/parse-vault.mjs                                                                   | UPDATE           | 상태/러너 주입, 기능 결과만 조립, 불필요한 억제·위생/전량 커밋 수집 제거                          |
+| scripts/lib/generator.mjs                                                                     | UPDATE           | 새 파싱 API·bounded runner·처리 context 사용, 감사 상태 반환 제거                                 |
+| scripts/summary.mjs                                                                           | UPDATE           | 감사 옵션·exit 3·상태 통지 제거, 기능 stdout·out·실패 보존                                        |
+| scripts/feeds.mjs, scripts/lib/git.mjs                                                        | UPDATE           | 해석 러너의 메모/백스톱 공유·종료 신호. 커서 워크 예산 유지                                       |
+| scripts/lib/git-walk.mjs                                                                      | UPDATE           | raw/audited 상태 주입과 진단 유지, 이전 API 주석 정정                                             |
+| scripts/lib/derive.mjs, draft.mjs, ignore.mjs, summary-endpoint.mjs                           | UPDATE           | 이전 감사/명령을 설명하는 주석·파싱 API의 실제 참조만 정정                                        |
+| scripts/lib/doc-gate.mjs                                                                      | MOVE             | harness/wiki-documents/document-state.mjs. 소유 변경 후 scripts 재export 없음                     |
+| scripts/lib/invariants.mjs                                                                    | MOVE             | harness/wiki-documents/document-invariants.mjs. 기능 소비자 0 확인 후 이전                        |
+| scripts/validate.mjs                                                                          | REMOVE / EXTRACT | 정책을 document-integrity/document-report에 승계하고 argv·main·usage·엔트리 제거                  |
+| scripts/schema/report.schema.json                                                             | UPDATE           | 검사 보고서 소유 설명 정정, 데이터 형태 유지                                                      |
+| `harness/wiki-documents/__tests__/document-rules.guard.test.mjs`                              | UPDATE           | 원문·러너 공유, 새 inspector 호출, 기존 실제 집행·보고 보존                                       |
+| `harness/wiki-documents/__tests__/document-enforcement.test.mjs`                              | UPDATE           | 새 inspector seam을 fixture stub으로 격리, 기존 무력화/실패 전달 유지                             |
+| `harness/wiki-documents/__tests__/git-hooks.contract.test.mjs, ci-pipeline.contract.test.mjs` | UPDATE           | validate 단계 제거에 맞춘 수동 연결 계약                                                          |
+| package.json, .husky/pre-push, .github/workflows/ci.yml                                       | UPDATE           | validate 명령·build/훅/CI 호출 제거. 그 밖의 설치·권한·checkout 유지                              |
+| README.md                                                                                     | UPDATE           | 현재 검사 책임·명령·보고·생성 선행 조건을 실제 동작과 함께 갱신                                   |
+| vitest.config.js                                                                              | UPDATE IF NEEDED | 새 scripts/test-utils만 제품 계측에서 제외. include/floor 유지. 기능 코드를 지원 코드로 빼지 않음 |
 
 ### 기존 테스트의 소비처 대응
 
 파일의 기존 이름은 찾기 위한 좌표다. 옛 파일을 통째로 수동화하지 않고 describe/판정별로 나눈다. 새 하네스 파일은 모두 `harness/wiki-documents/__tests__/` 바로 아래에 둔다. 새 기능 검증은 scripts 대상 옆의 자동 범위에 둔다.
 
-| 기존 파일·항목                                                                                                                        | 이전/갱신할 실질 보호                                                                                                                                                                             |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| lib/**tests**/doc-gate.test.mjs                                                                                                       | document-state.test.mjs로 이전. 사유·우선순위·결정성·정상/위반·빈 입력 보존                                                                                                                       |
-| lib/**tests**/head-state.draft-id-collision.test.mjs + **tests**/validate.draft-id-collision.test.mjs                                 | document-state.draft-id-collision.test.mjs로 정책·dev/prod 진단 이전. load/help 존재만 확인하는 옛 CLI seam 제거                                                                                  |
-| lib/**tests**/invariants.test.mjs, invariants.feed-only.test.mjs, invariants.grandfathering.test.mjs                                  | document-invariants 관련 책임별 회귀로 이전. A+D/정상 rename/이관 이전 면제·각 불변식 보존. 정책 설명을 확인하는 원문 검사는 새 소유 경로에 맞춤                                                  |
-| **tests**/build.immutability-gate.test.mjs, immutability.verify.test.mjs                                                              | document-state.id-history.test.mjs로 ID 변경·최초 등록·따옴표/줄 변경 경계 통합. 독립 조건 누락 없이 중복만 합침                                                                                  |
-| **tests**/validate.cli.test.mjs                                                                                                       | CLI argv/help/폐기 옵션 제거. shallow/partial·schema 위반·진단·무오염·보고 스키마·쓰기 실패·실패 전 관측은 document-integrity/report 회귀로 승계                                                  |
-| **tests**/validate.deadlinks.test.mjs                                                                                                 | document-integrity.deadlinks.test.mjs. 기본 warn·ignore/error·동명 충돌·검사 순서 보존. 옛 argv/help만 제거                                                                                       |
-| **tests**/validate.exclusion.test.mjs                                                                                                 | document-integrity.exclusion.test.mjs. 제외 0·사유·원인 SHA·기존 오류 순서 보존. 허용치 CLI 파싱 폐기                                                                                             |
-| **tests**/build.conventions.test.mjs, build.convention-scope.test.mjs                                                                 | 규약/이관 예외는 수동 document-invariants 회귀. 정상 삭제·rename의 피드 결과는 자동 기능 검사로 유지                                                                                              |
-| **tests**/build.doc-exclusion.test.mjs                                                                                                | 감사 상태의 제외 전파·invalid-excluded/SHA는 수동 inspector 회귀. FEED_REF_REASONS 값·정상 피드 생존 기능 검증은 자동에 유지                                                                      |
-| **tests**/build.feed-survival.test.mjs                                                                                                | 정책 실패/보고는 수동. normal/fix·draft/삭제/disable·unpublished 진단의 실제 피드 기능은 collectFeedItems/생성기 자동 테스트에서 유지                                                             |
-| **tests**/build.env-filter.test.mjs, build.env-parity.test.mjs                                                                        | validate parseArgs 블록 제거. 정상 draft 이중 신호·혼합 feed·disable·prod 0·이관 등가는 자동 생성/파싱 테스트에 유지. 위반 draft의 정책 판정은 수동으로 이전                                      |
-| **tests**/build.frontmatter-id.test.mjs, lib/**tests**/derive.unique-frontmatter-id.test.mjs                                          | UUIDv7을 실제 payload로 전달하는 검증은 자동 유지. ID 부재·중복 차단은 수동 검사 회귀로 이전                                                                                                      |
-| **tests**/build.ignore-feeds.test.mjs, build.ignore-mediation.verify.test.mjs                                                         | 명시 억제·문서/본문 보존은 실제 feeds 생성의 자동 검증. malformed/stale의 inspector 판정은 수동으로 분리                                                                                          |
-| **tests**/build.smoke.test.mjs, build.vault.test.mjs, build.vault-root.test.mjs, build.uuidv7-e2e.test.mjs                            | 정상 생성·rename/prune·실제 field·sourceCommit·결정성은 자동 유지하며 파싱/생성기로 전환. report/검사 전용 단언만 수동으로 이전                                                                   |
-| **tests**/build.contract-shape.test.mjs, lib/**tests**/build.wire-payload.test.mjs                                                    | 실제 출력 모양/파싱 등가는 자동 유지. inspector와의 공유 엔진 비교만 수동으로 분리. 내부 gate/wire.ignore 키의 소멸에 맞춤                                                                        |
-| lib/**tests**/fail-closed.verify.test.mjs                                                                                             | isDraft·Git 오류 전파·실제 생존 기능 자동 유지. frontmatter/삭제 ID 재사용 정책 블록은 수동 이전                                                                                                  |
-| lib/**tests**/git-walk.ref-resolution.test.mjs, feed.prefix-closure.test.mjs                                                          | 실제 참조 해석·사유/SHA·접두사 무관한 feed 해석은 자동 유지. checkFeedResolution/checkCommitConventions 단언만 하네스로 옮겨 scripts의 하네스 import 제거                                         |
-| **tests**/serving.exclusion.test.mjs, serving.drift-inversion.test.mjs                                                                | 정상 서빙·draft prune·본문은 자동 유지. 위반 문서를 자동 정제한다는 옛 보장 대신 기능이 ID 감사하지 않음을 관측. 같은 위반을 inspector가 실패시키는 짝은 수동 회귀에 둠                           |
-| **tests**/serving.cost-tier.test.mjs, serving.cost-profile.test.mjs                                                                   | 항상 깊은 감사를 강제하던 단언 갱신. 자동에서 실제 기능 결과가 있으면서 blame·삭제 ID 감사 호출 0임을 확인. 필요한 log/피드 조회가 살아 있음을 짝지음                                             |
-| **tests**/summary.generator.test.mjs, summary.cli-exit.test.mjs                                                                       | partial/excludedCount/max-excluded/exit 3 제거. 정상 생성·명시 out·stdout·인자·쓰기/런타임 오류·항상 계산은 자동 유지                                                                             |
-| **tests**/summary.suppression-independence.test.mjs                                                                                   | summary의 억제 독립·명시 feeds의 오류는 자동 유지. validate 오류 arm만 inspector 수동 회귀로 승계                                                                                                 |
-| **tests**/cli-contract.test.mjs, cursor.cli-contract.test.mjs, lib/**tests**/cli-env.probe.test.mjs                                   | 삭제 명령의 기본 vault/enum seam만 제거. summary·feeds·wiki의 argv/stdout/격리·커서 보호는 자동 유지                                                                                              |
-| **tests**/hooks.plumbing.test.mjs                                                                                                     | 실제 .husky/pre-push를 임시 vault·로컬 bare remote에서 실행하는 자동 통합으로 교체. pnpm shim이 fixture의 실제 guard만 실행해 자기 전체 suite 재귀 방지. 중복 ID면 remote 불변·정상 수정이면 성공 |
-| **tests**/build.entry-guard.test.mjs, build.v3p1-plumbing.test.mjs                                                                    | 없어진 validate export/존재·3단 체인 기대 제거. 실제 2단 생성·실패 시 후속 미실행·환경별 파일·읽기 오류 검증은 자동 유지                                                                          |
-| **tests**/build.p3-plumbing.test.mjs, build.p5-plumbing.test.mjs                                                                      | doc-gate/validate 존재·보고의 CLI 호출 고정 제거. 실제 캐시 출력·무오염은 자동 유지. report 경로·필드는 수동 계약/회귀로 이전                                                                     |
-| **tests**/summary.artifact-set.test.mjs, generator.multi-writer.test.mjs                                                              | summary/feeds의 같은 sourceCommit·generatedAt·원자 쓰기·동시 생성 기능 자동 유지. report를 필수 3번째 빌드 산출물로 묶지 않음                                                                     |
-| **tests**/dead-values.guard.test.mjs                                                                                                  | 실제 스키마/제품 payload·죽은 값 검사는 자동 유지. SC4·LZ6 inspector 스키마 주입 검출은 수동 승계. 옛 validate 경로만 제거                                                                        |
-| **tests**/legacy-sweep.test.mjs                                                                                                       | 추적 파일/예외 liveness와 실제 레거시 토큰 검출 보존. 이동한 정책 경로·테스트 예외 원장을 정확히 갱신하고 포괄 제외 추가 금지                                                                     |
-| **tests**/docs-contract.test.mjs, docs-payload-shape.test.mjs                                                                         | 제품 endpoint/payload/enum 문서 정합은 자동 유지. 검사 라벨/보고/불변식 문서 계약은 해당 하네스 수동 계약으로 분리. 옛 CLI 문자열을 살리기 위한 단언 제거                                         |
-| lib/**tests**/git.test.mjs, atomic-git.hardening.test.mjs, git-walk.test.mjs, feed-cursor.test.mjs, parse-vault.generated-at.test.mjs | Git 종료·캐시·파싱 API 영향을 자동 검증. cursor·시간 값·오류 전파의 기존 기능 조건 유지                                                                                                           |
-| **tests**/helpers/tmp-git-vault.mjs, walk-feeds.mjs 등                                                                                | 실제 소비처 변경에 필요한 API/거짓 주석만 수정. 기존 제품 fixture의 전수 개명 금지                                                                                                                |
+| 기존 파일·항목                                                                                                                          | 이전/갱신할 실질 보호                                                                                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/__tests__/doc-gate.test.mjs`                                                                                                       | document-state.test.mjs로 이전. 사유·우선순위·결정성·정상/위반·빈 입력 보존                                                                                                                       |
+| `lib/__tests__/head-state.draft-id-collision.test.mjs + __tests__/validate.draft-id-collision.test.mjs`                                 | document-state.draft-id-collision.test.mjs로 정책·dev/prod 진단 이전. load/help 존재만 확인하는 옛 CLI seam 제거                                                                                  |
+| `lib/__tests__/invariants.test.mjs, invariants.feed-only.test.mjs, invariants.grandfathering.test.mjs`                                  | document-invariants 관련 책임별 회귀로 이전. A+D/정상 rename/이관 이전 면제·각 불변식 보존. 정책 설명을 확인하는 원문 검사는 새 소유 경로에 맞춤                                                  |
+| `__tests__/build.immutability-gate.test.mjs, immutability.verify.test.mjs`                                                              | document-state.id-history.test.mjs로 ID 변경·최초 등록·따옴표/줄 변경 경계 통합. 독립 조건 누락 없이 중복만 합침                                                                                  |
+| `__tests__/validate.cli.test.mjs`                                                                                                       | CLI argv/help/폐기 옵션 제거. shallow/partial·schema 위반·진단·무오염·보고 스키마·쓰기 실패·실패 전 관측은 document-integrity/report 회귀로 승계                                                  |
+| `__tests__/validate.deadlinks.test.mjs`                                                                                                 | document-integrity.deadlinks.test.mjs. 기본 warn·ignore/error·동명 충돌·검사 순서 보존. 옛 argv/help만 제거                                                                                       |
+| `__tests__/validate.exclusion.test.mjs`                                                                                                 | document-integrity.exclusion.test.mjs. 제외 0·사유·원인 SHA·기존 오류 순서 보존. 허용치 CLI 파싱 폐기                                                                                             |
+| `__tests__/build.conventions.test.mjs, build.convention-scope.test.mjs`                                                                 | 규약/이관 예외는 수동 document-invariants 회귀. 정상 삭제·rename의 피드 결과는 자동 기능 검사로 유지                                                                                              |
+| `__tests__/build.doc-exclusion.test.mjs`                                                                                                | 감사 상태의 제외 전파·invalid-excluded/SHA는 수동 inspector 회귀. FEED_REF_REASONS 값·정상 피드 생존 기능 검증은 자동에 유지                                                                      |
+| `__tests__/build.feed-survival.test.mjs`                                                                                                | 정책 실패/보고는 수동. normal/fix·draft/삭제/disable·unpublished 진단의 실제 피드 기능은 collectFeedItems/생성기 자동 테스트에서 유지                                                             |
+| `__tests__/build.env-filter.test.mjs, build.env-parity.test.mjs`                                                                        | validate parseArgs 블록 제거. 정상 draft 이중 신호·혼합 feed·disable·prod 0·이관 등가는 자동 생성/파싱 테스트에 유지. 위반 draft의 정책 판정은 수동으로 이전                                      |
+| `__tests__/build.frontmatter-id.test.mjs, lib/__tests__/derive.unique-frontmatter-id.test.mjs`                                          | UUIDv7을 실제 payload로 전달하는 검증은 자동 유지. ID 부재·중복 차단은 수동 검사 회귀로 이전                                                                                                      |
+| `__tests__/build.ignore-feeds.test.mjs, build.ignore-mediation.verify.test.mjs`                                                         | 명시 억제·문서/본문 보존은 실제 feeds 생성의 자동 검증. malformed/stale의 inspector 판정은 수동으로 분리                                                                                          |
+| `__tests__/build.smoke.test.mjs, build.vault.test.mjs, build.vault-root.test.mjs, build.uuidv7-e2e.test.mjs`                            | 정상 생성·rename/prune·실제 field·sourceCommit·결정성은 자동 유지하며 파싱/생성기로 전환. report/검사 전용 단언만 수동으로 이전                                                                   |
+| `__tests__/build.contract-shape.test.mjs, lib/__tests__/build.wire-payload.test.mjs`                                                    | 실제 출력 모양/파싱 등가는 자동 유지. inspector와의 공유 엔진 비교만 수동으로 분리. 내부 gate/wire.ignore 키의 소멸에 맞춤                                                                        |
+| `lib/__tests__/fail-closed.verify.test.mjs`                                                                                             | isDraft·Git 오류 전파·실제 생존 기능 자동 유지. frontmatter/삭제 ID 재사용 정책 블록은 수동 이전                                                                                                  |
+| `lib/__tests__/git-walk.ref-resolution.test.mjs, feed.prefix-closure.test.mjs`                                                          | 실제 참조 해석·사유/SHA·접두사 무관한 feed 해석은 자동 유지. checkFeedResolution/checkCommitConventions 단언만 하네스로 옮겨 scripts의 하네스 import 제거                                         |
+| `__tests__/serving.exclusion.test.mjs, serving.drift-inversion.test.mjs`                                                                | 정상 서빙·draft prune·본문은 자동 유지. 위반 문서를 자동 정제한다는 옛 보장 대신 기능이 ID 감사하지 않음을 관측. 같은 위반을 inspector가 실패시키는 짝은 수동 회귀에 둠                           |
+| `__tests__/serving.cost-tier.test.mjs, serving.cost-profile.test.mjs`                                                                   | 항상 깊은 감사를 강제하던 단언 갱신. 자동에서 실제 기능 결과가 있으면서 blame·삭제 ID 감사 호출 0임을 확인. 필요한 log/피드 조회가 살아 있음을 짝지음                                             |
+| `__tests__/summary.generator.test.mjs, summary.cli-exit.test.mjs`                                                                       | partial/excludedCount/max-excluded/exit 3 제거. 정상 생성·명시 out·stdout·인자·쓰기/런타임 오류·항상 계산은 자동 유지                                                                             |
+| `__tests__/summary.suppression-independence.test.mjs`                                                                                   | summary의 억제 독립·명시 feeds의 오류는 자동 유지. validate 오류 arm만 inspector 수동 회귀로 승계                                                                                                 |
+| `__tests__/cli-contract.test.mjs, cursor.cli-contract.test.mjs, lib/__tests__/cli-env.probe.test.mjs`                                   | 삭제 명령의 기본 vault/enum seam만 제거. summary·feeds·wiki의 argv/stdout/격리·커서 보호는 자동 유지                                                                                              |
+| `__tests__/hooks.plumbing.test.mjs`                                                                                                     | 실제 .husky/pre-push를 임시 vault·로컬 bare remote에서 실행하는 자동 통합으로 교체. pnpm shim이 fixture의 실제 guard만 실행해 자기 전체 suite 재귀 방지. 중복 ID면 remote 불변·정상 수정이면 성공 |
+| `__tests__/build.entry-guard.test.mjs, build.v3p1-plumbing.test.mjs`                                                                    | 없어진 validate export/존재·3단 체인 기대 제거. 실제 2단 생성·실패 시 후속 미실행·환경별 파일·읽기 오류 검증은 자동 유지                                                                          |
+| `__tests__/build.p3-plumbing.test.mjs, build.p5-plumbing.test.mjs`                                                                      | doc-gate/validate 존재·보고의 CLI 호출 고정 제거. 실제 캐시 출력·무오염은 자동 유지. report 경로·필드는 수동 계약/회귀로 이전                                                                     |
+| `__tests__/summary.artifact-set.test.mjs, generator.multi-writer.test.mjs`                                                              | summary/feeds의 같은 sourceCommit·generatedAt·원자 쓰기·동시 생성 기능 자동 유지. report를 필수 3번째 빌드 산출물로 묶지 않음                                                                     |
+| `__tests__/dead-values.guard.test.mjs`                                                                                                  | 실제 스키마/제품 payload·죽은 값 검사는 자동 유지. SC4·LZ6 inspector 스키마 주입 검출은 수동 승계. 옛 validate 경로만 제거                                                                        |
+| `__tests__/legacy-sweep.test.mjs`                                                                                                       | 추적 파일/예외 liveness와 실제 레거시 토큰 검출 보존. 이동한 정책 경로·테스트 예외 원장을 정확히 갱신하고 포괄 제외 추가 금지                                                                     |
+| `__tests__/docs-contract.test.mjs, docs-payload-shape.test.mjs`                                                                         | 제품 endpoint/payload/enum 문서 정합은 자동 유지. 검사 라벨/보고/불변식 문서 계약은 해당 하네스 수동 계약으로 분리. 옛 CLI 문자열을 살리기 위한 단언 제거                                         |
+| `lib/__tests__/git.test.mjs, atomic-git.hardening.test.mjs, git-walk.test.mjs, feed-cursor.test.mjs, parse-vault.generated-at.test.mjs` | Git 종료·캐시·파싱 API 영향을 자동 검증. cursor·시간 값·오류 전파의 기존 기능 조건 유지                                                                                                           |
+| `__tests__/helpers/tmp-git-vault.mjs, walk-feeds.mjs 등`                                                                                | 실제 소비처 변경에 필요한 API/거짓 주석만 수정. 기존 제품 fixture의 전수 개명 금지                                                                                                                |
 
 표의 `__tests__`와 `lib/__tests__` 앞에는 scripts/를 붙인다. 삭제 대상의 import뿐 아니라 동적 import·CLI 경로·설정·스캔 원장·문서의 실행 예제를 모두 대조한다. 역사 문서의 과거 설명은 유지하며 현재 실행 안내로 오인되는 참조만 고친다.
 
@@ -306,7 +306,7 @@ it.each(['dev', 'prod'])(
 
 | Contract / 판정                                   | 구현·검증 대응                                                                                                            |
 | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| C1·C2                                             | 같은 분야의 정책·직접 **tests**, 실제 가드만 .guard, 의미별 이름. 기능 자동 검사를 수동에 흡수하지 않음                   |
+| C1·C2                                             | 같은 분야의 정책·직접 `__tests__`, 실제 가드만 .guard, 의미별 이름. 기능 자동 검사를 수동에 흡수하지 않음                 |
 | C3                                                | 기존 실제 list 비교로 test=coverage·수동과 비중첩·누락 없음·빈 수집 실패. 하네스가 실제 wiki를 검사하지 않는 fixture 격리 |
 | C4                                                | inspectDocument의 전체 기존 회귀, 실제 파일 가드. 문서/ID diff 0                                                          |
 | C5 frontmatter/type/schema/UUIDv7/created·updated | document-state 정상·위반·사유 우선순위 + 실제 dev 전체 집행                                                               |
@@ -366,23 +366,23 @@ EXPECT: 두 자동 수집 집합이 같고 수동과 교집합이 없으며 역�
 
 ## Acceptance Criteria
 
-- [ ] 기존 C5의 조건·예외·심각도·진단마다 대체 검사와 회귀가 있다.
-- [ ] 기능 경로에서 전체 문서 스키마/중복/ID 불변/삭제 ID 재사용/커밋 규약/deadlink/전체 불변식을 집행하지 않는다.
-- [ ] 기능에 필요한 가시성·이력·파싱·렌더·명시 억제·입력/캐시 경계 검증을 보존한다.
-- [ ] validate CLI·명령·현재 실행 참조·호환 wrapper가 없고 summary 감사 옵션도 없다.
-- [ ] 실제 문서 가드와 scripts 기능은 자동, 검사기 회귀·설정 계약은 수동이다.
-- [ ] 보고·원인·SHA·쓰기 실패·빈 입력의 보호와 기존 제품 coverage floor를 유지한다.
-- [ ] 실제 운영/개발 빌드가 생성만 하며 검증한 정상 입력의 의미를 보존한다.
-- [ ] sas-wiki 안에서만 로컬 커밋하며 부모 포인터·wiki 문서·기존 ID를 바꾸거나 push하지 않는다.
+- [x] 기존 C5의 조건·예외·심각도·진단마다 대체 검사와 회귀가 있다.
+- [x] 기능 경로에서 전체 문서 스키마/중복/ID 불변/삭제 ID 재사용/커밋 규약/deadlink/전체 불변식을 집행하지 않는다.
+- [x] 기능에 필요한 가시성·이력·파싱·렌더·명시 억제·입력/캐시 경계 검증을 보존한다.
+- [x] validate CLI·명령·현재 실행 참조·호환 wrapper가 없고 summary 감사 옵션도 없다.
+- [x] 실제 문서 가드와 scripts 기능은 자동, 검사기 회귀·설정 계약은 수동이다.
+- [x] 보고·원인·SHA·쓰기 실패·빈 입력의 보호와 기존 제품 coverage floor를 유지한다.
+- [x] 실제 운영/개발 빌드가 생성만 하며 검증한 정상 입력의 의미를 보존한다.
+- [x] sas-wiki 안에서만 로컬 커밋하며 부모 포인터·wiki 문서·기존 ID를 바꾸거나 push하지 않는다.
 
 ## Completion Checklist
 
-- [ ] 위 소비처 표의 실질 단언을 승계하고 삭제 이유가 분명하다.
-- [ ] 새 경로·제목·test-utils 소유·800줄 제한이 부모 규칙 및 C2와 맞다.
-- [ ] scripts→harness import나 기능 파서/renderer의 복제가 없다.
-- [ ] 자동 검사기를 무력화했을 때 수동 회귀가 실제 실패한다.
-- [ ] GREEN 뒤와 REFACTOR 뒤 5차원 직접 감사·완전성 검수를 수행하고 결과를 근거와 함께 남긴다.
-- [ ] README·PRD·현재 계획이 일치하며 P4를 완료로 처리하지 않는다.
+- [x] 위 소비처 표의 실질 단언을 승계하고 삭제 이유가 분명하다.
+- [x] 새 경로·제목·test-utils 소유·800줄 제한이 부모 규칙 및 C2와 맞다.
+- [x] scripts→harness import나 기능 파서/renderer의 복제가 없다.
+- [x] 자동 검사기를 무력화했을 때 수동 회귀가 실제 실패한다.
+- [x] GREEN 뒤와 REFACTOR 뒤 5차원 직접 감사·완전성 검수를 수행하고 결과를 근거와 함께 남긴다.
+- [x] README·PRD·현재 계획이 일치하며 P4를 완료로 처리하지 않는다.
 
 ## Risks
 
@@ -418,3 +418,16 @@ research.md의 공식 근거로 동기 Git의 자체 종료·Vitest 타이머 �
 계획 커버리지의 미판정 항목은 없다. 구현 전 확인할 사용자 항목은 이 계획대로 진행할지이며, 구현 검증 체크박스는 실행 전이라 모두 미완료로 둔다. 검수는 Codex가 직접 수행했으며 독립 에이전트 검수로 표시하지 않는다.
 
 계획 산출물 3개의 Prettier·상대 링크·diff 공백 검사는 통과했다. 이 단계에서는 새 구현 테스트나 전체 suite를 실행하지 않았다. 기존 buildContent의 두 환경 성공은 위 기준선 조사에만 사용했다. 커밋 전 pnpm audit는 기존 의존성의 high 3·moderate 7·low 1을 보고했으며 의존성 파일을 바꾸지 않았다. 패키지 수정은 이번 계획 작성의 범위에 포함하지 않는다.
+
+## 구현 및 최종 검수 결과
+
+- 승인된 Codex 직접 실행 방식으로 RED → GREEN → REFACTOR와 두 차례 5차원 검수를 수행했다. 다른 에이전트·Claude Skill 실행으로 표시하지 않는다.
+- 실제 파일 수집과 환경별 투영은 scripts/lib/head-state, 기능 조립은 parse-vault·기존 빌더가 소유한다. document-state·document-integrity·document-invariants·document-report로 정책과 보고를 이전했다. 독립 검증 CLI나 호환 래퍼는 없다.
+- 실제 가드는 snapshot을 한 번 파싱하고 두 환경의 성공 Git 질의를 공유한다. 일반 파싱·생성과 라이브 feeds의 전체 ID 감사 호출 0, 실패 비캐시, 입력/encoding 구분, SIGTERM 무시 자식의 SIGKILL 종료를 회귀로 확인했다.
+- 삭제한 validate의 argv/help/전용 stdout·exit 테스트는 제거했다. 정책 검출·사유 우선순위·이력/stray·draft 충돌·전체 피드/200건 밖 참조·보고와 쓰기 실패는 같은 분야의 수동 회귀로 승계했다. 정상 생성·억제·표시·페이징·출력/에러의 실질 기능 검사는 자동에 남겼다. 이동한 기존 원문 가드의 정확한 경로와 살아 있는 예외 좌표도 갱신했다.
+- 계획의 내부 파일 분해는 회귀별 책임에 따라 더 나눴다. 여러 회귀가 쓰는 fixture 지원만 harness/test-utils에 두고 사용하지 않는 사본은 남기지 않았다. 예제 저장소 준비 중복은 기존 seed-example-vault에 통합했고, scripts의 두 테스트 지원 모듈은 공유 기능만 사용한다. 새 경로는 부모 이름·종류 규칙과 800줄 이내를 지킨다. 서로 다른 가족의 테스트 도우미를 import하지 않는다.
+- 공통 억제 로더의 JSON/읽기 오류에 실제 파일 경로와 cause를 붙였다. 기존 오류 실패 동작을 유지하며 잘못된 억제 파일을 수정할 위치를 알 수 있게 했다. REFACTOR에서는 무시되는 옛 인자·미구현 시절의 로드 래퍼·죽은 주석을 정리했다.
+- 고정 상태의 최종 자동 검사 100파일·1,028건과 수동 하네스 35파일·268건이 통과했다. 기존 제품 coverage 하한 86/76/92/89와 scripts 기능 분모를 유지했다. 정확한 수치는 PRD 결과에 기록한다. 검사 도중 사본 삭제와 실행을 겹쳐 인덱스 ENOENT를 만든 중간 실패는 상태를 고정한 전체 재실행으로 해소했다.
+- 실제 prod/dev 빌드와 구현 전 기준선 JSON을 비교했다. sourceCommit만 당시 HEAD로 바꾸어 대조했으며 summary·feeds·body의 모든 JSON 값과 순서가 같다. dev 문서/피드 67/6, prod 61/1이다. generatedAt 등 다른 필드를 제거하지 않았다. null-prototype 내부 맵은 wire JSON으로 직렬화해 비교했다.
+- 포맷과 diff 공백 검사가 통과했다. wiki·기존 ID·의존성 파일·pre-commit은 변경하지 않았고 부모 인덱스는 main 97f207cfcfa6be9365bff7ae67d2422f9072f342를 유지했다. 감사의 기존 high 3·moderate 7·low 1은 의존성 변경 없이 유지된다.
+- 계약 C1–C10의 P3 관할 항목과 소비처 표를 재대조했다. 정확성·중복·죽은 코드·정리 부채·임시 대응의 최종 미니 검수에서 미해결 구현 결함을 발견하지 않았다. 부모의 validate 존재 단언은 여전히 별도 호환성 작업이며 이번 범위에서 수정하지 않는다. CI의 운영 세트 저장과 최종 배선 검증은 P4로 넘긴다.
