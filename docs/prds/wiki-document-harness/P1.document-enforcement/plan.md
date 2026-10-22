@@ -18,8 +18,8 @@
 - Source PRD: ../prd.md
 - PRD Phase: P1.document-enforcement
 - Contract: ../contract.md C2·C4·C5·C7, C3의 자동 수집 부분
-- Estimated Files: 기존 규칙 모듈 이동 1개·집행 파일 교체 1개·기존 회귀 import 1개·Vitest 설정 1개
-- Work boundary: 수정·산출물·커밋은 `/workspace/sas-wiki` 내부만 허용. 부모 규칙·소비처는 읽기 전용으로 참고한다.
+- Estimated Files: 기존 규칙 모듈 이동 1개·집행 파일 교체 1개·기존 회귀 import 1개·Vitest 설정 1개·측정된 기존 테스트 예산 보완 2개
+- Work boundary: 저장소 파일 수정·보존할 산출물·커밋은 `/workspace/sas-wiki` 내부만 허용. 일회성 테스트 픽스처는 기존 OS 임시 경로 관례를 유지하며 부모 규칙·소비처는 읽기 전용으로 참고한다.
 
 ## UX Design
 
@@ -61,19 +61,23 @@ buildContent는 위반 시 경로·사유·필요한 SHA를 포함해 throw한�
 
 ### Repository coordinates
 
+실 vault가 다른 사용자 소유인 컨테이너에서도 기존 테스트의 Git 전역 설정 격리를 유지한다. 새 가드는 beforeAll에서 기존 GIT_CONFIG_COUNT 뒤에 실제 sas-wiki 경로 하나의 safe.directory를 추가하고 afterAll에서 환경을 복원한다. 전역 Git 설정과 부모 파일은 수정하지 않는다. 기존 build.uuidv7-e2e.test.mjs의 범위 한정 방식을 따른다.
+
 실제 corpus는 테스트 파일의 import.meta.url에서 sas-wiki 루트를 계산한다. cwd나 환경 변수에서 임의로 다른 wiki를 고르지 않는다. 경로 표시는 wiki 기준 상대 POSIX 경로를 사용한다.
 
 ## Files to Change
 
-| File                                                             | Action | Responsibility                                                                                            |
-| ---------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
-| `harness/wiki-documents/document-rules.mjs`                      | MOVE   | 기존 `harness/document-rules.mjs`의 inspectDocument를 중복 없이 이동                                      |
-| `harness/wiki-documents/__tests__/document-rules.guard.test.mjs` | CREATE | 실제 문서의 작성 규칙과 dev/prod 전체 무결성을 집행                                                       |
-| `harness/wiki-documents.test.mjs`                                | DELETE | 새 집행 파일로 대체해 실제 문서 검사를 중복 실행하지 않음                                                 |
-| `harness/document-rules.test.mjs`                                | UPDATE | 이동한 검사기 import만 맞춤. 수동 회귀 분야로의 배치는 P2                                                 |
-| `vitest.config.js`                                               | UPDATE | 일반 수집을 scripts 전체 테스트 + wiki-documents 테스트로 명시. coverage floor·Git 환경·기존 timeout 유지 |
+| File                                                             | Action | Responsibility                                                                                               |
+| ---------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------ |
+| `harness/wiki-documents/document-rules.mjs`                      | MOVE   | 기존 `harness/document-rules.mjs`의 inspectDocument를 중복 없이 이동                                         |
+| `harness/wiki-documents/__tests__/document-rules.guard.test.mjs` | CREATE | 실제 문서의 작성 규칙과 dev/prod 전체 무결성을 집행                                                          |
+| `harness/wiki-documents.test.mjs`                                | DELETE | 새 집행 파일로 대체해 실제 문서 검사를 중복 실행하지 않음                                                    |
+| `harness/document-rules.test.mjs`                                | UPDATE | 이동한 검사기 import만 맞춤. 수동 회귀 분야로의 배치는 P2                                                    |
+| `vitest.config.js`                                               | UPDATE | 일반 수집을 scripts 전체 테스트 + wiki-documents 테스트로 명시. coverage floor·Git 환경·기존 timeout 유지    |
+| `scripts/__tests__/cli-contract.test.mjs`                        | UPDATE | 실제 측정에서 120초를 초과한 stdout summary 사례의 자식·케이스 예산만 180초로 보완. 다른 기본 예산·단언 유지 |
+| `scripts/__tests__/feeds.env-leak.verify.test.mjs`               | UPDATE | 123초가 걸린 실 vault dev/prod 신원 검사 사례의 예산만 180초로 보완. 논리 단언 유지                          |
 
-규칙 모듈은 실제 집행과 기존 회귀가 사용하는 검사 대상 코드다. 소스·테스트를 새 test-utils로 복제하지 않는다. 기존 회귀는 P1 검증에서 명시 실행하고, P2에서 수동 실행 분야에 배치한다. 기본 include 전환 후에는 저장소의 무시된 `logs/verification/existing-regression.config.mjs`에 기존 Vitest 설정을 import·전개하고 test.include만 `harness/document-rules.test.mjs`로 덮어쓴 임시 설정을 만든다. `pnpm exec vitest run --config logs/verification/existing-regression.config.mjs --passWithNoTests=false`로 기존 파일 자체를 재검증한다. 테스트 사본이나 영구 수동 명령은 만들지 않는다.
+규칙 모듈은 실제 집행과 기존 회귀가 사용하는 검사 대상 코드다. 소스·테스트를 새 test-utils로 복제하지 않는다. 기존 회귀는 P1 검증에서 명시 실행하고, P2에서 수동 실행 분야에 배치한다. 기본 include 전환 후에는 세션 임시 경로 `/tmp/wiki-document-harness-p1/existing-regression.config.mjs`에 sas-wiki의 Vitest 설정을 절대 경로로 import·전개하고 test.include만 `harness/document-rules.test.mjs`로 덮어쓴 임시 설정을 만든다. `pnpm exec vitest run --config /tmp/wiki-document-harness-p1/existing-regression.config.mjs --passWithNoTests=false`로 기존 파일 자체를 재검증한다. 테스트 사본이나 영구 수동 명령은 만들지 않는다.
 
 ## Step-by-Step Tasks
 
@@ -112,6 +116,12 @@ buildContent는 위반 시 경로·사유·필요한 SHA를 포함해 throw한�
 - GOTCHA: 경로를 바꾼 실험 사본의 성공을 실제 통합 완료로 보고하지 않는다. 실제 적용 전 사용자에게 이전 명령을 재사용하라고 요청하지 않는다.
 - VALIDATE: 실제 경로에서 import·repo 좌표·수집·문서 집행을 확인하고 계약의 P1 부분을 완료 검수한다. 통과 후 PRD 상태를 complete로 갱신한다.
 
+### 검증 중 확인한 실 vault 예산 보완
+
+첫 정상 권한 전체 검증은 111개 파일 중 109개, 1,211개 테스트 중 1,209개가 통과했다. 실패는 기존 C4a stdout summary의 자식 `ETIMEDOUT`(120,130ms)과 LK2 dev/prod 신원 검사의 `Test timed out in 120000ms`(123,153ms) 두 건이다. C4a는 summary 자식만 180초로 보완하고, it.each가 공유하는 summary·feeds 그룹의 케이스 예산을 180초로 맞춘다. feeds 자식은 기존 120초에서 중단된다. LK2의 케이스 예산도 180초로 보완한다. 출력·피드 신원·유출 검출 단언과 CLI 기본 120초, C1·C6·픽스처·전역 예산은 유지한다. LK2의 Vitest 예산은 동기 Git 자식의 강제 중단 보장이 아니며 그 경계는 P3에서 처리한다.
+
+검증의 일회성 픽스처까지 공유 마운트 안으로 옮긴 TMPDIR 강제 지정은 제거한다. 기존 테스트가 사용하는 OS 임시 디렉터리를 유지하고 결과 로그·coverage·기능 산출물은 sas-wiki 내부에 저장한다. 위 관측 실행은 실패이며 완료 검증으로 대체하지 않는다.
+
 ## Existing Check → Execution and Verification
 
 별도 조사 명세를 유지하지 않는다. 이 표는 P1이 호출하는 기존 검사와 검증의 연결이고, 구체적인 코드 이동·기존 소비처 수정은 P3 plan에 작성한다.
@@ -149,13 +159,12 @@ validate 제거·전체 소비처 개명·생산 경로의 ID 감사 분리는 P
 ```sh
 pnpm exec vitest run --passWithNoTests=false --testNamePattern='실제 위키 문서'
 pnpm exec vitest list --filesOnly
-pnpm run test
-pnpm run test:coverage
+pnpm run test:coverage --maxWorkers=1
 pnpm run format:check
 git diff --check
 ```
 
-첫 명령은 새 집행 suite의 제목을 그대로 사용하도록 구현한다. 파일 목록은 실제 수집 경로와 대조한다. 기존 gate의 선택 실행은 위 대응표 파일을 필터로 지정한다. 샌드박스에서 Git 실행이 거부되면 승인된 정상 실행 환경을 사용하며 실패를 규칙 통과로 처리하지 않는다. 문서 계획만 바꾼 현재 시점에는 이 미래 구현 검증을 실행했다고 기록하지 않는다.
+첫 명령은 새 집행 suite의 제목을 그대로 사용하도록 구현한다. 파일 목록은 실제 수집 경로와 대조한다. test와 coverage는 같은 설정을 사용하므로 전체 스위트는 coverage에서 실행한다. 실패가 발견되면 해당 사례를 수정·재검증한 뒤 전체 검증을 다시 한다. 기존 gate의 선택 실행은 위 대응표 파일을 필터로 지정한다. 컨테이너 파일시스템의 Git 조회 경합을 줄이기 위해 최종 전체 검증은 워커 하나로 실행하며, 전역 시간 제한과 커버리지 임계는 유지한다. 샌드박스에서 Git 실행이 거부되면 승인된 정상 실행 환경을 사용하며 실패를 규칙 통과로 처리하지 않는다. 실제 실행한 검증 결과만 완료 근거로 기록한다.
 
 ## Acceptance Criteria
 

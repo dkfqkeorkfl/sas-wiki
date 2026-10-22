@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { collectMarkdownFilesRecursive, parseMarkdownFile } from '../../../scripts/lib/parse.mjs'
 import { buildContent } from '../../../scripts/validate.mjs'
@@ -10,6 +10,26 @@ const root = fileURLToPath(new URL('../../../', import.meta.url))
 const wikiDir = path.join(root, 'wiki')
 const files = collectMarkdownFilesRecursive(wikiDir)
 const relativePath = (base, file) => path.relative(base, file).split(path.sep).join('/')
+
+beforeAll(() => {
+  const rawCount = process.env.GIT_CONFIG_COUNT ?? '0'
+  const count = Number(rawCount)
+  if (
+    !/^\d+$/u.test(rawCount) ||
+    !Number.isSafeInteger(count) ||
+    count >= Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error(`GIT_CONFIG_COUNT가 유효한 Git 설정 개수가 아닙니다: ${rawCount}`)
+  }
+  // 전역 설정을 읽지 않는 테스트 환경에서도 이 실제 vault만 신뢰한다. 기존 설정은 보존한다.
+  vi.stubEnv(`GIT_CONFIG_KEY_${count}`, 'safe.directory')
+  vi.stubEnv(`GIT_CONFIG_VALUE_${count}`, path.resolve(root))
+  vi.stubEnv('GIT_CONFIG_COUNT', String(count + 1))
+})
+
+afterAll(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('실제 위키 문서', () => {
   it('집행할 마크다운 문서가 존재한다', () => {
@@ -39,7 +59,7 @@ describe('실제 위키 문서', () => {
   it.each(['dev', 'prod'])(
     '%s 문서·이력·참조·산출물의 무결성을 지킨다',
     (env) => {
-      const { report, stats } = buildContent({
+      const { body, feeds, report, stats, summary } = buildContent({
         env,
         onReport(payload, write) {
           console.log(
@@ -64,6 +84,12 @@ describe('실제 위키 문서', () => {
         vault: root,
       })
 
+      console.log(
+        `[wiki] docs=${summary.docs.length} body=${Object.keys(body.docs).length} feeds=${feeds.items.length}` +
+          ` prune=${stats.prunedDocRefs} prunedFeeds=${stats.prunedFeeds}` +
+          ` unresolved=${stats.unresolvedPaths.length}` +
+          ` warnings=${stats.warnings.length + stats.unpublishedFeedCommits.length + stats.deadlinks.length}`,
+      )
       for (const entry of stats.deadlinks) {
         console.warn(
           `[wiki] deadlink: ${relativePath(root, entry.from)}` +
