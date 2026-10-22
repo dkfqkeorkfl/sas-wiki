@@ -23,6 +23,7 @@
 - 린트·커스텀 룰 도입, TypeScript 전환, 신규 외부 의존성.
 - 기업 문서 추가·재감사, 위키 본문과 기존 ID의 변경.
 - 프론트 제품 기능 변경, 작업과 무관한 전수 개명.
+- `/workspace/sas-wiki` 밖의 파일·설정·부모 저장소 커밋 변경. 부모 규칙과 소비처는 읽기 전용으로 참고한다.
 - 원격 push·PR 생성·실제 릴리즈 발행·배포.
 - 보호 정책 해제·우회 또는 상시 유지할 별도 요구 추적·검수 문서 체계.
 
@@ -75,6 +76,7 @@
 - 기존 경고를 실패로 강화하는 정책 변경은 이번 재배치에 포함하지 않는다.
 - 기존 검사/소비처 조사는 구현 계획의 준비 과정이다. 조사만으로 구현 phase 완료를 판정하지 않는다.
 - 독립 CLI 제거와 관련 훅·CI 호출 갱신은 같은 전환에서 맞춰 죽은 호출을 남기지 않는다.
+- 수정·테스트 산출물·커밋은 sas-wiki 내부로 제한한다. 부모 저장소 소비처에 후속 수정이 필요하면 영향과 별도 작업을 보고하고, 이번 작업에서 수정하지 않는다.
 - 단계는 순차 진행한다. 실제 문서·보호 파일에 초안을 적용하기 전 해당 명세·계획 검수를 마친다.
 
 | Risk                                | Likelihood | Mitigation                                                       |
@@ -87,12 +89,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                | Description                                 | Status  | Parallel | Depends | PRP Plan |
-| --- | -------------------- | ------------------------------------------- | ------- | -------- | ------- | -------- |
-| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | pending | -        | -       | -        |
-| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | pending | -        | 1       | -        |
-| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending | -        | 2       | -        |
-| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending | -        | 3       | -        |
+| #   | Phase                | Description                                 | Status      | Parallel | Depends | PRP Plan                                |
+| --- | -------------------- | ------------------------------------------- | ----------- | -------- | ------- | --------------------------------------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | in-progress | -        | -       | [plan](P1.document-enforcement/plan.md) |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | pending     | -        | 1       | -                                       |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending     | -        | 2       | -                                       |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending     | -        | 3       | -                                       |
 
 ### Phase Details
 
@@ -117,7 +119,7 @@
 **P4: delivery-pipeline**
 
 - Goal: 자동 게이트부터 운영 산출물 저장까지 연결한다.
-- Scope: 계약 C8–C10의 최종 배선·CI 저장·가이드·상위 소비자 계약·전체 검증.
+- Scope: 계약 C8–C10의 sas-wiki 내부 최종 배선·CI 저장·가이드·전체 검증. 상위 소비자는 영향만 확인해 별도 작업으로 보고한다.
 - Success signal: 기능·문서 테스트와 coverage, 수동 회귀, 실제 prod 빌드가 통과하며 CI 산출물 입력이 맞다. 로컬 커밋만 완료하고 실제 배포하지 않는다.
 
 ### Parallelism Notes
@@ -133,6 +135,7 @@
 | 실행 정책   | 자동 제품 검사·수동 회귀         | CI에서 전체 하네스 반복               | 사용자 최신 정정                       |
 | 검사 심각도 | 기존 판정 보존                   | 경고를 오류로 강화                    | 재배치와 정책 변경 구분                |
 | 작업 제한   | 기존 feature 브랜치·로컬 커밋    | push·PR·릴리즈 발행                   | 기존 승인 범위                         |
+| 수정 경계   | sas-wiki 내부만 변경             | 부모 저장소 소비처까지 함께 수정      | 사용자 명시 제약                       |
 | 환경 대체   | Codex가 지침·산출물·검수를 수행  | 실행 불가한 호출을 수행한 것으로 간주 | 사용자 승인한 환경 적응                |
 
 ## Research Summary
@@ -153,4 +156,4 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 �
 - [contract.md](contract.md): 조율·갱신할 수 있는 합의 목표 — 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
 - 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
 
-_Status: specification completeness verified; implementation not started_
+_Status: specification completeness verified; P1 plan verified, implementation in progress_
