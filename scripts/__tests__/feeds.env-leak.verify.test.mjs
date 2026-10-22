@@ -193,7 +193,9 @@ function restoreEnv(name, value) {
  * §8-② 실측(전체 스위트 1회): LK2 **37.9s** · LX2 38.1s · LX3 39.7s — 셋 다 초과.
  *   커버리지 계측을 얹은 실행에서는 같은 케이스가 `Test timed out in 30000ms` 로 명시 실패했다.
  */
-const REAL_VAULT_WALK_TIMEOUT = 120_000
+// 전체 커버리지에서 LK2는 123,153ms가 걸려 기존 120초 예산을 초과했다. 이 실 vault 사례만
+// 180초를 배정한다. 동기 Git 호출의 강제 중단을 보장하는 변경은 아니며 신원·누출 단언은 유지한다.
+const REAL_VAULT_WALK_TIMEOUT = 180_000
 
 /** dev 기대 건수 — **리터럴로 박지 않고 신원 목록에서 유도**한다(vault 히스토리 하드결합 금지). */
 const EXPECTED_DEV_COUNT = DRAFT_BACKED_TITLES.length + 1 // draft 유래 5 + 삭제 유래 1

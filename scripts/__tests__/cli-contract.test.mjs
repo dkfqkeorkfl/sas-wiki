@@ -46,7 +46,7 @@ const ID_DRAFT = '0192b000-0000-7000-8000-0000000000bb' // dev/ 폴더 = draft
 
 // validate.cli.test.mjs:74 runCli 를 mirror + cwd 옵션. 절대 스크립트 경로라 cwd 는 기본값 파생을
 //   흔들지 못해야 한다(C6 가 이를 증명). SOURCE_DATE_EPOCH 는 결정성 관례(기존 CLI 테스트 동일).
-function runCli(script, args, { cwd } = {}) {
+function runCli(script, args, { cwd, timeoutOverride = REAL_REPO_SPAWN_TIMEOUT } = {}) {
   const result = spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf8',
@@ -68,9 +68,9 @@ function runCli(script, args, { cwd } = {}) {
     //   실측: 25~31초/회). `spawnSync` 는 **완전히 동기**라 vitest 의 it()-레벨 타임아웃(비동기 타이머)
     //   으로는 끊을 수 없다 — 자식이 행(hang)하면 워커 전체가 무한정 멈춘다. `timeout` 옵션 자체가
     //   유일한 안전장치이므로 여기서 직접 건다. 실측 최대(51,546ms, C6 의 2회 spawn 중 1회 몫)의
-    //   수 배 여유를 두면서도, 이 파일이 이미 실 repo 케이스에 쓰는 it()-레벨 상한(120초)과 같은
-    //   값을 재사용한다(새 매직넘버를 만들지 않는다).
-    timeout: REAL_REPO_SPAWN_TIMEOUT,
+    //   수 배 여유를 둔 기본 120초를 사용한다. 실측으로 부족함을 확인한 실 vault 호출만
+    //   timeoutOverride로 별도 예산을 명시한다.
+    timeout: timeoutOverride,
   })
 
   // `timeout` 만 넣고 결과를 안 보면 여전히 조용하다 — 타임아웃으로 죽은 자식은 `status: null` 이
@@ -106,6 +106,10 @@ function runCli(script, args, { cwd } = {}) {
  *   spawn 계열이라(`wiki` 12~13초) 그룹 단위 적용이 뜻과 어긋나지 않는다.
  */
 const REAL_REPO_SPAWN_TIMEOUT = 120_000
+
+// 전체 커버리지 실행에서 C4a summary 자식이 120,130ms에 ETIMEDOUT·SIGTERM으로 종료됐다.
+// 이 실 vault 호출만 180초를 배정하고, stdout·종료 상태·JSON 단언과 다른 호출의 120초는 유지한다.
+const C4A_SUMMARY_TIMEOUT = 180_000
 
 // 생성한 tmp 는 전부 등록 후 afterAll 에서 일괄 정리(누수 0).
 const tmps = []
@@ -190,7 +194,12 @@ describe('C3 — env 기본값(prod) 무변경 · draft 필터 (🟢 회귀)', (
 // ── C4a: 성공 경로 stdout = 정확히 1줄 JSON(선/후행 비-JSON 0). RED 단계에서는 exit1·stdout 0.
 //    무엇을 깨면 red(GREEN 후): main() 에 디버그 log 혼입 → 2줄 → lines 단언 실패 / 파싱 throw.
 const C4A_CASES = [
-  { args: ['--env', 'dev'], name: 'summary', script: SUMMARY },
+  {
+    args: ['--env', 'dev'],
+    name: 'summary',
+    script: SUMMARY,
+    timeoutOverride: C4A_SUMMARY_TIMEOUT,
+  },
   // ★ v3 P2 · D15(§4.5-③ arm 갱신) — 같은 사유. 이 케이스가 무는 것은 stdout 순수성이지 인자 개수가 아니다.
   { args: ['--env', 'dev', '--count', '5'], name: 'feeds', script: FEEDS },
   // wiki의 stdout 순수성과 파싱 가능성은 새 프로세스 계약을 직접 실행하는
@@ -203,9 +212,9 @@ describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)'
   //   「선제적 상향 금지」가 막는 것은 *측정 없는* 상향이고, 98% 는 그 자체가 측정이다.
   it.each(C4A_CASES)(
     '$name: --env dev(--vault 생략) → stdout 은 단 1줄의 파싱 가능한 JSON',
-    { timeout: REAL_REPO_SPAWN_TIMEOUT },
-    ({ args, script }) => {
-      const result = runCli(script, args, { cwd: REPO_ROOT })
+    { timeout: C4A_SUMMARY_TIMEOUT },
+    ({ args, script, timeoutOverride }) => {
+      const result = runCli(script, args, { cwd: REPO_ROOT, timeoutOverride })
 
       expect(result.status).toBe(0) // RED 단계 신호였던 단언.
       const lines = result.stdout.split('\n').filter((line) => line.length > 0)
