@@ -104,7 +104,7 @@ buildContent는 위반 시 경로·사유·필요한 SHA를 포함해 throw한�
 ### Task 3: 자동 제품 테스트 수집 연결
 
 - ACTION: Vitest 기본 include를 명시한다.
-- IMPLEMENT: `scripts/**/*.test.mjs`와 새 `wiki-documents/__tests__/*.test.mjs`만 기본으로 수집한다. 향후 validation-regression이 기본 test와 coverage에 혼입되지 않게 한다. 테스트 지원 코드를 제품 계측에서 제외하고 기존 floor를 유지한다.
+- IMPLEMENT: `scripts/**/*.test.mjs`와 새 `wiki-documents/__tests__/*.test.mjs`만 기본으로 수집한다. P2에서 같은 문서 분야의 검사기 회귀가 기본 test와 coverage에 혼입되지 않게 수집을 분리한다. 테스트 지원 코드를 제품 계측에서 제외하고 기존 floor를 유지한다.
 - MIRROR: 계약 C3·C7. test와 test:coverage는 같은 설정의 수집을 사용한다.
 - GOTCHA: 현재 기존 tests는 helpers 아래 지원 코드 단위 테스트도 포함한다. 이번 설정 변경으로 이를 누락시키지 않는다. 기존 평탄한 harness fixture는 P2에서 수동 회귀로 정리하며 원본을 보호 정책 밖에서 임의 편집하지 않는다.
 - VALIDATE: 실제 Vitest 파일 목록에서 scripts 테스트와 새 집행을 확인하고, 수동 회귀 경로가 없음을 확인한다. 전체 기능 테스트·coverage 결과도 확인한다.

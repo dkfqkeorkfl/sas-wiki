@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { inspectDocument } from '../../wiki-documents/document-rules.mjs'
+import { inspectDocument } from '../document-rules.mjs'
 
 function doc(asOf = '2026-08-28', extra = {}) {
   return {

@@ -58,11 +58,10 @@ describe('자동 집행과 수동 회귀의 수집 계약', () => {
     const automatic = collected('test')
     const coverage = collected('test:coverage')
     const manual = collected('test:harness')
-    const expectedAutomatic = [
-      ...testFiles('scripts'),
-      ...testFiles('harness/wiki-documents'),
-    ].sort()
-    const expectedManual = testFiles('harness/validation-regression').sort()
+    const documentTests = testFiles('harness/wiki-documents')
+    const isGuard = (file) => /\.guard(?:\.|$)/u.test(path.basename(file))
+    const expectedAutomatic = [...testFiles('scripts'), ...documentTests.filter(isGuard)].sort()
+    const expectedManual = documentTests.filter((file) => !isGuard(file)).sort()
 
     expect(expectedAutomatic.length).toBeGreaterThan(0)
     expect(expectedManual.length).toBeGreaterThan(0)
@@ -70,6 +69,36 @@ describe('자동 집행과 수동 회귀의 수집 계약', () => {
     expect(coverage).toEqual(automatic)
     expect(manual).toEqual(expectedManual)
     expect(manual.filter((file) => automatic.includes(file))).toEqual([])
+  }, 60000)
+
+  it('같은 분야에서 가드 종류만 자동 수집하고 스크립트 계약도 자동에 유지한다', () => {
+    withProbe(({ root, write }) => {
+      const automatic = [
+        'scripts/__tests__/feature.contract.test.mjs',
+        'harness/wiki-documents/__tests__/example.guard.test.mjs',
+        'harness/wiki-documents/__tests__/example.guard.source-scan.test.mjs',
+      ].sort()
+      const manual = [
+        'harness/wiki-documents/__tests__/example.test.mjs',
+        'harness/wiki-documents/__tests__/example.contract.test.mjs',
+      ].sort()
+      for (const file of [...automatic, ...manual]) {
+        write(file, "import { it } from 'vitest'; it('fixture', () => {})\n")
+      }
+      const collect = (name) => {
+        const args = commandArgs(name)
+        if (!args.includes('--config'))
+          args.push('--config', path.join(repoRoot, 'vitest.config.js'))
+        const result = runVitest(['list', ...args, '--root', root, '--filesOnly', '--json'], root)
+        expect(result.status, result.output).toBe(0)
+        return JSON.parse(result.stdout)
+          .map(({ file }) => path.relative(root, file).split(path.sep).join('/'))
+          .sort()
+      }
+      expect(collect('test')).toEqual(automatic)
+      expect(collect('test:coverage')).toEqual(automatic)
+      expect(collect('test:harness')).toEqual(manual)
+    })
   }, 60000)
 
   it.each(['test', 'test:coverage', 'test:harness'])('%s는 빈 수집을 실패로 전달한다', (name) => {
@@ -84,7 +113,7 @@ describe('자동 집행과 수동 회귀의 수집 계약', () => {
 
   it('검사기를 무력화하면 기존 위반 회귀가 실패한다', () => {
     withProbe(({ copy, write, run }) => {
-      copy('harness/validation-regression/__tests__/document-rules.test.mjs')
+      copy('harness/wiki-documents/__tests__/document-rules.test.mjs')
       write(
         'harness/wiki-documents/document-rules.mjs',
         'export function inspectDocument() { return [] }\n',

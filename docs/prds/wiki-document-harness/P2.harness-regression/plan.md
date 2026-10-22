@@ -12,7 +12,7 @@
 
 현재 기본 Vitest는 scripts와 실제 문서 가드를 수집하지만 `test:harness`도 같은 설정에서 harness를 필터링해 실제 가드를 다시 실행한다. 평탄한 `harness/document-rules.test.mjs` 회귀는 이 명령에 수집되지 않는다. pre-push도 이 잘못된 수동 명령을 호출한다.
 
-수동 전용 설정에서 validation-regression만 수집하고, 기본 test/coverage는 같은 기본 설정에서 scripts+실제 문서 가드를 수집한다. pre-push는 일반 test를 실행하고 기존 validate 단계는 P3까지 유지한다.
+같은 `wiki-documents/__tests__/`에 집행·회귀·설정 계약을 모으고, 기본 test/coverage는 scripts 전체와 문서 분야의 `.guard`를 수집한다. 수동 전용 설정은 같은 분야에서 가드를 제외한 회귀만 수집한다. pre-push는 일반 test를 실행하고 기존 validate 단계는 P3까지 유지한다.
 
 ## Metadata
 
@@ -41,11 +41,11 @@
 | P0       | ../contract.md                                                   | C1–C3, C7–C10        | 소유·명명·수집·실패·범위                    |
 | P0       | harness/document-rules.test.mjs                                  | 전체                 | 보존할 기존 정상·위반 회귀                  |
 | P0       | harness/wiki-documents/document-rules.mjs                        | 전체                 | 작성 규칙과 진단 코드                       |
-| P0       | harness/wiki-documents/**tests**/document-rules.guard.test.mjs   | 전체                 | 실제 집행 대상, repo 좌표·빈 입력·보고 실패 |
+| P0       | `harness/wiki-documents/__tests__/document-rules.guard.test.mjs` | 전체                 | 실제 집행 대상, repo 좌표·빈 입력·보고 실패 |
 | P0       | vitest.config.js, package.json                                   | test / scripts       | 기본 수집·환경·coverage floor               |
 | P0       | .husky/pre-push                                                  | 전체                 | 수동 명령 제거와 실패 전달                  |
-| P1       | scripts/**tests**/hooks.plumbing.test.mjs                        | 전체                 | 설정 계약과 실제 validate 기능 테스트 분리  |
-| P1       | scripts/**tests**/ci.plumbing.test.mjs                           | 전체                 | 수동으로 옮길 CI 연결 계약                  |
+| P1       | `scripts/__tests__/hooks.plumbing.test.mjs`                      | 전체                 | 설정 계약과 실제 validate 기능 테스트 분리  |
+| P1       | `scripts/__tests__/ci.plumbing.test.mjs`                         | 전체                 | 수동으로 옮길 CI 연결 계약                  |
 | P1       | .github/workflows/ci.yml                                         | 전체                 | 현재 자동 명령과 간접 실행 조사             |
 | P1       | README.md                                                        | 개발 / git 훅과 CI   | 변경한 명령의 실제 안내                     |
 | P2       | /workspace/docs/prds/convention-harness-unification/rules.md     | R-B1·B2·B4, R-N13–18 | 읽기 전용 부모 명명 기준                    |
@@ -75,7 +75,7 @@
 
 ### Naming and test structure
 
-기존 `harness/wiki-documents/__tests__/document-rules.guard.test.mjs`의 분야/직접 **tests** 배치를 따른다. 검사기 동작은 `document-rules.test.mjs`, 가드 실행 동작은 `document-enforcement.test.mjs`, 명령·훅·CI 연결은 `.contract.test.mjs`로 구분한다. 테스트 제목에 계획·진행 식별자를 추가하지 않는다.
+기존 `harness/wiki-documents/__tests__/document-rules.guard.test.mjs`의 분야/직접 `__tests__` 배치를 따른다. 검사기 동작은 `document-rules.test.mjs`, 가드 실행 동작은 `document-enforcement.test.mjs`, 명령·훅·CI 연결은 `.contract.test.mjs`로 구분한다. 테스트 제목에 계획·진행 식별자를 추가하지 않는다.
 
 ### Input and error handling
 
@@ -83,7 +83,7 @@
 
 ### Configuration
 
-기본 설정의 `include: ['scripts/**/*.test.mjs', 'harness/wiki-documents/__tests__/*.test.mjs']`를 유지한다. 새 vitest.harness.config.js는 기본 설정을 import해 Git 환경·시간 예산을 상속하고 include만 validation-regression으로 교체한다. 수동 실행은 coverage 계측을 끄고 test/coverage는 기존 floor와 제품 분모를 유지한다.
+기본 설정은 scripts 전체와 `wiki-documents/__tests__/`의 `.guard` 종류 파일을 수집한다. 가드 뒤에 다른 종류가 이어지는 이름도 포함한다. 수동 설정은 기본 Git 환경·시간 예산을 상속하고 같은 폴더에서 가드 파일을 제외한다. 가드 글롭은 기본 설정의 명명된 export 한 곳에 두고 두 설정에서 공유한다. 수동 실행은 coverage 계측을 끄고 test/coverage는 기존 floor와 제품 분모를 유지한다.
 
 ### Temporary fixtures and logging
 
@@ -91,20 +91,20 @@
 
 ## Files to Change
 
-| File                                                                     | Action | Responsibility                                                                        |
-| ------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------- |
-| harness/document-rules.test.mjs                                          | MOVE   | validation-regression/**tests**/document-rules.test.mjs로 이동, import 수정·경계 보완 |
-| harness/validation-regression/**tests**/document-enforcement.test.mjs    | CREATE | 원본 가드의 정상·위반·빈 입력·예외·보고 실패·경고·prod 빈 결과 검증                   |
-| harness/validation-regression/**tests**/test-selection.contract.test.mjs | CREATE | 실제 기본/coverage/수동 수집, 누락·혼입·빈 수집·회귀 무력화 검출                      |
-| harness/validation-regression/**tests**/git-hooks.contract.test.mjs      | CREATE | 기존 훅 설정/명령순서·실패 차단 계약 이동                                             |
-| scripts/**tests**/hooks.plumbing.test.mjs                                | UPDATE | 위 계약만 분리하고 실제 validate 기능 사례 유지                                       |
-| scripts/**tests**/ci.plumbing.test.mjs                                   | MOVE   | validation-regression/**tests**/ci-pipeline.contract.test.mjs, repo 좌표 수정         |
-| harness/test-utils/vitest-probe.mjs                                      | CREATE | 최소 두 모듈이 공유하는 자식 Vitest 실행·임시 프로젝트 수명 관리                      |
-| vitest.config.js                                                         | UPDATE | passWithNoTests false 명시, 필요한 지원 코드의 제품 계측 제외                         |
-| vitest.harness.config.js                                                 | CREATE | 수동 회귀만 수집, 공통 환경 상속                                                      |
-| package.json                                                             | UPDATE | test:harness의 전용 설정 연결                                                         |
-| .husky/pre-push                                                          | UPDATE | 일반 test 실패 시 중단, validate 임시 유지                                            |
-| README.md                                                                | UPDATE | 변경한 개발 명령·훅·회귀 범위 설명만 갱신                                             |
+| File                                                                | Action | Responsibility                                                                   |
+| ------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------- |
+| harness/document-rules.test.mjs                                     | MOVE   | `wiki-documents/__tests__/document-rules.test.mjs`로 이동, import 수정·경계 보완 |
+| `harness/wiki-documents/__tests__/document-enforcement.test.mjs`    | CREATE | 원본 가드의 정상·위반·빈 입력·예외·보고 실패·경고·prod 빈 결과 검증              |
+| `harness/wiki-documents/__tests__/test-selection.contract.test.mjs` | CREATE | 실제 기본/coverage/수동 수집, 누락·혼입·빈 수집·회귀 무력화 검출                 |
+| `harness/wiki-documents/__tests__/git-hooks.contract.test.mjs`      | CREATE | 기존 훅 설정/명령순서·실패 차단 계약 이동                                        |
+| `scripts/__tests__/hooks.plumbing.test.mjs`                         | UPDATE | 위 계약만 분리하고 실제 validate 기능 사례 유지                                  |
+| `scripts/__tests__/ci.plumbing.test.mjs`                            | MOVE   | `wiki-documents/__tests__/ci-pipeline.contract.test.mjs`, repo 좌표 수정         |
+| harness/test-utils/vitest-probe.mjs                                 | CREATE | 최소 두 모듈이 공유하는 자식 Vitest 실행·임시 프로젝트 수명 관리                 |
+| vitest.config.js                                                    | UPDATE | passWithNoTests false 명시, 필요한 지원 코드의 제품 계측 제외                    |
+| vitest.harness.config.js                                            | CREATE | 수동 회귀만 수집, 공통 환경 상속                                                 |
+| package.json                                                        | UPDATE | test:harness의 전용 설정 연결                                                    |
+| .husky/pre-push                                                     | UPDATE | 일반 test 실패 시 중단, validate 임시 유지                                       |
+| README.md                                                           | UPDATE | 변경한 개발 명령·훅·회귀 범위 설명만 갱신                                        |
 
 ## Step-by-Step Tasks
 
@@ -119,8 +119,8 @@
 
 ### Task 2: 자동·수동 수집과 배치 연결
 
-- ACTION: 기존 회귀와 설정 계약을 수동 분야로 옮기고 전용 config·명령을 연결한다.
-- IMPLEMENT: 기본/coverage는 동일 include 유지. 수동 include는 validation-regression/**tests**/*.test.mjs만 사용한다. 기존 회귀 전체와 추가 경계 사례를 실행한다. 실제 list 결과를 추적 파일 중 역할별 테스트 목록과 대조해 누락·혼입·교집합을 확인한다. 모든 명령의 빈 수집 실패를 실제 임시 프로젝트에서 확인한다.
+- ACTION: 기존 회귀와 설정 계약을 같은 문서 검사 분야에 모으고 전용 config·명령을 연결한다.
+- IMPLEMENT: 기본과 coverage는 같은 수집 집합을 유지하며 문서 분야의 include를 `.guard` 종류로 좁힌다. 수동 include는 같은 문서 분야의 테스트 전체를 대상으로 하되 `.guard` 종류를 exclude한다. 기존 회귀 전체와 추가 경계 사례를 실행한다. 실제 list 결과를 추적 파일 중 역할별 테스트 목록과 대조해 누락·혼입·교집합을 확인한다. 모든 명령의 빈 수집 실패를 실제 임시 프로젝트에서 확인한다.
 - MIRROR: 계약 C2·C3·C7과 기존 config.
 - IMPORTS: 기본 설정, Vitest defineConfig. 공용 probe는 두 개 이상 소비처에서만 import.
 - GOTCHA: CLI filter만 바꾸면 기본 include의 회귀 제외를 덮지 못한다. 수집 목록 기대값을 현재 파일 개수로 고정하지 않는다. 지원 코드와 하네스를 제품 coverage 분모에 넣지 않는다.
@@ -129,7 +129,7 @@
 ### Task 3: 자동 훅 연결과 안내 정합
 
 - ACTION: pre-push 첫 단계를 test로 교체하고 수동 회귀 자동 호출을 없앤다.
-- IMPLEMENT: 기존 test:harness 대신 test가 실패하면 즉시 exit 1. validate 단계와 기존 오류 안내는 유지. 기존 훅 계약을 수동 분야로 옮겨 test 실패 / validate 실패 / 모두 성공을 실제 shell+가짜 명령으로 검증한다. pre-commit·prepare·uuid 계약과 CI 설정 계약도 보존한다.
+- IMPLEMENT: 기존 test:harness 대신 test가 실패하면 즉시 exit 1. validate 단계와 기존 오류 안내는 유지. 기존 훅 계약을 같은 문서 검사 분야에 모아 test 실패 / validate 실패 / 모두 성공을 실제 shell+가짜 명령으로 검증한다. pre-commit·prepare·uuid 계약과 CI 설정 계약도 보존한다.
 - MIRROR: 기존 훅 순서 시험과 계약 C3·C8의 단계 전환.
 - IMPORTS: Node spawnSync·fs; 새 수동 훅 계약에서 scripts 테스트 도우미를 import하지 않는다.
 - GOTCHA: 실제 원격 push를 하지 않는다. validate 제거는 P3, CI 산출물 변경은 P4다. 기능/기존 validate 동작 테스트는 자동에 남긴다.
@@ -147,7 +147,7 @@
 | Contract | Implementation / Evidence                                                                                                |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | C1       | 자동 scripts 기능 사례 유지, 검사 장치 동작·배선만 수동 이동                                                             |
-| C2       | 분야/직접 **tests**/접미/공유 도우미 소비처 검수                                                                         |
+| C2       | 분야/직접 `__tests__`/접미/공유 도우미 소비처 검수                                                                       |
 | C3       | 실제 list 대조, 빈 수집 실패, 자동 호출 부재·pre-push 실행 시험                                                          |
 | C7       | 정상/위반 쌍, no-op 검사기로 기존 회귀가 실패, 빈 corpus·parse/무결성/보고 실패 전달, 경로·SHA·경고, 기존 coverage floor |
 | C8       | P2의 훅 교체와 pre-commit·현재 CI 연결 보존; 최종 validate 제거·운영 전달은 P3/P4                                        |
@@ -171,7 +171,7 @@ pnpm exec vitest list --coverage --filesOnly --json
 pnpm exec vitest list --config vitest.harness.config.js --filesOnly --json
 pnpm run test:harness --maxWorkers=1
 pnpm run test:coverage --maxWorkers=1 --coverage.reportOnFailure
-pnpm exec prettier --check harness/test-utils/vitest-probe.mjs harness/validation-regression/__tests__ scripts/__tests__/hooks.plumbing.test.mjs vitest.config.js vitest.harness.config.js package.json README.md docs/prds/wiki-document-harness/P2.harness-regression/plan.md docs/prds/wiki-document-harness/prd.md
+pnpm exec prettier --check harness/test-utils/vitest-probe.mjs harness/wiki-documents/__tests__ scripts/__tests__/hooks.plumbing.test.mjs vitest.config.js vitest.harness.config.js package.json README.md docs/prds/wiki-document-harness/P2.harness-regression/plan.md docs/prds/wiki-document-harness/prd.md
 git diff --check
 ```
 
@@ -206,7 +206,7 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 기존 Vites
 
 사용자 승인에 따라 Codex가 계획·구현·검수를 직접 수행한다. Claude 전용 Skill/Agent 호출을 실행한 것으로 기록하지 않는다. PRD·계약은 기존 목표를 유지하고 구현 전 계획 완전성을 검수한다.
 
-### Completion Evidence
+### Completion Evidence — 배치 정정 전 검증
 
 - 계획 완전성 검수 후 구현했다. 기존 작성 규칙 회귀와 CI 연결 계약을 이동하고 훅 설정 계약만 기능 사례에서 분리했다. 실제 validate 기능 사례는 scripts의 자동 수집에 유지했다.
 - `pnpm run test:harness --maxWorkers=1 --reporter=verbose`: 5개 파일·129개 테스트, exit 0. 기존 96개 규칙 회귀를 보존했고 정상·위반·빈 입력·파싱/무결성/보고 오류·경고·prod 빈 결과와 검사기 무력화를 확인했다. 기록은 `logs/verification/p2-harness.log`에 있다.
@@ -217,3 +217,13 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 기존 Vites
 - 변경 파일의 Prettier 검사와 diff 검사를 통과했다. Codex가 정확성·중복·죽은 코드·정리 부채·편법의 5차원을 직접 감사했고, phase 전체 변경과 계약 대응을 다시 검수했다. 추가 리팩터링은 필요하지 않아 별도 refactor 커밋을 만들지 않았다.
 - 기존 의존성 감사 11건(high 3/moderate 7/low 1)은 이번 범위에서 수정하지 않았고 의존성 변경도 없다.
 - sas-wiki의 기능 코드·위키 본문·문서 ID·pre-commit·CI workflow와 부모 저장소 파일·인덱스를 변경하지 않았다. 변경·커밋은 sas-wiki feature 브랜치 내부에 한정했다. 원격 push는 하지 않았으며 P3/P4는 시작하지 않았다.
+
+### 사용자 정정에 따른 배치 보완
+
+- 배경: 자동·수동 실행을 별도 분야로 나눈 배치를 바로잡는다. 부모 R-N14와 decisions 5절에 따라 같은 문서 분야의 가드·동작 회귀·설정 계약을 한 `__tests__/`에 모은다.
+- 변경 대상: 기존 회귀 5개 파일을 `harness/wiki-documents/__tests__/`로 이동하고 검사기 import·무력화 probe 경로를 맞춘다. 빈 옛 분야 폴더는 제거한다. 테스트 종류 접미와 의미는 유지한다.
+- 수집: 기본은 scripts 전체+문서 `.guard`, 수동은 같은 문서 분야의 가드 제외 테스트다. `.guard.source-scan`처럼 복수 종류가 있는 이름도 자동에 포함한다. scripts의 `.contract`는 자동에 유지한다.
+- 검증: 실제 목록의 동일성·비중첩과 혼합 이름의 임시 수집 사례를 먼저 실패시킨 뒤 설정을 연결한다. 이동을 스테이징한 후 수동 전체와 제품 전체 coverage를 실행한다. 기존 테스트·판정·coverage floor는 유지한다.
+- 계약·PRD·README·후속 계획의 현재 경로를 맞추고 변경 전 검증 기록은 당시 결과로 보존한다. P3/P4는 시작하지 않고 로컬 커밋만 한다.
+
+- 배치 정정 RED: 설정 변경 전 선택 계약 7건 중 수집 2건이 예상대로 실패했다. 실제 자동 목록은 기대 110개에 수동 회귀 5개가 혼입된 115개였고, 혼합 종류 fixture도 기대 3개 대신 5개를 자동 수집했다. 나머지 5건은 통과했다. 샌드박스 EPERM 실행은 근거에서 제외하고 권한 제한을 해소한 재실행 결과만 사용했다.

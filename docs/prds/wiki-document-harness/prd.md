@@ -12,7 +12,7 @@
 
 ## Proposed Solution
 
-실제 문서 집행과 검사 장치의 회귀를 하네스 분야별로 나누고 자동·수동 명령의 범위를 분리한다. validate의 실질 검사를 테스트로 이전하고 독립 CLI를 제거한다. 기능 스크립트는 필요한 처리와 생성에 집중하고 CI가 테스트한 커밋의 운영 산출물을 저장한다. 현재 합의한 목표 폴더·동작·판정은 [contract.md](contract.md)가 소유하며, 작업 중 제약·대안이 드러나면 영향을 확인하고 조율해 갱신한다.
+실제 문서 집행과 검사 장치의 회귀를 같은 문서 검사 분야에 모으고 파일 종류에 따라 자동·수동 명령의 범위를 분리한다. validate의 실질 검사를 테스트로 이전하고 독립 CLI를 제거한다. 기능 스크립트는 필요한 처리와 생성에 집중하고 CI가 테스트한 커밋의 운영 산출물을 저장한다. 현재 합의한 목표 폴더·동작·판정은 [contract.md](contract.md)가 소유하며, 작업 중 제약·대안이 드러나면 영향을 확인하고 조율해 갱신한다.
 
 ## Key Hypothesis
 
@@ -52,7 +52,7 @@
 
 | Priority | Capability                                  | Rationale                       |
 | -------- | ------------------------------------------- | ------------------------------- |
-| Must     | 문서 집행과 회귀의 하네스 분야 구분         | 대상·책임 명확화                |
+| Must     | 검사 분야별 배치와 종류별 실행 구분         | 대상·책임 명확화                |
 | Must     | 자동 test/coverage와 수동 test:harness 분리 | 사용자 최종 실행 정책           |
 | Must     | 기존 검사 이전·validate 제거                | 집행 체계 통일                  |
 | Must     | 전체 검사와 기능 처리 경계 분리             | 규칙 증가에 따른 반복 비용 방지 |
@@ -89,12 +89,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                | Description                                 | Status   | Parallel | Depends | PRP Plan                                |
-| --- | -------------------- | ------------------------------------------- | -------- | -------- | ------- | --------------------------------------- |
-| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete | -        | -       | [plan](P1.document-enforcement/plan.md) |
-| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | complete | -        | 1       | [plan](P2.harness-regression/plan.md)   |
-| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending  | -        | 2       | -                                       |
-| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending  | -        | 3       | -                                       |
+| #   | Phase                | Description                                 | Status      | Parallel | Depends | PRP Plan                                |
+| --- | -------------------- | ------------------------------------------- | ----------- | -------- | ------- | --------------------------------------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete    | -        | -       | [plan](P1.document-enforcement/plan.md) |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | in-progress | -        | 1       | [plan](P2.harness-regression/plan.md)   |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending     | -        | 2       | -                                       |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending     | -        | 3       | -                                       |
 
 ### Phase Details
 
@@ -109,7 +109,7 @@
 - Goal: 집행의 검출력과 실행 대상 분리를 보장한다.
 - Scope: 계약 C1–C3·C7의 회귀, Vitest 수집·수동 명령, 이름·배치.
 - Success signal: 정상·위반·무력화·누락을 검출하고 test/coverage와 test:harness가 섞이지 않는다.
-- Result: 수동 회귀 5개 파일·129건과 자동 제품 검사 110개 파일·1,197건이 통과했다. 실제 수집 집합·빈 수집 실패·훅 실패 전달을 확인했고 제품 coverage 하한을 유지했다. pre-push는 test → validate의 중간 상태이며 validate 제거는 P3에서 진행한다. P3가 변경할 검사기 소비처에는 새 수동 가드 회귀와 훅·CI 계약도 포함한다.
+- 배치 정정 전 Result: 수동 회귀 5개 파일·129건과 자동 제품 검사 110개 파일·1,197건이 통과했다. 실제 수집 집합·빈 수집 실패·훅 실패 전달을 확인했고 제품 coverage 하한을 유지했다. pre-push는 test → validate의 중간 상태이며 validate 제거는 P3에서 진행한다. P3가 변경할 검사기 소비처에는 새 수동 가드 회귀와 훅·CI 계약도 포함한다.
 
 **P3: runtime-separation**
 
@@ -129,15 +129,16 @@
 
 ## Decisions Log
 
-| Decision    | Choice                           | Alternatives                          | Rationale                              |
-| ----------- | -------------------------------- | ------------------------------------- | -------------------------------------- |
-| 명세 구성   | PRD + contract + 해당 phase plan | 요구/이전/검수 별도 상시 문서         | 사용자 승인한 역할 분리·중복 갱신 방지 |
-| 하네스 위치 | sas-wiki/harness 아래 분야 구분  | frontend 소유·하네스 파일 평탄 배치   | 사용자 지정                            |
-| 실행 정책   | 자동 제품 검사·수동 회귀         | CI에서 전체 하네스 반복               | 사용자 최신 정정                       |
-| 검사 심각도 | 기존 판정 보존                   | 경고를 오류로 강화                    | 재배치와 정책 변경 구분                |
-| 작업 제한   | 기존 feature 브랜치·로컬 커밋    | push·PR·릴리즈 발행                   | 기존 승인 범위                         |
-| 수정 경계   | sas-wiki 내부만 변경             | 부모 저장소 소비처까지 함께 수정      | 사용자 명시 제약                       |
-| 환경 대체   | Codex가 지침·산출물·검수를 수행  | 실행 불가한 호출을 수행한 것으로 간주 | 사용자 승인한 환경 적응                |
+| Decision    | Choice                                     | Alternatives                          | Rationale                                   |
+| ----------- | ------------------------------------------ | ------------------------------------- | ------------------------------------------- |
+| 명세 구성   | PRD + contract + 해당 phase plan           | 요구/이전/검수 별도 상시 문서         | 사용자 승인한 역할 분리·중복 갱신 방지      |
+| 하네스 위치 | sas-wiki/harness 아래 분야 구분            | frontend 소유·하네스 파일 평탄 배치   | 사용자 지정                                 |
+| 명명·분류   | 부모 rules·decisions의 이름·종류·의미 유지 | 자동·수동별 폴더·별도 종류 추가       | 사용자 정정, 같은 분야의 `__tests__`에 배치 |
+| 실행 정책   | 자동 제품 검사·수동 회귀                   | CI에서 전체 하네스 반복               | 사용자 최신 정정                            |
+| 검사 심각도 | 기존 판정 보존                             | 경고를 오류로 강화                    | 재배치와 정책 변경 구분                     |
+| 작업 제한   | 기존 feature 브랜치·로컬 커밋              | push·PR·릴리즈 발행                   | 기존 승인 범위                              |
+| 수정 경계   | sas-wiki 내부만 변경                       | 부모 저장소 소비처까지 함께 수정      | 사용자 명시 제약                            |
+| 환경 대체   | Codex가 지침·산출물·검수를 수행            | 실행 불가한 호출을 수행한 것으로 간주 | 사용자 승인한 환경 적응                     |
 
 ## Research Summary
 
@@ -157,4 +158,4 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 �
 - [contract.md](contract.md): 조율·갱신할 수 있는 합의 목표 — 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
 - 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
 
-_Status: specification completeness verified; P1–P2 complete; P3–P4 pending_
+_Status: specification completeness verified; P1 complete; P2 placement correction in-progress; P3–P4 pending_
