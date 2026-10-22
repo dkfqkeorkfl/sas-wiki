@@ -19,7 +19,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "test:harness": "vitest run harness --passWithNoTests=false"
+    "test:harness": "vitest run --config vitest.harness.config.js --passWithNoTests=false"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^4.1.8",

@@ -26,7 +26,12 @@ describe('자동 집행과 수동 회귀의 수집 계약', () => {
       '.husky/pre-push',
       '.husky/pre-commit',
       '.github/workflows/ci.yml',
-    ].map((file) => readFileSync(path.join(repoRoot, file), 'utf8'))
+    ].map((file) =>
+      readFileSync(path.join(repoRoot, file), 'utf8')
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        .join('\n'),
+    )
     const pending = ['test', 'test:coverage', 'build', 'build-dev', 'prepare']
     const visited = new Set()
     const references = (source) =>

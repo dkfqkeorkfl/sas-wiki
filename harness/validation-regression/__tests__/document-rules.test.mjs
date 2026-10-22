@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { inspectDocument } from './wiki-documents/document-rules.mjs'
+import { inspectDocument } from '../../wiki-documents/document-rules.mjs'
 
 function doc(asOf = '2026-08-28', extra = {}) {
   return {
@@ -102,6 +102,25 @@ describe.each(['TREND', 'REPORT'])('%s 공통 작성 규칙', (kind) => {
   it('본문 기준일에 숫자를 더 붙여 다른 날짜로 대체할 수 없다', () => {
     const parsed = { ...doc(), body: '이 분석은 2026-08-280 기준이다.' }
     expect(inspectDocument(file, parsed).some((issue) => issue.code === 'AS_OF_NOTICE')).toBe(true)
+  })
+
+  it('앞쪽 빈 줄과 CRLF 뒤 첫 기준일 안내를 허용한다', () => {
+    expect(
+      inspectDocument(file, { ...doc(), body: '\r\n  \r\n2026-08-28 기준 분석입니다.\r\n' }),
+    ).toEqual([])
+  })
+
+  it('여러 위반의 진단을 함께 보존한다', () => {
+    const parsed = {
+      frontmatter: { title: '중복', type: 'company', meta: { asOf: '2026-08-27' } },
+      body: '',
+    }
+    expect(inspectDocument(file, parsed).map(({ code }) => code)).toEqual([
+      'AUTHORED_TITLE',
+      'TYPE',
+      'AS_OF',
+      'AS_OF_NOTICE',
+    ])
   })
 })
 

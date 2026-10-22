@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['scripts/**/*.test.mjs', 'harness/wiki-documents/__tests__/*.test.mjs'],
+    passWithNoTests: false,
     coverage: {
       include: ['scripts/**/*.mjs'],
       // 테스트 자산은 **프로덕션 커버리지가 아니다.** 이걸 안 빼면 헬퍼를 추가할 때마다 분모가

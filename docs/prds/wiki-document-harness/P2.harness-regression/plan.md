@@ -170,10 +170,12 @@ pnpm exec vitest list --filesOnly --json
 pnpm exec vitest list --coverage --filesOnly --json
 pnpm exec vitest list --config vitest.harness.config.js --filesOnly --json
 pnpm run test:harness --maxWorkers=1
-pnpm run test:coverage --maxWorkers=1
-pnpm exec prettier --check <수정 파일>
+pnpm run test:coverage --maxWorkers=1 --coverage.reportOnFailure
+pnpm exec prettier --check harness/test-utils/vitest-probe.mjs harness/validation-regression/__tests__ scripts/__tests__/hooks.plumbing.test.mjs vitest.config.js vitest.harness.config.js package.json README.md docs/prds/wiki-document-harness/P2.harness-regression/plan.md docs/prds/wiki-document-harness/prd.md
 git diff --check
 ```
+
+파일 이동은 전체 실행 전에 인덱스에 반영한다. 기존 추적 파일 스캐너는 `git ls-files`의 옛 경로가 작업 트리에서 사라진 상태를 읽기 실패로 올바르게 보고한다. 스테이징이 커밋이나 원격 push를 뜻하지는 않는다.
 
 설정이 바뀌므로 관련 전체 스위트를 coverage로 실행한다. GREEN과 정리 검수에서 같은 성공 실행을 재사용하며, 추가 코드 수정이나 실패가 있을 때만 필요한 검증을 반복한다. 이 단계에서 build·네트워크·브라우저·데이터베이스 검증은 변경 대상이 아니므로 실행하지 않는다. Git 의존 검증은 기존에 확인한 샌드박스 정지 문제가 재발하지 않도록 승인된 실행 환경에서 실행한다.
 

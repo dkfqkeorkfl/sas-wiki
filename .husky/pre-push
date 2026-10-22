@@ -1,5 +1,5 @@
-# 작성 규칙은 sas-wiki의 Vitest 하네스에서 검사한다.
-pnpm run test:harness || exit 1
+# 기능과 실제 문서를 자동 검사한다. 검사 장치 회귀(test:harness)는 개발 시 수동 실행한다.
+pnpm run test || exit 1
 
 # push 전에 CI 와 같은 문서 검증(validate: id 형식·변경·중복·스키마·링크)을 돌린다. 여기서 걸리면
 # 아직 push 하지 않은 로컬 커밋이라 되돌려 고칠 수 있다.
