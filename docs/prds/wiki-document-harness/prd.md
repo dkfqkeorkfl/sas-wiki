@@ -89,12 +89,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                | Description                                 | Status   | Parallel | Depends | PRP Plan                                |
-| --- | -------------------- | ------------------------------------------- | -------- | -------- | ------- | --------------------------------------- |
-| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete | -        | -       | [plan](P1.document-enforcement/plan.md) |
-| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | complete | -        | 1       | [plan](P2.harness-regression/plan.md)   |
-| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending  | -        | 2       | -                                       |
-| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending  | -        | 3       | -                                       |
+| #   | Phase                | Description                                 | Status      | Parallel | Depends | PRP Plan                                |
+| --- | -------------------- | ------------------------------------------- | ----------- | -------- | ------- | --------------------------------------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete    | -        | -       | [plan](P1.document-enforcement/plan.md) |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | complete    | -        | 1       | [plan](P2.harness-regression/plan.md)   |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | in-progress | -        | 2       | [plan](P3.runtime-separation/plan.md)   |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending     | -        | 3       | -                                       |
 
 ### Phase Details
 
@@ -116,6 +116,7 @@
 - Goal: 기능 경로에서 전량 집행을 분리하고 validate를 제거한다.
 - Scope: 계약 C6·C8·C9. 기능 테스트 소비처와 제거되는 명령을 부르는 훅·CI도 함께 갱신한다.
 - Success signal: 기능 경로가 전체 작성 규칙/ID 감사를 부르지 않고, 실제 운영 빌드가 validate 없이 같은 의미의 산출물을 만든다.
+- Preparation: 현재 호출·정책·테스트 소비처와 정상 dev/prod 출력을 조사하고 [기술 근거](P3.runtime-separation/research.md)·[계획](P3.runtime-separation/plan.md)을 작성했다. 직접 계획 완전성 검수를 거쳤으며 사용자 확인 전에는 구현하지 않는다. in-progress는 계획 단계 진입을 뜻하고 구현 완료를 뜻하지 않는다. summary의 감사 전용 옵션/상태와 부모의 validate 존재 고정 영향도 계획에 포함했다.
 
 **P4: delivery-pipeline**
 
@@ -148,6 +149,8 @@
 
 SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 내부 Vitest·파서·기능 분리 패턴을 적용한다. 내부 사실·소비처 조사와 대안 비교는 PRD 준비·해당 plan에 포함하며 외부 research.md를 형식적으로 만들지 않는다.
 
+위 생략은 최초 PRD 준비의 범위다. P3에서는 사용자의 리서치 요청에 따라 Node 동기 프로세스·Vitest 시간 제한/수집·Git 추적의 공식 근거를 추가 조사하고 해당 페이즈의 research.md와 plan에 반영했다. 의존성·버전 변경은 없다.
+
 ## Open Questions
 
 - 최종 결과 계약의 미결 사항은 없다. 파일별 분해·이전·검증 방법은 해당 plan에서 정한다. 구현 중 계약 변경이 필요하면 근거와 영향을 확인한다.
@@ -158,4 +161,4 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 �
 - [contract.md](contract.md): 조율·갱신할 수 있는 합의 목표 — 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
 - 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
 
-_Status: specification completeness verified; P1–P2 complete including placement correction; P3–P4 pending_
+_Status: specification completeness verified; P1–P2 complete; P3 planning in progress, awaiting implementation confirmation; P4 pending_
