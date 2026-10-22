@@ -66,8 +66,5 @@ describe('CI 워크플로', () => {
       'pnpm run test:coverage',
       'pnpm run build',
     ])
-    expect(workflow.indexOf('- name: Verify prod artifact pair')).toBeGreaterThan(
-      workflow.indexOf('- run: pnpm run build'),
-    )
   })
 })

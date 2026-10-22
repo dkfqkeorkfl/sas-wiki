@@ -155,7 +155,7 @@ describe('CI의 prod 산출물 세트 저장 계약', () => {
         payloads.feeds.generatedAt = '2026-08-27T00:00:00.000Z'
       },
     ],
-  ])('%s을 정상 세트와 구분해 실패시킨다', (_name, change) => {
+  ])('%s 입력을 정상 세트와 구분해 실패시킨다', (_name, change) => {
     expect(runPair(change).status).not.toBe(0)
   })
 
