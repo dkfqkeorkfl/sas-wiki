@@ -1,146 +1,156 @@
-# Wiki document harness
+# 위키 문서 검사 체계 재구성
 
 ## Problem Statement
 
-실제 문서 검사가 `validate` CLI와 Vitest 하네스로 나뉘고, 하네스 회귀 테스트까지 pre-push에서 실행된다. 규칙을 추가할 때 검사 위치와 실행 책임이 불분명하고 빌드는 검증을 중복 실행한다.
+문서 검사가 validate CLI와 Vitest 하네스에 나뉘고 검사 장치의 회귀 검증까지 pre-push에서 실행된다. 규칙이 늘수록 어느 검사를 어디서 강제해야 하는지 불명확하고, 조회·생성에 문서 전체 검사가 결합돼 불필요한 작업이 반복된다.
 
 ## Evidence
 
-- 사용자는 문서 집행 검사와 스크립트 테스트만 CI·Git 훅에서 강제하고, 검사 장치 자체의 회귀 테스트는 수동으로 실행하도록 확정했다.
-- 현재 `build`와 `build-dev`는 validate → summary → feeds를 호출한다.
-- 기존 테스트에는 `validate.mjs`의 함수 import, CLI 실행, 문서·설정 원문 검사가 섞여 있다. 소비처를 함께 이전해야 제거가 가능하다.
+- 현재 build·build-dev는 validate → summary → feeds를 실행하고 pre-push는 test:harness → validate를 실행한다.
+- 기존 생산 파싱 경로의 문서 상태 수집은 스키마·ID 이력 감사와 결합돼 있다. validate 호출만 지워서는 사용자가 요구한 실행 책임·비용 분리가 끝나지 않는다.
+- 사용자는 실제 문서 집행과 스크립트 테스트를 CI·Git 훅에서 강제하고, 하네스 회귀는 설정·개발 시에만 수동 실행하도록 확정했다.
 
 ## Proposed Solution
 
-실제 문서 유효성 검사는 `harness/wiki-documents/`, 검사 장치의 회귀 검증은 `harness/validation-regression/`으로 구분한다. 일반 테스트는 `scripts/`의 대상 옆에 둔다. `test`·`test:coverage`는 스크립트와 문서 집행 검사만 실행하고, `test:harness`는 수동 회귀 검증만 실행한다. 검사가 이전된 뒤 validate CLI를 제거하고 빌드는 운영 산출물 생성만 담당한다.
+실제 문서 집행과 검사 장치의 회귀를 하네스 분야별로 나누고 자동·수동 명령의 범위를 분리한다. validate의 실질 검사를 테스트로 이전하고 독립 CLI를 제거한다. 기능 스크립트는 필요한 처리와 생성에 집중하고 CI가 테스트한 커밋의 운영 산출물을 저장한다. 최종 폴더·동작·판정의 상세 기준은 [contract.md](contract.md)가 소유한다.
 
 ## Key Hypothesis
 
-검사와 실행 경로를 역할별로 나누면 규칙 누락과 중복 실행을 줄일 수 있다. 기존 검사 목록의 모든 항목에 새 집행 위치가 있고, 일반 테스트·수동 회귀 테스트·운영 빌드가 각각 성공하면 완료로 판정한다.
+실제 문서 집행·기능 처리·검사 장치 회귀의 책임과 실행 경로를 분리하면, 규칙 누락과 중복 실행을 줄이면서 기존 기능을 유지할 수 있다. 계약 전 항목의 구현·검증 대응과 단계별 검수를 통과하고 실제 문서 검사·회귀·제품 커버리지·운영 빌드가 성공하면 달성한 것으로 판정한다.
 
 ## What We're NOT Building
 
-- 린트·커스텀 룰·TypeScript 전환·새 외부 의존성.
-- 프론트엔드 변경, 문서 내용 추가, 기존 기업 자료 재감사.
-- 원격 push, PR 생성, 실제 배포·릴리즈 발행.
-- 보호 훅 해제나 우회.
+- 린트·커스텀 룰 도입, TypeScript 전환, 신규 외부 의존성.
+- 기업 문서 추가·재감사, 위키 본문과 기존 ID의 변경.
+- 프론트 제품 기능 변경, 작업과 무관한 전수 개명.
+- 원격 push·PR 생성·실제 릴리즈 발행·배포.
+- 보호 정책 해제·우회 또는 상시 유지할 별도 요구 추적·검수 문서 체계.
 
 ## Success Metrics
 
-| Metric           | Target                                        | How Measured                      |
-| ---------------- | --------------------------------------------- | --------------------------------- |
-| 검사 이전        | 기존 규칙 전부에 집행 위치 존재               | 검사 대응표·실제 문서 검사        |
-| 기본 테스트 범위 | scripts + wiki-documents, 수동 회귀 제외      | Vitest 수집 확인·수동 계약 테스트 |
-| 수동 테스트 범위 | validation-regression만                       | 별도 Vitest 설정·수집 확인        |
-| 실행 연결        | 훅은 test, CI는 test:coverage 이후 prod build | 실패 전파 테스트·워크플로 계약    |
-| 빌드             | validate 호출 없이 prod summary·feeds 생성    | 실제 build와 산출물 확인          |
-| 품질             | 기존 coverage floor 유지                      | test:coverage                     |
+| Metric    | Target                                          | How Measured                                   |
+| --------- | ----------------------------------------------- | ---------------------------------------------- |
+| 검사 보존 | 기존 조건·예외·심각도·진단을 누락 없이 이전     | 계획의 개별 규칙/소비처 대응과 정상·위반 검증  |
+| 실행 분리 | 자동은 scripts+실제 문서, 수동은 검사 장치 회귀 | Vitest 실제 수집 집합·명령 실패 전달 확인      |
+| 기능 경계 | 조회·생성에서 전량 집행과 ID 감사 분리          | 호출·import 추적, 검증 통과 입력의 기능 비교   |
+| 품질      | 기존 제품 coverage floor 유지                   | test:coverage                                  |
+| 운영 생성 | 테스트한 커밋의 prod summary·feeds 한 세트      | 실제 build·환경/sourceCommit·CI 저장 확인      |
+| 완료 판정 | 계약 누락 없이 phase 완료                       | PRD/계약 검수, phase plan 검수, 구현 완료 검수 |
 
 ## Users & Context
 
-**Primary User:** 문서 작성자와 sas-wiki 스크립트 유지보수자.
+**Primary User:** 위키 문서 작성자와 sas-wiki 스크립트·검사 유지보수자.
 
-**Job to Be Done:** 문서를 고치거나 규칙을 추가할 때, 같은 테스트 명령으로 실제 문서의 오류를 차단하고 하네스 변경 시에는 별도 회귀 검증을 수행한다.
+**Current behavior:** 작성자는 validate와 테스트를 구분해야 하고, 유지보수자는 검사기 변경과 실제 문서 검사의 실행 범위를 함께 관리한다.
 
-**Non-Users:** 위키를 조회하는 웹 사용자는 테스트를 실행하지 않는다.
+**Job to Be Done:** 문서를 고칠 때 자동 제품 검사로 오류를 확인하고, 검사기를 고칠 때 수동 회귀로 검출력을 확인하며, 합의된 운영 데이터를 생성한다.
+
+**Non-Users:** 위키 조회 사용자가 테스트나 전체 문서 감사를 실행하는 흐름을 만들지 않는다.
 
 ## Solution Detail
 
-| Priority | Capability                                           | Rationale                    |
-| -------- | ---------------------------------------------------- | ---------------------------- |
-| Must     | 기존 ID·스키마·히스토리·링크·피드·산출물 불변식 이전 | 검사 누락 방지               |
-| Must     | 파일명 제목·TREND/REPORT 날짜 규칙 집행              | 기존 합의 유지               |
-| Must     | dev 전체 문서 + prod 참조 관계 검사                  | draft가 가리는 오류도 검출   |
-| Must     | 수동 회귀와 자동 집행의 수집 분리                    | 실행 책임 명확화             |
-| Must     | validate 제거·소비처 갱신                            | 죽은 명령과 호환 껍데기 제거 |
-| Must     | 운영 빌드·CI 산출물 저장                             | 동일 커밋의 릴리즈 입력 확보 |
-| Won't    | 린트 도입                                            | 후속 작업                    |
+| Priority | Capability                                  | Rationale                       |
+| -------- | ------------------------------------------- | ------------------------------- |
+| Must     | 문서 집행과 회귀의 하네스 분야 구분         | 대상·책임 명확화                |
+| Must     | 자동 test/coverage와 수동 test:harness 분리 | 사용자 최종 실행 정책           |
+| Must     | 기존 검사 이전·validate 제거                | 집행 체계 통일                  |
+| Must     | 전체 검사와 기능 처리 경계 분리             | 규칙 증가에 따른 반복 비용 방지 |
+| Must     | 운영 빌드·동일 커밋 CI 산출물               | 향후 릴리즈 입력 확보           |
+| Must     | 파일명 제목·날짜·갱신·ID 훅 계약 유지       | 기존 문서 작성·소비 동작 보존   |
+| Won't    | 코드 품질 린트 도입                         | 이후 별도 분야로 확장           |
 
-### Directory and naming
+### MVP Scope
 
-- 기능 스크립트와 런타임 공통 코드는 `scripts/`에 유지한다.
-- `harness/wiki-documents/`: 실제 문서 집행 검사. `harness/validation-regression/`: 검사 장치 자체의 수동 회귀 검사.
-- 테스트는 각 대상 폴더의 `__tests__/` 바로 아래에 두며 그 안에 하위 폴더를 만들지 않는다.
-- 폴더·하네스 파일은 kebab-case, 일반 모듈은 camelCase. 단일 소스 테스트는 소스 이름과 대소문자까지 맞춘다. 다중 파일 테스트는 확인하는 일로 이름을 짓는다.
-- 단일 테스트 전용 도우미는 테스트 파일 안에 둔다. 둘 이상의 테스트 모듈에서 쓰는 도우미는 `scripts/test-utils/` 또는 `harness/test-utils/`에 둔다. 제품 코드는 이를 import하지 않는다.
-- 정적 픽스처는 대상 옆 `__fixtures__/`. 역할별 test-utils 사이 import를 피하고, 테스트 지원 코드는 제품 커버리지에서 제외한다.
-- 기존 `.mjs`를 유지하며 이번 변경과 관련 없는 전수 개명은 하지 않는다.
+[계약 C1–C10](contract.md)의 최종 구조·실행·문서 규칙을 충족하고 자동/수동 테스트·운영 생성까지 재현한다. 검수용 표나 초안 테스트의 개수 자체는 결과물이 아니다.
 
-### Commands
+### User Flow
 
-| Command           | Responsibility                                  |
-| ----------------- | ----------------------------------------------- |
-| test              | scripts 기능 테스트 + 실제 wiki 문서 집행       |
-| test:coverage     | 같은 범위 + 기존 coverage floor                 |
-| test:harness      | 검사 장치 회귀 검증, 수동 실행 전용             |
-| build / build-dev | 각 환경 summary·feeds 생성, 전체 검증 호출 없음 |
-
-### Existing document contracts
-
-- 제목은 `.md`를 제외한 파일명 전체다. 작성 frontmatter에는 title을 두지 않으며 API의 title은 유지한다.
-- TREND·REPORT는 `wiki/{종류}/YYYY-MM/DD. 제목.md`. meta.asOf와 첫 본문의 기준일은 경로 날짜와 같아야 한다.
-- ID 자동 생성·검증 pre-commit 훅을 유지한다.
-- 조회·생성의 파싱·가시성·문서 제외 의미와 산출물 계약은 유지한다. 전체 무결성 집행만 테스트가 소유한다.
+문서 작성 → 커밋에서 ID 발급·검증 → push 전 기능·문서 테스트 → CI 테스트·운영 빌드·산출물 저장. 검사기를 개발할 때는 별도로 test:harness를 수동 실행한다.
 
 ## Technical Approach
 
-**Feasibility:** 기존 Vitest·파서·무결성 함수를 재사용한다. 신규 외부 의존성 없이 구현한다.
+**Feasibility:** 기존 Vitest·Node·파서·렌더·Git 조회 코드를 재사용한다. 실제 소비처 조사와 내부 분리는 각 페이즈 계획을 작성할 때 수행한다.
 
-- 이전 중에는 기존 validate를 유지하고 대체 검증을 확인한 뒤 제거한다.
-- 옛 CLI 인자·stdout만 검증하는 테스트는 명령 제거와 함께 정리한다. CLI 테스트가 포함하던 실질 규칙·진단 검증은 함수 호출 회귀로 보존한다.
-- 문서 전체를 각 규칙마다 재파싱하지 않고, 환경별 검사에서 파싱 결과를 공유한다.
-- 수동 회귀는 잘못된 픽스처가 실패하고 정상 픽스처가 통과함을 검증하며 수집·훅 실패 전파도 확인한다.
-- CI는 full-history checkout → format → test:coverage → prod build → 산출물 저장 순서다. 실제 릴리즈 발행은 하지 않는다.
-- 구현·리뷰·문서 검수는 Codex가 직접 수행한다. Claude 전용 Skill/cc-suite 호출을 실행했다고 기록하지 않는다.
+- 최종 결과는 contract.md 한 곳에서 정의하고 파일별 방법·이전 순서·테스트 케이스는 plan.md에 둔다.
+- 기존 경고를 실패로 강화하는 정책 변경은 이번 재배치에 포함하지 않는다.
+- 기존 검사/소비처 조사는 구현 계획의 준비 과정이다. 조사만으로 구현 phase 완료를 판정하지 않는다.
+- 독립 CLI 제거와 관련 훅·CI 호출 갱신은 같은 전환에서 맞춰 죽은 호출을 남기지 않는다.
+- 단계는 순차 진행한다. 실제 문서·보호 파일에 초안을 적용하기 전 해당 명세·계획 검수를 마친다.
 
-| Risk                                | Mitigation                                                       |
-| ----------------------------------- | ---------------------------------------------------------------- |
-| validate 소비처 누락                | imports·spawn·설정·README 대응표 작성                            |
-| fixture title과 실제 작성 정책 충돌 | 실제 문서 집행과 검사기 회귀의 입력 범위 구분                    |
-| 환경별 가시성 차이                  | dev·prod 집행 각각 실행                                          |
-| 느린 실 vault 테스트                | 환경별 파싱 공유·변경 범위부터 검증·최종 안정 상태에서 전체 실행 |
-| 보호 경로 수정 차단                 | 변경안을 스크래치패드에서 준비하고 사용자 직접 적용; 우회 금지   |
+| Risk                                | Likelihood | Mitigation                                                       |
+| ----------------------------------- | ---------- | ---------------------------------------------------------------- |
+| 함수·CLI·원문 테스트 소비처 누락    | 높음       | phase 계획에 개별 파일·검사·검증을 대응하고 이전 후 재검색       |
+| 런타임 정책 검사와 필수 기능의 혼동 | 높음       | 계약 C6을 기준으로 함수·호출 경로를 분류하고 정상 입력 출력 비교 |
+| 자동/수동 테스트 혼입               | 중간       | 실제 수집·명령 실행 검증, 공통 수집 정의                         |
+| 느린 Git/문서 검사                  | 중간       | 입력 공유·중복 제거·유한한 자식 프로세스 실행                    |
+| 보호 경로 직접 적용 불가            | 높음       | 검토 가능한 변경안과 필요한 사용자 적용만 안내                   |
 
 ## Implementation Phases
 
-| #   | Phase                 | Description                              | Status      | Parallel | Depends | PRP Plan                          |
-| --- | --------------------- | ---------------------------------------- | ----------- | -------- | ------- | --------------------------------- |
-| 1   | current-checks        | 기존 검사·호출·소비처 조사와 이전 대응표 | complete    | -        | -       | [plan](P1.current-checks/plan.md) |
-| 2   | document-tests        | 실제 문서 집행을 테스트로 이전           | in-progress | -        | 1       | [plan](P2.document-tests/plan.md) |
-| 3   | validation-regression | 수동 회귀·수집 분리·실패 전달 검증       | pending     | -        | 2       | -                                 |
-| 4   | pipeline-transition   | validate 제거·빌드·훅·CI·가이드 전환     | pending     | -        | 3       | -                                 |
+| #   | Phase                | Description                                 | Status  | Parallel | Depends | PRP Plan |
+| --- | -------------------- | ------------------------------------------- | ------- | -------- | ------- | -------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | pending | -        | -       | -        |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | pending | -        | 1       | -        |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending | -        | 2       | -        |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending | -        | 3       | -        |
 
 ### Phase Details
 
-- P1: 규칙별 기존 위치·새 위치·검증 수단과 제거할 CLI 전용 계약을 기록한다.
-- P2: 전량 검사와 문서 작성 규칙을 새 테스트 위치에서 실행하고 기존 문서를 수정하지 않고 통과시킨다.
-- P3: 잘못된 문서의 검출력과 자동/수동 수집 분리를 검사한다. 하네스 개발 때 수동 실행한다.
-- P4: 새 검사 작동을 확인한 뒤 옛 명령을 제거하고 전체 테스트·커버리지·운영 산출물을 검증한다.
+**P1: document-enforcement**
 
-**Parallelism:** 실행 경로 전환이 앞 단계 검사를 전제로 하므로 phase는 순차 진행한다.
+- Goal: 실제 문서를 검사하는 집행과 진단을 하네스로 이전한다.
+- Scope: 계약 C2·C4·C5·C7의 문서 검사와 지원 코드. 계획 준비에서 기존 검사·조건·예외·소비처를 조사한다.
+- Success signal: 기존 모든 규칙·진단에 집행/검증 대응이 있고 dev/prod 문서 입력을 검사한다. 독립 CLI는 대체 검사가 마련될 때까지 유지한다.
+
+**P2: harness-regression**
+
+- Goal: 집행의 검출력과 실행 대상 분리를 보장한다.
+- Scope: 계약 C1–C3·C7의 회귀, Vitest 수집·수동 명령, 이름·배치.
+- Success signal: 정상·위반·무력화·누락을 검출하고 test/coverage와 test:harness가 섞이지 않는다.
+
+**P3: runtime-separation**
+
+- Goal: 기능 경로에서 전량 집행을 분리하고 validate를 제거한다.
+- Scope: 계약 C6·C8·C9. 기능 테스트 소비처와 제거되는 명령을 부르는 훅·CI도 함께 갱신한다.
+- Success signal: 기능 경로가 전체 작성 규칙/ID 감사를 부르지 않고, 실제 운영 빌드가 validate 없이 같은 의미의 산출물을 만든다.
+
+**P4: delivery-pipeline**
+
+- Goal: 자동 게이트부터 운영 산출물 저장까지 연결한다.
+- Scope: 계약 C8–C10의 최종 배선·CI 저장·가이드·상위 소비자 계약·전체 검증.
+- Success signal: 기능·문서 테스트와 coverage, 수동 회귀, 실제 prod 빌드가 통과하며 CI 산출물 입력이 맞다. 로컬 커밋만 완료하고 실제 배포하지 않는다.
+
+### Parallelism Notes
+
+후속 phase가 선행 검사를 전제로 하므로 순차 진행한다. plan.md는 해당 phase에 진입할 때 작성·검수하며, 불완전한 예전 계획이나 `/tmp` 실험을 확정 계획으로 사용하지 않는다.
 
 ## Decisions Log
 
-| Decision  | Choice                                   | Rationale                            |
-| --------- | ---------------------------------------- | ------------------------------------ |
-| 작업 문서 | sas-wiki/docs/prds/wiki-document-harness | 사용자 지정                          |
-| 브랜치    | feat/wiki-document-harness 유지          | 기존 작업에서 이어서 진행하도록 승인 |
-| 회귀 검사 | test:harness로 수동 실행                 | 사용자 최종 정정                     |
-| 커밋      | 로컬만, push 금지                        | 사용자 승인 범위                     |
-| PRP 실행  | 산출물·완료 기준 유지, Codex 직접 수행   | 현재 도구 환경에 맞춘 승인된 대체    |
+| Decision    | Choice                           | Alternatives                          | Rationale                              |
+| ----------- | -------------------------------- | ------------------------------------- | -------------------------------------- |
+| 명세 구성   | PRD + contract + 해당 phase plan | 요구/이전/검수 별도 상시 문서         | 사용자 승인한 역할 분리·중복 갱신 방지 |
+| 하네스 위치 | sas-wiki/harness 아래 분야 구분  | frontend 소유·하네스 파일 평탄 배치   | 사용자 지정                            |
+| 실행 정책   | 자동 제품 검사·수동 회귀         | CI에서 전체 하네스 반복               | 사용자 최신 정정                       |
+| 검사 심각도 | 기존 판정 보존                   | 경고를 오류로 강화                    | 재배치와 정책 변경 구분                |
+| 작업 제한   | 기존 feature 브랜치·로컬 커밋    | push·PR·릴리즈 발행                   | 기존 승인 범위                         |
+| 환경 대체   | Codex가 지침·산출물·검수를 수행  | 실행 불가한 호출을 수행한 것으로 간주 | 사용자 승인한 환경 적응                |
 
 ## Research Summary
 
-**Market Context:** 내부 검사 체계의 재구성이며 시장 기능을 추가하지 않는다. 입력 요구와 저장소 관행을 근거로 한다.
+**Market Context:** 내부 위키 검사 체계 재구성이다. 사용자 대화와 기존 저장소의 분리·명명 관행을 근거로 하며 시장 기능을 추가하지 않는다.
 
-**Technical Context:** 기존 Vitest, parseVault, 문서 게이트, 무결성 함수와 Git 훅을 재사용한다. `/workspace/docs/prds/convention-harness-unification/`의 이름·배치 규칙을 적용한다.
+**Technical Context:** 기존 코드에서 validate의 별도 집행뿐 아니라 공용 문서 상태에 ID 감사가 결합된 사실을 확인했다. 폴더·이름은 부모 convention-harness-unification을 계승하고 경로·수동 실행은 이번 합의를 적용한다. 단순 CLI 삭제와 달리 실제 호출 경계를 분리하는 계획이 필요하다.
 
-SAS Research: 생략 — 신규 외부 의존·버전 변경 없이 기존 확립된 내부 패턴을 재배치한다. P1의 저장소 조사·소비처 확인은 수행한다.
+SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 내부 Vitest·파서·기능 분리 패턴을 적용한다. 내부 사실·소비처 조사와 대안 비교는 PRD 준비·해당 plan에 포함하며 외부 research.md를 형식적으로 만들지 않는다.
 
 ## Open Questions
 
-- 보호 경로 적용은 사용자 실행이 필요할 수 있다. 대체 파일·명령을 구체화한 뒤 안내한다.
-- 제거할 validate CLI를 외부 소비자가 전제하는 경우 생산자 변경과 함께 필요한 소비자 변경을 별도로 보고한다.
+- 최종 결과 계약의 미결 사항은 없다. 파일별 분해·이전·검증 방법은 해당 plan에서 정한다. 구현 중 계약 변경이 필요하면 근거와 영향을 확인한다.
+- 보호 경로 적용은 실제 변경안과 검수 결과가 준비된 시점에만 안내한다. 현재 사용자가 실행할 적용 명령은 없다.
 
-_Generated: 2026-10-22_
-_Status: approved scope; implementation pending_
+## 보조 문서
+
+- [contract.md](contract.md): 합의한 최종 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
+- 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
+
+_Status: specification completeness verified; implementation not started_
