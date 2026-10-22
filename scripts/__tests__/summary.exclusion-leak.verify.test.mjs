@@ -117,11 +117,11 @@ function restoreEnv(name, value) {
 }
 
 /**
- * 실 vault 를 **전량 훑는** 케이스 전용 타임아웃 — **OQ-P1-2 (c)**. 사유·실측은 형제 파일
- * `feeds.env-leak.verify.test.mjs` 의 동명 상수 JSDoc 이 소유한다(같은 원인 · 같은 층).
- * §8-② 실측: LX2 **38.1s** · LX3 **39.7s** — 기본 `testTimeout: 30000` 초과.
+ * 실 vault 를 **전량 훑는** 두 케이스만 적용한다. 67문서로 확장한 저장소에서
+ * 전체 테스트를 순차 실행했을 때 LX3가 125.2s로 기존 120s 제한을 넘었다.
+ * dev·prod 탐색을 모두 수행하는 작업량을 반영하며 전역 testTimeout은 유지한다.
  */
-const REAL_VAULT_WALK_TIMEOUT = 120_000
+const REAL_VAULT_WALK_TIMEOUT = 180_000
 
 /**
  * dev 기대 건수 — **리터럴로 박지 않고 신원 목록에서 유도**한다(vault 히스토리 하드결합 금지).
