@@ -2,16 +2,6 @@
 //
 // P3 · Task 10 — 배관 (`.gitignore` · 스키마 2종 · `package.json` · 경로 소유권) — tdd §3.11 (PL1~PL5)
 //
-// RED 사유:
-//   PL1 — `.gitignore` 에 `cache` 가 없다(현행 2줄: `node_modules`·`logs`).
-//   PL2 — `summary.schema.json` 은 strict + required 6키다. `env` 가 아직 없다.
-//   PL3 — `scripts/lib/doc-gate.mjs` 와 `scripts/schema/report.schema.json` 이 **둘 다 부재**다.
-//   PL5 — 생성기가 없어 `--vault` 기준 경로 소유권을 아직 관측할 수 없다.
-//   PL4 — pin(현행도 통과). `cli-contract.test.mjs:246`(T3)이 같은 문자열을 정확 일치로 물고 있다.
-//
-// 왜 배관을 테스트하는가: 이 phase 의 산출물 계약(봉투 7키·사유 7값)은 **코드·스키마·리포트 3곳**에
-//   흩어진다. 한쪽만 넓히면 나머지가 조용히 어긋나고, 그 어긋남은 `.mjs`(타입 체커 없음)에서 런타임
-//   까지 드러나지 않는다. PL3 이 그 3자를 한자리에서 맞댄다(트립와이어).
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -28,7 +18,6 @@ const SCRIPT_DIR = path.resolve(HERE, '..')
 const REPO_ROOT = path.resolve(HERE, '..', '..')
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 const SUMMARY = path.join(SCRIPT_DIR, 'summary.mjs')
-/** 🔴 v3 P1 · plan Task 7 · D5 — 리포트 생성 주체가 생성기에서 `validate.mjs --out <dir>` 로 이사한다. */
 
 /**
  * 제외 사유 7값 — **우선순위 순서**이기도 하다(OQ-P3-3). 여기 적힌 것이 리터럴 기준이고, 코드 상수와

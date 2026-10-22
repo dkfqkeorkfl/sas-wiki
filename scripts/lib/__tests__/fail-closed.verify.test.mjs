@@ -68,7 +68,7 @@ function draftDoc({ draftValue, id, title }) {
 describe('H4 isDraft — 오탈자 draft 플래그는 공개가 아니다', () => {
   // parse.mjs:parseScalar 는 리터럴 'true'/'false' 만 불리언으로 강제한다. `draft: yes` 는 문자열
   //   'yes' 로 남아 `=== true` 를 통과하지 못하고 **공개**가 됐다. 스키마(type: boolean)가 잡아야
-  //   하지만 parseVault 는 문서 스키마 검증을 부르지 않는다(검증은 validate.mjs 전용).
+  //   하지만 parseVault 는 문서 스키마 검증을 부르지 않는다(작성 규칙 검사는 하네스가 소유).
   it.each(['yes', 'y', 'on', '1', 'TRUE', 'True'])(
     'draft: %s 는 draft 로 판정한다 (불리언 아님 = 판단 불가 = 숨김)',
     (raw) => {

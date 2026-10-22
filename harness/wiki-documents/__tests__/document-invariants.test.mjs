@@ -13,15 +13,7 @@ import {
   GHOST_ID,
 } from '../../test-utils/payload-builders.mjs'
 
-// RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
-// 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
-// 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
-// coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
-// D26: checkCommitConventions 도 같은 모듈에서 가져온다 — 별도 import 문으로 쪼갤 이유가 없다
-//   (ESM 캐시가 같은 인스턴스를 준다).
-const { checkCommitConventions, checkInvariants } = await import(
-  new URL('../document-invariants.mjs', import.meta.url).href
-)
+import { checkCommitConventions, checkInvariants } from '../document-invariants.mjs'
 
 /** 정상 세계에 한 가지 변형만 가한다(DAMP — 무엇이 틀렸는지 본문에 보인다). */
 function worldWith(mutate) {

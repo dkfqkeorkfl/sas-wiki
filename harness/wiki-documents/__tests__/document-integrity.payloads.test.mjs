@@ -11,13 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { inspectVault } from '../document-integrity.mjs'
 
-// RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가
-// 에러를 내고, pre-commit(lint-staged)이 **RED 커밋 자체를 막는다** — 규칙을 억제하는 대신 해석을
-// 런타임으로 미룬다. 실패는 "Cannot find module …" 로 명확히 드러나고, in-process 호출이므로
-// coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
-const { checkInvariants } = await import(
-  new URL('../document-invariants.mjs', import.meta.url).href
-)
+import { checkInvariants } from '../document-invariants.mjs'
 
 const EPOCH = '1700000000'
 // → 2023-11-14T22:13:20.000Z

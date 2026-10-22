@@ -22,8 +22,7 @@ export function parseVault(
   env,
   { runGit: injectedRunGit, headState: injectedHeadState } = {},
 ) {
-  // 한 파싱 안에서 같은 git 질의는 같은 답을 낸다(리포는 그동안 변하지 않는다). 문서별
-  // `git log --follow` 는 검증·파생·역인덱스 3곳이 각각 부르므로 캐시 없이는 프로세스 스폰이 3배다.
+  // 한 실행에서 반복되는 성공 조회를 공유한다. 이력 도출과 피드 해석이 같은 문서를 조회한다.
   const runGit = memoizeGitRunner(
     injectedRunGit ??
       makeGitRunner(vaultDir, {
@@ -115,8 +114,7 @@ export function assertHistoryIntegrity(runGit, vaultDir) {
 }
 
 /**
- * 성공한 조회만 캐시한다(실패는 그대로 전파 — 조용한 폴백 금지). 러너 옵션(stdin `input` ·
- * 출력 `encoding`)도 결과를 바꾸므로 키에 넣고 그대로 넘긴다.
+ * 커밋이 없는 저장소의 exit 1만 null로 표현한다. 다른 Git 실패는 원인 그대로 전파한다.
  */
 function readSourceCommit(runGit) {
   try {

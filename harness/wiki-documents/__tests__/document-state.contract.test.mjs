@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
+import { REASON_CODES } from '../document-state.mjs'
 const REASON_CODES_LITERAL = [
   'NO_FRONTMATTER',
   'MISSING_TYPE',
@@ -28,7 +29,6 @@ describe('문서 검사 계약 회귀', () => {
     const docGatePath = new URL('../document-state.mjs', import.meta.url)
     expect(existsSync(docGatePath), 'document-state.mjs').toBe(true)
 
-    const { REASON_CODES } = await import(docGatePath.href)
     expect([...REASON_CODES]).toEqual(REASON_CODES_LITERAL)
   })
 })

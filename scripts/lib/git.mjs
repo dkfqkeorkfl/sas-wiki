@@ -527,7 +527,7 @@ function canonicalPath(file) {
  * 가정하지 않는다.
  *
  * @param {string} cwd
- * @param {{ timeoutMs?: number }} [options]
+ * @param {{ timeoutMs?: number, killSignal?: string }} [options]
  */
 export function makeGitRunner(cwd, { timeoutMs, killSignal } = {}) {
   return (args, { encoding = 'utf8', input } = {}) =>

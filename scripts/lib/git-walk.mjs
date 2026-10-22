@@ -24,7 +24,7 @@ import { extractFrontmatterField } from './parse.mjs'
 //   (D39). 남은 참조 구현으로서의 값은 테스트에만 있으므로 `__tests__/helpers/walk-feeds.mjs` 가
 //   소유한다.
 //
-// 이 파일이 프로덕션에 내보내는 것은 `collectFeedItems`(생성기·validate 가 쓴다)와
+// 이 파일이 프로덕션에 내보내는 것은 `collectFeedItems`(생성기·문서 집행이 쓴다)와
 //   `makeFeedItemResolver`(커서 워크가 주입받는 해석기) 둘뿐이다.
 
 export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, runGit } = {}) {
@@ -35,9 +35,9 @@ export function collectFeedItems(vaultDir, { env, headState: injectedHeadState, 
   // F1: **전량 워크(count 기반 조기 종료 금지)**.
   //   ★ v3 P2(D39) — 이 사유가 「정렬 권위」에서 **「조회가 아니라 검증·생성이 전량을 요구한다」**로
   //   바뀐다. 조회는 더 이상 이 함수를 타지 않는다(커서 워크가 필요한 만큼만 훑는다). 이 함수의
-  //   유일한 프로덕션 호출자는 `parse-vault.mjs:33` 이고, 그 소비자는 생성기(`--out` 아티팩트)와
-  //   `validate.mjs`(무결성 게이트)다 — 둘 다 **히스토리 전량**을 봐야 판정이 성립한다:
-  //     · validate 는 "어느 feed 커밋이 해석되지 않는가"(`checkFeedResolution`)를 전수로 묻는다.
+  //   호출자는 parseVault이고, 그 소비자는 생성기와 하네스의 inspectVault다.
+  //   둘 다 **히스토리 전량**을 사용한다:
+  //     · 문서 집행은 미해석 feed 커밋을 checkFeedResolution으로 전수 검사한다.
   //     · 생성기는 200건 윈도우를 자르기 **전에** 전량을 알아야 억제·생존 판정이 창 밖에서도 맞다.
   //   즉 전량 워크는 비용 최적화의 미착수가 아니라 **판정의 전제**다. 조기 종료를 넣지 마라.
   const commits = revListFeedCandidates(resolvedRunGit)
@@ -79,7 +79,7 @@ function buildResolveContext(vaultDir, resolvedRunGit, env, injectedHeadState) {
   // 판정은 **`dev` 만 전량, 그 외는 전부 prod**(fail-closed) — parse-vault.mjs 의 visibleDocs 와
   // 같은 극성이어야 한다. `pathIndex` 는 draft 포함 전 문서로 만들어야 삭제와 draft 배제 사유를 가른다.
   const excludeDrafts = env !== 'dev'
-  const headState = injectedHeadState ?? loadHeadDocState(vaultDir, env, { runGit: resolvedRunGit })
+  const headState = injectedHeadState ?? loadHeadDocState(vaultDir, env)
   const headDocs = headState.headDocs
   const visibleHeadDocs = excludeDrafts ? headDocs.filter((doc) => !doc.draft) : headDocs
   const headIds = new Set(visibleHeadDocs.map((doc) => doc.id))

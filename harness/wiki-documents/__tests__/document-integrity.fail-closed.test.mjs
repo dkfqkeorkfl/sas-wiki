@@ -5,8 +5,6 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 
 import path from 'node:path'
 
-import { fileURLToPath } from 'node:url'
-
 import { inspectVault } from '../document-integrity.mjs'
 
 import { anyMarkdown, collectDeletedDocEvents, makeGitRunner } from '../../../scripts/lib/git.mjs'
@@ -14,19 +12,6 @@ import { anyMarkdown, collectDeletedDocEvents, makeGitRunner } from '../../../sc
 import { parseVault } from '../../../scripts/lib/parse-vault.mjs'
 
 import { cleanup, commit, git, initVault, writeDoc } from '../../test-utils/tmp-git-vault.mjs'
-
-// P5 Task 9(D-I) — `buildWirePayload` 는 이제 `parseVault(...).wire` 다(얕은/깊은 구분이 사라져
-//   전용 wrapper 가 무의미해졌다). 좌표만 바뀌었을 뿐 이 스펙의 단언(가용성 보존)은 무변경이다.
-const SCHEMA_DIR = path.resolve(
-  path.dirname(
-    fileURLToPath(
-      new URL('../../../scripts/lib/__tests__/fail-closed.verify.test.mjs', import.meta.url),
-    ),
-  ),
-  '..',
-  '..',
-  'schema',
-)
 
 const UUIDV7_PUBLIC = '0192f0c0-8000-7000-8000-0123456789ab'
 
@@ -69,7 +54,7 @@ describe('H5 검증 게이트 — frontmatter 부재는 누락이 아니라 오�
       writeRawDoc(vault, 'tech/맨몸', '# frontmatter 없음\n\n본문.\n')
       commit(vault, 'chore: 문서 2건 생성')
 
-      expect(() => parseVault(vault, 'prod', SCHEMA_DIR)).not.toThrow()
+      expect(() => parseVault(vault, 'prod')).not.toThrow()
     } finally {
       cleanup(vault)
     }

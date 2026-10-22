@@ -5,11 +5,6 @@
 // `build.p{3,4,5,6}-plumbing.test.mjs` 관례 계승 — 이 phase 가 만드는 **배선**(모듈 이름 · 스크립트
 //   체인)을 한 자리에 모은다. 기능 단언은 각 소유 스펙이 지고, 여기서는 "배선이 실재하는가" 만 문다.
 //
-// RED/green 현황(작성 시점 실측):
-//   · RN1~RN4 — **pin**. C1(리네임 단독 커밋 `eb4b172`)이 이미 착륙했다. 여기서는 **회귀 못**이다:
-//     옛 이름이 되살아나거나 게이트 스크립트(`scripts/validate.mjs`)가 함께 지워지면 red 가 된다.
-//   · BD1~BD5 — 🔴RED. `package.json` 에 `build`·`build-dev` 가 **없다**(Task 7 미구현).
-//
 // 규범 A: 스크립트 이름·순서·경로 조각은 **리터럴**이다.
 // 규범 B: 부재 단언(옛 경로 0건) 앞에 **살아 있는 참조**를 앵커로 둔다.
 // 규범 C10: seam 부재는 `runPackageScript` 가 **명시 throw** 로 바꾼다 — collection error 가 아니다.
@@ -31,7 +26,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const SCRIPTS_DIR = path.resolve(HERE, '..')
 const REPO_ROOT = path.resolve(SCRIPTS_DIR, '..')
 
-/** 체인 스텝 순서 — **계약이다**(D3). 검증을 생성 뒤에 두면 「서빙 데이터 = 검증 통과」가 깨진다. */
+/** 체인 스텝 순서 — **계약이다**(D3). summary 뒤에 feeds를 생성한다. */
 const CHAIN_ORDER = ['summary', 'feeds']
 /** 리네임 이후에도 남아야 하는 기존 엔트리 — 소비자가 `<wikiRoot>/scripts/<name>.mjs` 를 spawn 한다. */
 const EXISTING_SCRIPTS = ['summary', 'feeds', 'wiki', 'test']
@@ -104,7 +99,7 @@ describe('빌드 체인 선언 (BD1·BD2 · 🔴RED 미구현)', () => {
   })
 
   it('BD2: 두 체인이 `summary → feeds` 순서이고 `&&` 로 이어진다', () => {
-    // ★ 순서가 계약이다(D3) — 검증을 생성 뒤에 두면 「서빙 데이터 = 검증 통과」 보장이 깨진다.
+    // ★ 순서가 계약이다(D3) — summary가 실패하면 후속 feeds를 생성하지 않는다.
     //   `;` 는 앞 스텝의 실패를 삼키므로 금지다. 다만 **텍스트만으로는 exit 삼킴을 못 잡는다** —
     //   그 축은 BD3 가 실패 주입으로 문다.
     const scripts = readPackageScripts()

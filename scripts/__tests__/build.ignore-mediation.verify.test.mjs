@@ -109,7 +109,7 @@ describe('RED-B 억제≠삭제 — 억제 피드가 가리킨 문서·본문은
     )
   })
 
-  it('억제 후 checkInvariants 가 통과한다(참조 무결성 유지 — dangling 불가) (#6)', async () => {
+  it('억제 후 문서·본문 참조가 유지된다(참조 무결성 유지 — dangling 불가) (#6)', async () => {
     const { body, feeds, summary } = ctx.filtered
 
     expect(summary.docs.length).toBeGreaterThan(0)

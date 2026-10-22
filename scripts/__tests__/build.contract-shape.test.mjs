@@ -47,7 +47,7 @@ function seedTwoDocFeedVault() {
   return vault
 }
 
-/** 산출 feeds payload 를 실물 스키마로 검증한다(에러 문자열 배열 — validate.mjs 와 같은 경로). */
+/** 산출 feeds payload 를 실물 스키마로 검증한다(에러 문자열 배열 — 공유 스키마 검증 경로). */
 const errorsFor = (feeds) => validateItem(feeds, loadSchema(FEEDS_SCHEMA_PATH), 'wiki_feeds.json')
 
 /**

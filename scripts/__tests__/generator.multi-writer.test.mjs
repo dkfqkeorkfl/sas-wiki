@@ -138,7 +138,7 @@ describe('한 세대의 새 정의 — 축 교체 (SG1~SG4)', () => {
       expect(new Set(sourceCommits).size).toBe(1)
 
       // ── SG3: 두 번째 축 — 한 축이 죽어도 다른 축이 문다 ──────────────────────────────────────
-      // ★ 리포트는 이 축에서 **제외한다**: `validate.mjs` 의 `buildReport` 가 `generatedAt` 을
+      // ★ 리포트는 이 축에서 **제외한다**: 하네스 `document-report.mjs`의 `buildReport` 가 `generatedAt` 을
       //   `new Date().toISOString()`(**벽시계**)로 찍는다 — summary·feeds 아티팩트의
       //   `parse-vault` 파생값(`max(doc.updated)`, 결정적)과 좌표계가 다르다. 셋을 한 집합으로 묶으면
       //   이 케이스는 **영원히 red** 이거나 조용히 완화된다(tdd §2.5 ④ 가 이 차이를 놓쳤다 — 보고 대상).

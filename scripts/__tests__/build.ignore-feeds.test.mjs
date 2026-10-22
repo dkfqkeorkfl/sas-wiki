@@ -2,18 +2,7 @@
 //
 // P1 통합 · Task 3 — build 배선(단일 지점 적용) — tdd §3 Task 3 (mirror build.vault.test.mjs)
 //
-// RED 사유: `build.mjs` 가 아직 `ignore-feeds.json` 을 로드·검증·적용하지 않는다 →
-//   ① 억제 id 가 산출 wiki_feeds.json 에 그대로 남는다(#1·#3 assertion 실패).
-//   ② 스키마 위반 목록이 build 를 멈추지 않는다(#6 throw 미발생).
-//   ③ 존재X id 의 stale 경고가 stdout 에 뜨지 않는다(#4b).
-//   나머지(#2 대조군·#4a·#5·#7)는 GREEN 이 반드시 유지해야 할 fail-open / 무결성 잠금이다.
-//
-// **SHA 하드코딩 금지**(build.vault.test.mjs 규약): 억제할 feed id 는 빈-억제 1차 빌드 산출에서
-//   제목(안정 좌표)으로 찾아 유도한다. vault 는 임시 git repo 를 스스로 시딩하므로 결정적이다.
-//
-// 계약(GREEN 이 배선): buildContent 가 vaultDir 루트의 ignore-feeds.json 을 로드 → 스키마 검증
-//   (위반=throw, fail-loud) → 피드 수집 직후·buildFeeds 이전 단일 지점에서 applyIgnoreFeeds
-//   1회 적용 → reportIgnoreHygiene(stale) 를 경고로 출력. 파일 부재=[](fail-open).
+// 명시한 억제 목록은 실제 feeds 생성기에 적용하고 문서·본문은 보존한다.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -125,7 +114,7 @@ describe('build 배선 — fail-open / fail-loud 구분', () => {
 })
 
 describe('build 배선 — 참조 무결성(억제≠참조 파괴)', () => {
-  it('억제 후에도 checkInvariants 가 통과한다 (#7 — 억제는 item 제거일 뿐 ref 무결성 무영향)', async () => {
+  it('억제 후에도 문서·본문 참조가 유지된다 (#7 — 억제는 item 제거일 뿐 ref 무결성 무영향)', async () => {
     const { body, feeds, summary } = await build([{ id: ctx.suppressId, when: WHEN }])
 
     expect(summary.docs.length).toBeGreaterThan(0)
