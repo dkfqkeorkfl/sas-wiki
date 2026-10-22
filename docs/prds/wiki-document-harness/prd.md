@@ -103,12 +103,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                 | Description                              | Status  | Parallel | Depends | PRP Plan |
-| --- | --------------------- | ---------------------------------------- | ------- | -------- | ------- | -------- |
-| 1   | current-checks        | 기존 검사·호출·소비처 조사와 이전 대응표 | pending | -        | -       | -        |
-| 2   | document-tests        | 실제 문서 집행을 테스트로 이전           | pending | -        | 1       | -        |
-| 3   | validation-regression | 수동 회귀·수집 분리·실패 전달 검증       | pending | -        | 2       | -        |
-| 4   | pipeline-transition   | validate 제거·빌드·훅·CI·가이드 전환     | pending | -        | 3       | -        |
+| #   | Phase                 | Description                              | Status   | Parallel | Depends | PRP Plan                          |
+| --- | --------------------- | ---------------------------------------- | -------- | -------- | ------- | --------------------------------- |
+| 1   | current-checks        | 기존 검사·호출·소비처 조사와 이전 대응표 | complete | -        | -       | [plan](P1.current-checks/plan.md) |
+| 2   | document-tests        | 실제 문서 집행을 테스트로 이전           | pending  | -        | 1       | -                                 |
+| 3   | validation-regression | 수동 회귀·수집 분리·실패 전달 검증       | pending  | -        | 2       | -                                 |
+| 4   | pipeline-transition   | validate 제거·빌드·훅·CI·가이드 전환     | pending  | -        | 3       | -                                 |
 
 ### Phase Details
 
