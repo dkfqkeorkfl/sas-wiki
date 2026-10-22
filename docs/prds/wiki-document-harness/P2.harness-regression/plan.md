@@ -205,3 +205,15 @@ git diff --check
 SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 기존 Vitest 설정·회귀·임시 프로세스 패턴을 사용한다. 내부 소비처와 명명 규약은 위 파일에서 직접 확인했다.
 
 사용자 승인에 따라 Codex가 계획·구현·검수를 직접 수행한다. Claude 전용 Skill/Agent 호출을 실행한 것으로 기록하지 않는다. PRD·계약은 기존 목표를 유지하고 구현 전 계획 완전성을 검수한다.
+
+### Completion Evidence
+
+- 계획 완전성 검수 후 구현했다. 기존 작성 규칙 회귀와 CI 연결 계약을 이동하고 훅 설정 계약만 기능 사례에서 분리했다. 실제 validate 기능 사례는 scripts의 자동 수집에 유지했다.
+- `pnpm run test:harness --maxWorkers=1 --reporter=verbose`: 5개 파일·129개 테스트, exit 0. 기존 96개 규칙 회귀를 보존했고 정상·위반·빈 입력·파싱/무결성/보고 오류·경고·prod 빈 결과와 검사기 무력화를 확인했다. 기록은 `logs/verification/p2-harness.log`에 있다.
+- 실제 CLI 수집에서 test=coverage, 자동과 수동의 교집합 0을 확인했다. 각 명령의 빈 수집 실패와 자동/간접 경로의 수동 회귀 미호출, 실제 pre-push shell의 순서·실패 차단도 확인했다.
+- 첫 전체 실행은 파일 이동을 인덱스에 반영하기 전에 시작해 추적 스캐너가 옛 경로 2개를 unreadable:ENOENT로 보고했다. 스테이징 후 같은 LS8 사례가 수정 없이 통과했다. 실패가 집계된 첫 실행은 중단하고 올바른 인덱스 상태에서 전체를 재실행했다. 이 실패를 제품 코드의 성공 근거로 사용하지 않았다.
+- 최종 `pnpm run test:coverage --maxWorkers=1 --reporter=verbose --coverage.reportOnFailure`: 110개 파일·1,197개 테스트, exit 0. LS8도 포함해 모두 통과했다. 최종 실행은 1,810.30초였고 `logs/verification/p2-coverage-final.log`에 기록했다.
+- 제품 coverage는 statements 90.26%·branches 82.72%·functions 95.63%·lines 91.52%로 기존 86/76/92/89 기준을 충족했다. 하네스와 지원 코드는 제품 분모에 포함하지 않았다.
+- 변경 파일의 Prettier 검사와 diff 검사를 통과했다. Codex가 정확성·중복·죽은 코드·정리 부채·편법의 5차원을 직접 감사했고, phase 전체 변경과 계약 대응을 다시 검수했다. 추가 리팩터링은 필요하지 않아 별도 refactor 커밋을 만들지 않았다.
+- 기존 의존성 감사 11건(high 3/moderate 7/low 1)은 이번 범위에서 수정하지 않았고 의존성 변경도 없다.
+- sas-wiki의 기능 코드·위키 본문·문서 ID·pre-commit·CI workflow와 부모 저장소 파일·인덱스를 변경하지 않았다. 변경·커밋은 sas-wiki feature 브랜치 내부에 한정했다. 원격 push는 하지 않았으며 P3/P4는 시작하지 않았다.

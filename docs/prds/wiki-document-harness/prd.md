@@ -89,12 +89,12 @@
 
 ## Implementation Phases
 
-| #   | Phase                | Description                                 | Status      | Parallel | Depends | PRP Plan                                |
-| --- | -------------------- | ------------------------------------------- | ----------- | -------- | ------- | --------------------------------------- |
-| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete    | -        | -       | [plan](P1.document-enforcement/plan.md) |
-| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | in-progress | -        | 1       | [plan](P2.harness-regression/plan.md)   |
-| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending     | -        | 2       | -                                       |
-| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending     | -        | 3       | -                                       |
+| #   | Phase                | Description                                 | Status   | Parallel | Depends | PRP Plan                                |
+| --- | -------------------- | ------------------------------------------- | -------- | -------- | ------- | --------------------------------------- |
+| 1   | document-enforcement | 기존 문서 규칙의 하네스 집행과 진단 보존    | complete | -        | -       | [plan](P1.document-enforcement/plan.md) |
+| 2   | harness-regression   | 검사 장치 회귀와 자동/수동 수집 분리        | complete | -        | 1       | [plan](P2.harness-regression/plan.md)   |
+| 3   | runtime-separation   | 기능/검사 분리·validate 제거·운영 생성 전환 | pending  | -        | 2       | -                                       |
+| 4   | delivery-pipeline    | 최종 훅·CI·산출물·가이드·소비자 정합 검증   | pending  | -        | 3       | -                                       |
 
 ### Phase Details
 
@@ -109,6 +109,7 @@
 - Goal: 집행의 검출력과 실행 대상 분리를 보장한다.
 - Scope: 계약 C1–C3·C7의 회귀, Vitest 수집·수동 명령, 이름·배치.
 - Success signal: 정상·위반·무력화·누락을 검출하고 test/coverage와 test:harness가 섞이지 않는다.
+- Result: 수동 회귀 5개 파일·129건과 자동 제품 검사 110개 파일·1,197건이 통과했다. 실제 수집 집합·빈 수집 실패·훅 실패 전달을 확인했고 제품 coverage 하한을 유지했다. pre-push는 test → validate의 중간 상태이며 validate 제거는 P3에서 진행한다. P3가 변경할 검사기 소비처에는 새 수동 가드 회귀와 훅·CI 계약도 포함한다.
 
 **P3: runtime-separation**
 
@@ -156,4 +157,4 @@ SAS Research: 생략 — 신규 외부 의존·버전 판단 없이 확립된 �
 - [contract.md](contract.md): 조율·갱신할 수 있는 합의 목표 — 구조·명령·책임·문서 규칙·실패 조건·운영 산출물.
 - 페이즈 계획은 생성·검수된 뒤 Implementation Phases의 PRP Plan에서 연결한다. 단계별 조사와 검증 방법은 그 계획이 소유한다.
 
-_Status: specification completeness verified; P1 complete; P2 plan completeness verified / in-progress; P3–P4 pending_
+_Status: specification completeness verified; P1–P2 complete; P3–P4 pending_
