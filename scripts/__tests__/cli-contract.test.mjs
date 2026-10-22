@@ -269,11 +269,11 @@ describe('C5 — 순수 함수는 vault 기본값을 흡수하지 않는다(격�
 //    RED 단계에서는 exit1. 무엇을 깨면 red(GREEN 후): 기본값을 process.cwd() 파생으로 하면 tmpdir 에
 //    `wiki` 부재 → red. 두 cwd 의 sourceCommit 동일 = 같은 REPO_ROOT 확증.
 describe('C6 — 기본 vault 는 cwd 무관(import.meta.url 파생) (RED 단계 회귀 가드)', () => {
-  // timeout: OQ-P1-2 (c) — 실측 **51,546ms**. 이 케이스만 실 repo 생성기를 **2회** spawn 한다
-  //   (cwd=repo · cwd=tmpdir 대조) → 1회 25~31초의 두 배라 기본 30s 로는 구조적으로 불가능하다.
+  // cwd=repo와 cwd=tmpdir에서 같은 생성기를 두 번 호출한다. 67문서 전체 순차 실행에서
+  // 합계 122.8s가 걸렸다. 각 자식의 120s 제한은 유지하고, 사례 전체에는 두 호출분을 배정한다.
   it(
     'summary --env dev(--vault 생략), cwd=tmpdir → exit0 · docs>0 · sourceCommit=cwd repo 실행값',
-    { timeout: REAL_REPO_SPAWN_TIMEOUT },
+    { timeout: REAL_REPO_SPAWN_TIMEOUT * 2 },
     () => {
       const inRepo = runCli(SUMMARY, ['--env', 'dev'], { cwd: REPO_ROOT })
       const inTmp = runCli(SUMMARY, ['--env', 'dev'], { cwd: tmpdir() })
