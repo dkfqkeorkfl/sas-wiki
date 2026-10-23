@@ -1,12 +1,7 @@
-import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import { derive } from '../derive.mjs'
-import { validateItem } from '../schema-validator.mjs'
 
-const schema = JSON.parse(
-  readFileSync(new URL('../../schema/wiki-doc.schema.json', import.meta.url)),
-)
 const ID = '0192a000-0000-7000-8000-0000000000aa'
 
 function document(relPath, extra = {}) {
@@ -27,10 +22,6 @@ function generate(docs) {
 }
 
 describe('파일명이 표시 제목의 유일한 출처다', () => {
-  it('frontmatter title 없이 문서 스키마를 통과한다', () => {
-    expect(validateItem(document('concept/메모리').frontmatter, schema)).toEqual([])
-  })
-
   it.each(['active', 'disable'])('%s 문서는 기존 title 대신 파일명 전체를 표시한다', (status) => {
     const { docs } = generate([
       document('TREND/2026-08/28. 원화 강세', {

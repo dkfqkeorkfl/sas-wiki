@@ -1,67 +1,29 @@
-// 실제 기능 결과에 대한 검사기의 정책 회귀.
-import { execFileSync } from 'node:child_process'
-
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-
-import { tmpdir } from 'node:os'
-
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-
+import { cleanup, commit, git, initVault } from '../../test-utils/tmp-git-vault.mjs'
+import { createExampleVault } from '../../test-utils/seed-example-vault.mjs'
 import { inspectVault } from '../document-integrity.mjs'
 
-import { checkInvariants } from '../document-invariants.mjs'
-
 const EPOCH = '1700000000'
-// → 2023-11-14T22:13:20.000Z
+const roots = []
 
-// ── 결정성 6필드 (git t/test-lib.sh test_tick 관례) ──────────────────────────
-const NAME = 'SAS Wiki Bot'
-
-const EMAIL = 'bot@sas.wiki'
-
-let tick = 1_136_239_445
-
-const ctx = { ids: {}, prevEpoch: undefined, result: null, vault: '' }
+beforeEach(() => vi.stubEnv('SOURCE_DATE_EPOCH', EPOCH))
+afterEach(() => {
+  try {
+    cleanup(...roots.splice(0))
+  } finally {
+    vi.unstubAllEnvs()
+  }
+})
 
 function appendDoc(root, rel, paragraph) {
   const full = path.join(root, 'wiki', `${rel}.md`)
   writeFileSync(full, `${readFileSync(full, 'utf8')}\n${paragraph}\n`)
 }
 
-function commit(cwd, message) {
-  const date = nextDate()
-  git(cwd, ['add', '-A'])
-  git(cwd, ['commit', '--no-gpg-sign', '-m', message], {
-    GIT_AUTHOR_DATE: date,
-    GIT_COMMITTER_DATE: date,
-  })
-  return git(cwd, ['rev-parse', 'HEAD'])
-}
-
-function git(cwd, args, extraEnv = {}) {
-  return execFileSync('git', ['-c', 'core.quotepath=false', ...args], {
-    cwd,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      GIT_AUTHOR_EMAIL: EMAIL,
-      GIT_AUTHOR_NAME: NAME,
-      GIT_COMMITTER_EMAIL: EMAIL,
-      GIT_COMMITTER_NAME: NAME,
-      ...extraEnv,
-    },
-  }).trim()
-}
-
-function nextDate() {
-  tick += 60
-  return `${tick} +0000`
-}
-
-// frontmatter 저작 UUIDv7 doc id — 결정적 counter(문서마다 유일). id 출처가 frontmatter 로 반전됐다.
-// 시딩 시 파일에 써 커밋하므로 재빌드(out1·out2)는 같은 id 를 읽어 byte-identical 이 유지된다.
+// 각 문서와 삭제 후 재생성한 문서는 서로 다른 UUIDv7을 사용한다.
 let idSeq = 0
 
 function nextDocId() {
@@ -93,20 +55,18 @@ function writeDoc(root, rel, title) {
       '',
     ].join('\n'),
   )
-  return id
 }
 
-beforeAll(() => {
-  const vault = mkdtempSync(path.join(tmpdir(), 'wiki-smoke-'))
-  ctx.vault = vault
-  git(vault, ['init', '-q'])
+function createHistoryVault() {
+  const vault = initVault()
+  roots.push(vault)
 
   // 1 · 문서 생성(chore — id = frontmatter 저작 UUIDv7)
-  ctx.ids.foo = writeDoc(vault, 'concept/foo', '삼성전자')
+  writeDoc(vault, 'concept/foo', '삼성전자')
   commit(vault, 'chore: 삼성전자 문서 생성')
 
   // 2 · 삭제 후 재생성될 문서 — **옛 id**(부활하면 안 된다)
-  ctx.ids.rebornOld = writeDoc(vault, 'concept/reborn', '부활문서')
+  writeDoc(vault, 'concept/reborn', '부활문서')
   commit(vault, 'chore: 부활문서 문서 생성')
 
   // 3 · 삭제될 문서
@@ -130,14 +90,14 @@ beforeAll(() => {
   commit(vault, 'chore: 폐기문서 삭제')
 
   // 8 · chore — **같은 경로에 재생성 → 새 문서(새 id)**  (README · 문서 id)
-  ctx.ids.rebornNew = writeDoc(vault, 'concept/reborn', '부활문서')
+  writeDoc(vault, 'concept/reborn', '부활문서')
   commit(vault, 'chore: 부활문서 재생성')
 
   // 9~13 · **경로 재사용 함정** — 살아 있는 문서의 과거 피드가 사라지면 안 된다.
   //   문서 A 를 x 에 만들고 → A 를 가리키는 feed → A 를 y 로 이동 → **다른 문서 B 가 빈 x 를 재사용**
   //   → B 삭제. 이때 x 는 "삭제된 경로" 지만, 그 feed 의 diff 가 가리키는 x 는 **그 시점의 A** 이고
   //   A 는 y 로 멀쩡히 살아 있다. 경로만 보고 prune 하면 A 의 뉴스가 통째로 증발한다.
-  ctx.ids.mover = writeDoc(vault, 'company/reuse-x', '이사간문서')
+  writeDoc(vault, 'company/reuse-x', '이사간문서')
   commit(vault, 'chore: 이사간문서 문서 생성')
 
   appendDoc(vault, 'company/reuse-x', '신제품 라인업을 공개했다.')
@@ -152,25 +112,23 @@ beforeAll(() => {
   git(vault, ['rm', '-q', 'wiki/company/reuse-x.md'])
   commit(vault, 'chore: 경로재사용문서 삭제')
 
-  ctx.prevEpoch = process.env.SOURCE_DATE_EPOCH
-  process.env.SOURCE_DATE_EPOCH = EPOCH
+  return vault
+}
 
-  // 결정성 검증용 2회 조립(같은 입력·같은 SOURCE_DATE_EPOCH). validate 는 파일을 쓰지 않으므로
-  // in-memory payload 를 대조한다(구: out1·out2 byte-identical).
-  ctx.result = inspectVault({ vault })
-})
-
-afterAll(() => {
-  if (ctx.prevEpoch === undefined) delete process.env.SOURCE_DATE_EPOCH
-  else process.env.SOURCE_DATE_EPOCH = ctx.prevEpoch
-  for (const dir of [ctx.vault]) {
-    if (dir) rmSync(dir, { force: true, recursive: true })
-  }
-})
-describe('생성 상태의 문서 검사', () => {
-  it('불변식 8종이 green 이다', () => {
-    const { body, feeds, summary } = ctx.result
-
-    expect(() => checkInvariants(summary, feeds, body)).not.toThrow()
+describe('정상 문서 이력의 전체 집행', () => {
+  it.each([
+    { name: '문서 이동·삭제·경로 재사용 이력', createVault: createHistoryVault },
+    {
+      name: '예제 문서·피드 이력',
+      createVault() {
+        const vault = createExampleVault()
+        roots.push(vault)
+        return vault
+      },
+    },
+  ])('$name를 허용한다', ({ createVault }) => {
+    // inspectVault가 스키마와 불변식을 집행한다. 반환한 결과에 같은 검사를 반복하지 않는다.
+    const result = inspectVault({ vault: createVault() })
+    expect(result.report.error).toBeNull()
   })
 })

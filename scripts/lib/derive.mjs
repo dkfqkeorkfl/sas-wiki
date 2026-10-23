@@ -38,9 +38,9 @@ export function checkAnchorExists(pathToDoc, targetPath, anchorRaw) {
  * - `pathToDoc` : **disable 포함**(위키링크 데드링크 방지)
  */
 /**
- * **중복 id·path 배제는 이 함수의 책임이 아니다.** 예전에는 여기서 발견 즉시 throw 했고, 그래서
- * 오타 하나가 위키 서빙 전체를 500 으로 만들었다(P3 착수 전 실측). 지금 그 판정은 `doc-gate.mjs`
- * 가 **값**으로 끝내며, 이 함수는 이미 걸러진 `visibleDocs` 만 받는다는 것을 전제한다.
+ * 중복 id·path의 정책 감사는 하네스가 소유한다. 기능 경로는 환경별로 보이는 문서를 전달하며
+ * 전체 감사를 수행하지 않는다. 하네스의 검사 경로에서는 감사한 제외 목록을 먼저 반영한다.
+ * 운영 산출물에 사용할 입력의 유효성은 생성 전에 실행하는 문서 집행 테스트로 확인한다.
  */
 export function derive(parsedDocs, runGit, { wikiPrefix }) {
   const enriched = parsedDocs.map((parsed) => {
