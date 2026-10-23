@@ -880,6 +880,8 @@ pnpm format:check
 
 **설치** — `pnpm install` 이 `prepare` 스크립트로 husky 를 설치한다(`core.hooksPath` 를 `.husky/_` 로 둔다). 그 뒤 `git commit` 마다 `.husky/pre-commit` 이 `scripts/check-doc-ids.mjs` 를, `git push` 마다 `.husky/pre-push` 가 `pnpm run test`를 부른다. `test:harness`는 훅·CI에서 자동 실행하지 않는다.
 
+pre-push는 테스트 실행 전에 Git의 저장소 환경변수를 해제한다. 서브모듈에서 전달된 `GIT_DIR` 등이 임시 Git 저장소를 만드는 테스트에 영향을 주지 않도록 격리하며, 검사 실패 시에는 그대로 push를 차단한다.
+
 **커밋 훅(`check-doc-ids`)**
 
 - 이번 커밋에 들어가는 wiki 문서(인덱스에서 추가·수정·이동·타입 변경된 일반 파일)마다 [불변성 표](#문서-id--정체성은-경로가-아니다)대로 판단한다. 이번 커밋에서 id 줄을 바꿨다면 바로 전 값은 직전 커밋의 값이고, 그대로 두었다면 그 줄을 마지막으로 바꾼 커밋의 바로 전 값이다. 변경이 이번 커밋이 아니라 이미 커밋된 이력에 있으면(훅을 건너뛴 커밋) 그렇게 알리고 [정정 방법](#id-를-고쳐야-할-때)을 가리킨다.

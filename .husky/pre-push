@@ -1,3 +1,7 @@
+# 임시 Git 저장소를 쓰는 테스트에 현재 저장소의 Git 환경을 넘기지 않는다.
+wiki_git_local_env=$(git rev-parse --local-env-vars) || exit 1
+unset $wiki_git_local_env
+
 # 기능과 실제 문서를 자동 검사한다. 검사 장치 회귀(test:harness)는 개발 시 수동 실행한다.
 pnpm run test || {
   echo '[wiki] pre-push: 기능·문서 test가 실패해 push를 멈췄습니다. 위 사유를 고친 뒤 다시 push하세요.' >&2
