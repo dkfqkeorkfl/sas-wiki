@@ -1,0 +1,77 @@
+# Dev Container stack: build from repo Dockerfile, bind workspace, publish claude-mem worker.
+# Host ~/.ssh is mounted read-only at /mnt/host-ssh (Windows/macOS bind mounts often keep permissive
+# modes; OpenSSH then refuses private keys). post-attach.sh copies into ~/.ssh and chmods for Git SSH.
+# Commits are local (no SSH); HTTPS remotes do not need keys. Compose expands ~ to the host user home.
+# Host port: set CLAUDE_MEM_HOST_PORT in .devcontainer/.env (defaults to 37777).
+# Example .env: CLAUDE_MEM_HOST_PORT=37778
+# claude-mem data lives under /workspace/.claude-mem (repo .claude-mem/) via CLAUDE_MEM_DATA_DIR.
+#
+# ECC (Git + legacy install.sh): ECC_INSTALL_LANGUAGES is required (comma → multiple install.sh args).
+# Optional: ECC_GIT_URL (default upstream), ECC_GIT_REF (default main), ECC_SRC_DIR (default ~/.cache/cc-devcontainer/everything-claude-code).
+# Example .env: ECC_INSTALL_LANGUAGES=typescript,web
+# See everything-claude-code rules/README.md.
+#
+# post-create.sh order: Codex CLI (@openai/codex) → ECC clone → install.sh --target claude →
+#   Node: .devcontainer/post-create/ecc-hooks.mjs → settings.json hooks;
+#   Node: .devcontainer/post-create/ecc-mcp.mjs → ~/.claude.json mcpServers (ECC_DEVCONTAINER_MCP_*) →
+#   Claude plugins (e.g. claude-mem) → install.sh --target codex --profile → RTK.
+#   cc-suite 등 그 외 플러그인은 컨테이너 attach 후 /sas-setup-project 흐름에서 설치한다.
+#
+# Codex Linux sandbox uses bubblewrap (user namespaces). Docker's default seccomp profile can deny
+# unshare/clone; seccomp=unconfined lets bwrap run inside this dev container (dev tradeoff, not prod hardening).
+
+services:
+  devcontainer:
+    init: true
+    build:
+      context: ..
+      dockerfile: .devcontainer/dockerfile
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - ..:/workspace:cached
+      - ~/.ssh:/mnt/host-ssh:ro
+      # ECC 소스를 호스트에서 직접 bind-mount. post-create.sh 의 git clone 단계를 대체.
+      # 기본 경로는 현재 프로젝트의 한 단계 밖 (`../ECC`, compose 파일 기준 `../../ECC`).
+      # 호스트에 ECC 디렉토리가 없으면 컨테이너 기동 실패하므로 사전에 git clone 해두거나
+      # ECC_HOST_DIR 로 다른 경로를 지정한다.
+      # `:ro` — 컨테이너 안에서 ECC 소스 수정 차단 (install.sh 는 읽기만 수행, 산출물은 ~/.claude 로).
+      - ${ECC_HOST_DIR:-../../ecc}:/mnt/ecc:ro
+      # node_modules 를 container-only named volume 으로 분리.
+      # - host (9p / drvfs / SMB) 와 격리 → host pnpm/npm 이 컨테이너 install 을 오염시키지 않음
+      # - 컨테이너 내부 ext4 위라 pnpm hardlink 가능 (성능·디스크 절약)
+      # - pnpm-store 는 ~/.npmrc 의 store-dir 로 이 volume 안으로 향하게 설정 (post-create.sh)
+      # - volume 이름은 docker-compose 가 <project>_node_modules 로 자동 prefix → 다른 프로젝트와 충돌 없음
+      # - 비 Node 프로젝트에선 빈 디렉토리로 유지 (무해)
+      - node_modules:/workspace/node_modules
+    command: sleep infinity
+    ports:
+      - "${CLAUDE_MEM_HOST_PORT:-37777}:37777"
+    environment:
+      # Worker must listen beyond loopback for Docker port publish to reach it from the host.
+      CLAUDE_MEM_WORKER_HOST: "0.0.0.0"
+      # Persist memory in the bind-mounted workspace (repo .claude-mem/), not container-only home.
+      CLAUDE_MEM_DATA_DIR: "/workspace/.claude-mem"
+      # ECC 규칙 언어(쉼표 = install.sh 인자 여러 개). common은 인스톨러가 항상 설치. 팀 스택에 맞게 고르세요.
+      # 선택지 예: typescript, python, golang, web, swift, php — 그 외 ECC 지원(c, cpp, csharp, java, kotlin, perl, rust 등)은 upstream rules/README·install.sh 참고.
+      ECC_INSTALL_LANGUAGES: typescript
+      # ECC 소스 컨테이너 마운트 지점 (위 volumes 항목과 일치해야 함).
+      # 호스트 경로는 ECC_HOST_DIR 로 조정 (기본 ../../ECC).
+      ECC_SRC_DIR: /mnt/ecc
+      # Claude MCP: 쉼표 allowlist(비우면 ecc-mcp.mjs는 ~/.claude.json mcpServers를 건드리지 않음). 카탈로그 키는 ~/.claude/mcp-configs/mcp-servers.json과 동일.
+      # 별칭: exa → type http + https://mcp.exa.ai/mcp (카탈로그의 exa-web-search와 별개; 사용자 ~/.claude.json에 이미 exa가 있으면 주입 생략)
+      # 카탈로그 키 예: browser-use, browserbase, clickhouse, cloudflare-docs, cloudflare-observability, cloudflare-workers-bindings, cloudflare-workers-builds, confluence, context7, devfleet, evalview, exa-web-search, fal-ai, filesystem, firecrawl, github, jira, laraplugins, magic, memory, omega-memory, playwright, railway, sequential-thinking, supabase, token-optimizer, vercel
+      ECC_DEVCONTAINER_MCP_SERVERS: "context7,exa,sequential-thinking"
+      # Staging path for host .ssh bind mount; post-attach.sh copies to $HOME/.ssh with strict perms.
+      HOST_SSH_MOUNT: "/mnt/host-ssh"
+      # ECC 훅 프로파일: minimal | standard | strict (기본값 standard).
+      # strict는 pre:bash:commit-quality(시크릿 스캔, 커밋 메시지 포맷, lint) 게이트를 활성화.
+      # 잔소리성 strict 전용 훅(tmux/git-push 리마인더)은 ECC_DISABLED_HOOKS로 끔.
+      ECC_HOOK_PROFILE: strict
+      ECC_DISABLED_HOOKS: "pre:bash:tmux-reminder,stop:evaluate-session,stop:desktop-notify"
+
+volumes:
+  # container-only volume for node_modules (pnpm hardlink store 포함).
+  # 명시 이름 없음 → docker-compose 자동 prefix: <project>_node_modules.
+  # 정리: rebuild 만으로는 안 사라짐. 필요 시 `docker compose down -v` 또는 `docker volume prune`.
+  node_modules:

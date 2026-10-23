@@ -1,0 +1,100 @@
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Seoul
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# 시스템 패키지 (Claude Code/개발용 풀툴킷)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Trust chain / repo management
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    \
+    # Download / API / JSON
+    curl \
+    wget \
+    jq \
+    \
+    # SSH (private git, remote access)
+    openssh-client \
+    \
+    # Locale (required for locale-gen)
+    locales \
+    \
+    # Search / navigation (agent-friendly)
+    ripgrep \
+    fd-find \
+    tree \
+    \
+    # Pretty viewing / paging
+    bat \
+    less \
+    \
+    # Archives / file inspection
+    unzip \
+    zip \
+    tar \
+    xz-utils \
+    file \
+    \
+    # Process / port / performance debugging
+    procps \
+    lsof \
+    htop \
+    \
+    # Networking diagnostics
+    iproute2 \
+    iputils-ping \
+    net-tools \
+    dnsutils \
+    \
+    # Codex CLI sandbox (bubblewrap provides `bwrap` on PATH)
+    bubblewrap \
+    \
+    # Build toolchain (native deps)
+    build-essential \
+    pkg-config \
+    \
+    # Virtual display (headed 브라우저·GUI 앱을 컨테이너에서 구동; xvfb-run 포함)
+    xvfb \
+    \
+    # Interactive shell + editors
+    zsh \
+    tmux \
+    vim \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian/Ubuntu 패키지 네이밍 호환성 (fd/bat)
+RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd \
+    && ln -sf "$(command -v batcat)" /usr/local/bin/bat
+
+RUN locale-gen en_US.UTF-8
+
+# Claude Code 설치 (공식 네이티브 방식)
+USER vscode
+WORKDIR /home/vscode
+
+# Claude 설치 위치(~/.local/bin)와 bun을 어떤 셸에서도 확실히 PATH에 포함
+ENV PATH="/home/vscode/.local/bin:/home/vscode/bin:/home/vscode/.bun/bin:${PATH}"
+ENV BUN_INSTALL="/home/vscode/.bun"
+
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# bun 설치 (claude-mem 플러그인 필수 런타임)
+RUN curl -fsSL https://bun.sh/install | bash
+
+# uv 설치 (Python 패키지/런타임 매니저, astral.sh 공식 설치 스크립트)
+# 기본 설치 경로 ~/.local/bin 는 위 ENV PATH 에 이미 포함되어 있음
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Serena 설치 (LSP 기반 심볼 탐색·편집 MCP)
+# 공식 문서가 MCP·플러그인 마켓플레이스 설치를 "outdated and suboptimal"로 명시 비권장하여
+# uv tool install 공식 방식을 사용한다. 프로젝트 등록(serena init·setup)은 /workspace
+# bind-mount 와 ~/.claude·~/.codex 설정이 준비된 뒤에나 가능해 post-create.sh 에서 수행한다.
+RUN uv tool install -p 3.13 serena-agent
+
+WORKDIR /workspace

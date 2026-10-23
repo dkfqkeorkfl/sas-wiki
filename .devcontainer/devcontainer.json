@@ -1,0 +1,53 @@
+{
+  "name": "Claude Code Step 1 (No SSH)",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "24",
+      "pnpmVersion": "none"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.black-formatter", // Python 포맷터
+        "ms-python.pylint",
+        "dbaeumer.vscode-eslint", // JS/TS 린터
+        "esbenp.prettier-vscode", // 범용 포맷터 (JS, TS, JSON, YAML, MD)
+        // ✅ 마크다운
+        "yzhang.markdown-all-in-one", // TOC, 단축키, 미리보기
+        "davidanson.vscode-markdownlint", // MD 린터
+        // ✅ YAML / JSON / TOML
+        "redhat.vscode-yaml", // YAML 스키마 자동완성 (k8s, docker-compose 등)
+        "tamasfe.even-better-toml", // TOML 지원
+        // ✅ Docker / 컨테이너
+        "ms-azuretools.vscode-docker", // Dockerfile, compose 편집
+        "ms-vscode-remote.remote-containers",
+        // ✅ Git
+        "eamodio.gitlens", // git blame, history
+        "mhutchie.git-graph", // 시각적 브랜치 그래프
+        // ✅ 편의 기능
+        "streetsidesoftware.code-spell-checker", // 오타 체크
+        "editorconfig.editorconfig", // .editorconfig 적용
+        "gruntfuggly.todo-tree", // TODO/FIXME 트리뷰
+        "ms-vscode.makefile-tools", // Makefile 지원
+        // 히스토리 + 사용량 추적
+        "agsoft.claude-history-viewer" // ← 이게 Claude Code and Codex Assist
+      ]
+    }
+  },
+  "postCreateCommand": "bash -lc 'bash .devcontainer/post-create.sh'",
+  "postAttachCommand": "bash -lc 'bash .devcontainer/post-attach.sh'",
+  "shutdownAction": "stopCompose"
+}

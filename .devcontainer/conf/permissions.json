@@ -1,0 +1,33 @@
+[
+  {
+    "src": "${HOST_SSH_MOUNT}/*",
+    "dst": "$HOME/.ssh/*",
+    "auth": 700,
+    "note": "host ~/.ssh(ro 마운트)를 컨테이너 로컬로 복사, 디렉터리 기본 700"
+  },
+  {
+    "dst": "$HOME/.ssh/*",
+    "auth": 600,
+    "note": "복사된 항목 전체를 개인키 기준 600으로"
+  },
+  {
+    "dst": "$HOME/.ssh/agent",
+    "auth": 700,
+    "note": "agent 포워딩 소켓 디렉터리는 진입 가능해야 함(앞선 600 일괄 규칙의 예외)"
+  },
+  {
+    "dst": "$HOME/.ssh/*.pub",
+    "auth": 644,
+    "note": "공개키는 644"
+  },
+  {
+    "dst": "$HOME/.ssh/known_hosts",
+    "auth": 644,
+    "note": "known_hosts는 644"
+  },
+  {
+    "dst": ".claude/scripts/**/*.sh",
+    "auth": 755,
+    "note": "Windows/drvfs 재마운트 시 실행 비트 소실 방지 (예: GitHub MCP headersHelper)"
+  }
+]
