@@ -1,0 +1,107 @@
+{
+  "description": "credential·무결성 보호 목록. .claude/scripts/protect-paths-hook.mjs가 Read/Grep/Glob/Write/Edit/MultiEdit/NotebookEdit/Bash/Serena/IDE 코드실행/Codex apply_patch 호출의 실제 경로(~·$HOME 확장, .. 정규화, 심링크·brace·셸 글롭 확장)를 계산해 아래 path 패턴과 비교한다. settings.json의 permissions.deny 와는 별개의 이중 방지 계층이다(하나에 결함이 있어도 다른 하나가 막도록). 이름만 겹치는 무관한 파일(locker.secret.tsx)이나 심볼(id_rsa_backup)은 걸리지 않는다.",
+  "pathRules": [
+    "~/x = 홈 디렉터리, /x = 절대경로, ./x = 프로젝트 루트 고정(셸이 cd 해도 안 움직임), 접두사 없음 = 어느 위치든 파일명으로 매칭(gitignore·settings.json Read() 규칙과 같은 뜻)",
+    "* 와 ? 는 슬래시를 넘지 않음, ** 는 슬래시 포함 전부. gitignore처럼 패턴은 그 경로 자체 + 그 아래 전부에 매칭되므로 X, X/, X/** 는 모두 같은 뜻(디렉터리는 가독성을 위해 X/** 로 쓴다)",
+    "접두사 없는 패턴은 bash 채널에서 실제 존재하는 파일일 때만 차단(변수명·심볼 오탐 방지). Read/Write/Serena 인자는 항상 경로이므로 존재 여부와 무관하게 차단",
+    "block: read = Read/Grep/Glob/Serena 읽기, write = Write/Edit/MultiEdit/NotebookEdit/Serena 쓰기/Codex apply_patch, bash = 셸·코드실행 전부(읽기/쓰기 구분 없음)",
+    "재귀 규칙: grep -r, rg --hidden/--no-ignore, cp -r, zip -r, rm -r, tar, rsync 가 앵커된 항목(~/, /, ./ 로 시작)의 상위 폴더를 대상으로 하면 차단한다. 검색류(grep -r, rg)는 rg 사용을, 복사·압축·삭제류(cp -r, zip -r, rm -r, tar, rsync)는 보호 경로 제외나 하위 폴더 지정을 안내한다. 변수·치환 간접 지정처럼 훅이 못 보는 경우는 settings.json 의 Bash(*.secret/*) 류 글자 백스톱이 보완한다"
+  ],
+  "entries": [
+    { "path": "~/.ssh/**", "block": ["read", "write", "bash"], "reason": "SSH 개인키·설정" },
+    { "path": "~/.aws/**", "block": ["read", "write", "bash"], "reason": "AWS 자격증명" },
+    { "path": "~/.config/gh/**", "block": ["read", "write", "bash"], "reason": "GitHub CLI 인증" },
+    { "path": "~/.config/gcloud/**", "block": ["read", "write", "bash"], "reason": "gcloud 인증" },
+    { "path": "~/.npmrc", "block": ["read", "write", "bash"], "reason": "npm 인증 토큰" },
+    {
+      "path": "~/.docker/config.json",
+      "block": ["read", "write", "bash"],
+      "reason": "Docker 레지스트리 인증"
+    },
+    {
+      "path": "~/.kube/config",
+      "block": ["read", "write", "bash"],
+      "reason": "Kubernetes 클러스터 인증"
+    },
+    {
+      "path": "~/.claude/.credentials.json",
+      "block": ["read", "write", "bash"],
+      "reason": "Claude Code 자격증명"
+    },
+    {
+      "path": "~/.codex/auth.json",
+      "block": ["read", "write", "bash"],
+      "reason": "Codex CLI 인증"
+    },
+    {
+      "path": "~/.gnupg/**",
+      "block": ["read", "write", "bash"],
+      "reason": "GPG 개인키"
+    },
+    {
+      "path": "**/.secret/**",
+      "block": ["read", "write", "bash"],
+      "reason": "모든 깊이의 .secret 폴더와 내부 시크릿"
+    },
+    {
+      "path": "**/.secrets/**",
+      "block": ["read", "write", "bash"],
+      "reason": "모든 깊이의 .secrets 폴더와 내부 시크릿"
+    },
+    {
+      "path": "**/.cert/**",
+      "block": ["read", "write", "bash"],
+      "reason": "모든 깊이의 .cert 폴더와 내부 인증서·키"
+    },
+    {
+      "path": "**/.certs/**",
+      "block": ["read", "write", "bash"],
+      "reason": "모든 깊이의 .certs 폴더와 내부 인증서·키"
+    },
+    {
+      "path": "**/harness/**",
+      "block": ["write", "bash"],
+      "reason": "모든 깊이의 harness 폴더와 내부 전체"
+    },
+    {
+      "path": "./.claude/scripts/github-auth.sh",
+      "block": ["write", "bash"],
+      "reason": "GitHub MCP 인증 헬퍼 — 실행 결과에 토큰이 찍힘"
+    },
+    {
+      "path": "./eslint-rules/**",
+      "block": ["write", "bash"],
+      "reason": "린트 룰 무결성 — 참고용 읽기는 허용, 쓰기·셸 접근 차단"
+    },
+    {
+      "path": "./.claude/scripts/protect-paths-hook.mjs",
+      "block": ["write", "bash"],
+      "reason": "경로 보호 훅 자체 — 무결성 보호"
+    },
+    {
+      "path": "./.claude/config/protected-paths.json",
+      "block": ["write", "bash"],
+      "reason": "경로 보호 정책 파일 자체 — 무결성 보호"
+    },
+    {
+      "path": "settings.json",
+      "block": ["write", "bash"],
+      "reason": "프로젝트·전역 어디든 이 보호 훅을 PreToolUse에 등록하는 파일 — 고치면 훅 자체를 무력화할 수 있어 무결성 보호"
+    },
+    {
+      "path": "./.codex/hooks.json",
+      "block": ["write", "bash"],
+      "reason": "settings.json 과 같은 이유로 무결성 보호 — Codex CLI 쪽에 이 보호 훅을 PreToolUse에 등록하는 파일"
+    },
+    { "path": ".env", "block": ["read", "write", "bash"], "reason": "환경변수 파일" },
+    {
+      "path": ".env.*",
+      "block": ["read", "write", "bash"],
+      "reason": "환경변수 파일(.env.local, .env.production 등)"
+    },
+    { "path": "*.pem", "block": ["read", "write", "bash"], "reason": "PEM 인증서/키" },
+    { "path": "*.key", "block": ["read", "write", "bash"], "reason": "키 파일" },
+    { "path": "id_rsa*", "block": ["read", "write", "bash"], "reason": "RSA 개인키" },
+    { "path": "id_ed25519*", "block": ["read", "write", "bash"], "reason": "ed25519 개인키" }
+  ]
+}
