@@ -376,6 +376,56 @@ describe('derive — tags (Record<tag, docId[]>)', () => {
 })
 
 describe('derive — excerpt (본문 첫 문단 평문 160자)', () => {
+  it.each([
+    ['[[제목]]', '제목'],
+    ['[[제목#앵커]]', '제목'],
+    ['[[제목|별칭]]', '별칭'],
+    ['[[제목#앵커|별칭]]', '별칭'],
+    ['[[#앵커]]', '앵커'],
+  ])('위키링크 %s 의 표시 텍스트를 유지한다', (input, expected) => {
+    expect(excerptOf(input)).toBe(expected)
+  })
+
+  it.each(['제목', '앵커', '별칭'])(
+    '위키링크 %s 절은 256자까지 해석하고 초과하면 원문을 보존한다',
+    (part) => {
+      const link = (length) => {
+        const text = '가'.repeat(length)
+        if (part === '제목') return `[[${text}]]`
+        if (part === '앵커') return `[[제목#${text}]]`
+        return `[[제목#앵커|${text}]]`
+      }
+      expect(excerptOf(link(256))).toBe(part === '앵커' ? '제목' : '가'.repeat(160))
+      expect(excerptOf(link(257))).toBe(link(257).slice(0, 160))
+    },
+  )
+
+  it('닫히지 않은 위키링크는 입력 길이에 선형으로 처리한다(12K→48K 에 시간이 약 4배)', () => {
+    // 절대 시간 문턱(예: 200ms)은 느린 CI 에서 흔들린다. 파생 시간의 대부분은 마크다운 파서가 쓰므로,
+    // 길이 4배에 시간이 제곱(약 16배)으로 늘지 않는지를 같은 환경의 12K 측정치에 상대 비교해 가른다.
+    // 하한(MIN_BUDGET_MS)은 12K 측정치가 너무 작을 때 잡음이 비율을 흔드는 것을 막는다.
+    const MIN_BUDGET_MS = 100
+    const LINEAR_RATIO_LIMIT = 6
+    const median = (values) => values.toSorted((a, b) => a - b)[Math.floor(values.length / 2)]
+    const measure = (input) => {
+      const samples = Array.from({ length: 3 }, () => {
+        const start = performance.now()
+        excerptOf(input)
+        return performance.now() - start
+      })
+      return median(samples)
+    }
+    const small = '[[a'.repeat(4_000)
+    const large = '[[a'.repeat(16_000)
+    excerptOf(small) // 첫 호출의 모듈 초기화·JIT 비용을 측정에서 뺀다
+
+    const smallMs = measure(small)
+    const largeMs = measure(large)
+
+    expect(excerptOf(large)).toBe(large.slice(0, 160))
+    expect(largeMs).toBeLessThan(smallMs * LINEAR_RATIO_LIMIT + MIN_BUDGET_MS)
+  })
+
   it('heading 을 건너뛰고 첫 문단을 취한다', () => {
     expect(excerptOf('## 정의\n\nHBM 은 적층 메모리다.\n\n## 로드맵\n\nHBM4 로 이어진다.\n')).toBe(
       'HBM 은 적층 메모리다.',

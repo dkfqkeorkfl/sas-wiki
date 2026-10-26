@@ -229,12 +229,18 @@ function makeWikilinkResolver(pathToDoc, resolveTargetPath, selfPath) {
 
 /** 마크다운 마커 제거 — 불릿 · 위키링크(표시 ?? 대상) · 각주 마커 · 강조 · 인라인 코드. */
 function stripMarkdown(text) {
-  return text
-    .replaceAll(/^[-*]\s+/gm, '')
-    .replaceAll(
-      /\[\[([^\]|#]+)?(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]/g,
-      (_, target, anchor, display) => (display || target || anchor || '').trim(),
+  // 닫는 구분자로 나눠 미종료 꼬리는 탐색하지 않는다. 각 절도 256자로 제한해 되추적 범위를 고정한다.
+  const parts = text.replaceAll(/^[-*]\s+/gm, '').split(']]')
+  return parts
+    .map((part, index) =>
+      index === parts.length - 1
+        ? part
+        : `${part}]]`.replaceAll(
+            /\[\[([^\]|#]{1,256})?(?:#([^\]|]{1,256}))?(?:\|([^\]]{1,256}))?\]\]/g,
+            (_, target, anchor, display) => (display || target || anchor || '').trim(),
+          ),
     )
+    .join('')
     .replaceAll(/\[\^[^\]]+\]/g, '')
     .replaceAll(/\*\*([^*]+)\*\*/g, '$1')
     .replaceAll(/\*([^*]+)\*/g, '$1')
