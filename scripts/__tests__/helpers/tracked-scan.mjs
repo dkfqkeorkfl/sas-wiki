@@ -191,6 +191,20 @@ function lsFiles(root, extraArgs) {
 }
 
 /**
+ * 인덱스에서 gitlink(서브모듈, mode 160000)인 경로. gitlink 는 다른 저장소의 커밋을 가리키는 1엔트리일 뿐
+ * 이 저장소의 파일이 아니라 스캔 대상이 아니다 — 파일 종류를 파일시스템에서 추측하지 않고 인덱스의 mode 로
+ * 구조적으로 가른다. `-s -z` 항목: `<mode> <sha> <stage>\t<경로>\0`.
+ */
+function lsGitlinks(root) {
+  return new Set(
+    lsFiles(root, ['-s'])
+      .map((record) => /^(\d{6}) \S+ \d\t([\s\S]*)$/u.exec(record))
+      .filter((match) => match?.[1] === '160000')
+      .map((match) => match[2]),
+  )
+}
+
+/**
  * **git 이 아는 파일 전수** — 추적(`ls-files`) ∪ 미추적-비무시(`--others --exclude-standard`).
  *
  * ★ 왜 `--others` 까지 넣나(tdd §D-H 의 문언은 "추적 전역" 이다 — 여기서 한 걸음 넓혔다):
@@ -210,12 +224,16 @@ function lsFiles(root, extraArgs) {
  * @param {string} repoRoot 리포 루트(절대·상대 무관 — 내부에서 resolve)
  * @returns {{ files: string[], skipped: { path: string, why: string }[] }}
  *   `files` = 텍스트로 읽힌 것 · `skipped` = 읽지 못했거나 바이너리로 판정한 것.
- *   두 배열의 합집합이 엔트리 전수다(**조용히 버리는 것이 없다**).
+ *   두 배열의 합집합이 엔트리 전수다(**조용히 버리는 것이 없다**). 단 gitlink(서브모듈)는 다른
+ *   저장소의 내용이라 스캔 대상이 아니므로 어느 쪽에도 싣지 않는다.
  * @throws git 이 실패하면(비-git·권한·부재) 그대로 던진다 — 빈 배열로 접지 않는다(H7).
  */
 export function listTracked(repoRoot) {
   const root = path.resolve(repoRoot)
-  const entries = [...new Set([...lsFiles(root, []), ...lsFiles(root, ['--others', '--exclude-standard'])])] // prettier-ignore
+  const gitlinks = lsGitlinks(root)
+  const entries =
+    [...new Set([...lsFiles(root, []), ...lsFiles(root, ['--others', '--exclude-standard'])])] // prettier-ignore
+      .filter((rel) => !gitlinks.has(rel))
 
   const files = []
   const skipped = []
@@ -232,7 +250,7 @@ export function listTracked(repoRoot) {
         skipped.push({ path: rel, why: 'symlink' })
         continue
       }
-      // gitlink(서브모듈)는 인덱스에 1엔트리로 있지만 파일이 아니다 — 조용히 흘리지 않고 싣는다.
+      // gitlink 는 위에서 mode 로 걸렀다 — 여기 남은 비-일반 파일(디렉터리·소켓 등)은 조용히 흘리지 않고 싣는다.
       if (!entryStat.isFile()) {
         skipped.push({ path: rel, why: 'not-a-regular-file' })
         continue

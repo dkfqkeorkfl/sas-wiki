@@ -7,9 +7,9 @@
 // 않으므로 어떤 테스트도 red 를 내지 않는다** — 조용히 남아 다음 사람에게 죽은 규칙을 가르친다.
 // 실측 baseline(`d363cf4`): 추적 전역 **177줄 / 33파일**.
 //
-// ★ 이 가드가 사는 자리는 **vitest 안**이다. git 훅(`.husky/pre-commit` · `pre-push`)은 문서 id 와
-//   validate 만 보고 이 가드를 돌리지 않는다. CI(`.github/workflows/ci.yml`)가 PR·main push 마다
-//   테스트를 돌려 위반을 드러낸다 — 머지까지 막으려면 main 에 그 검사를 필수로 걸어야 한다.
+// ★ 이 가드는 vitest 에서 실행하며, `.husky/pre-push` 의 `pnpm run test` 에도 포함된다.
+//   CI(`.github/workflows/ci.yml`)도 PR·main push 마다 테스트를 돌려 위반을 드러낸다 —
+//   머지까지 막으려면 main 에 그 검사를 필수로 걸어야 한다.
 //
 // ── RED/green 현황 (작성 시점 실측) ────────────────────────────────────────────────────────
 //   LS1  🔴RED   — 프로덕션 소스 주석 3줄이 지금 거짓을 말한다(feed.mjs:51 · invariants.mjs:17·19)
@@ -31,7 +31,7 @@
 //   LS3  단방향(과소만)  — 죽은 예외가 있으면 red. **넓은 예외는 통과시킨다**
 //   LS5  그 반대 방향     — 정확 경로·glob 금지(H2). gitleaks shipped config 26개 중 4개 미앵커 형
 import { execFileSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -538,6 +538,30 @@ describe('스캐너 자기 감도 — 진단 품질과 범위 (LS7·LS8·LS9 · 
 
     // ② 앵커 — 건너뛸 것이 **있으면 실제로 실린다**(①이 "기능이 죽어서 빈 배열" 인 것을 배제).
     withBinaryTrackedFixture((vault) => {
+      const { files, skipped } = listTracked(vault)
+      expect(files).toEqual(['text.mjs'])
+      expect(skipped).toEqual([{ path: 'blob.bin', why: 'binary' }])
+    })
+  })
+
+  it('LS8: gitlink 는 체크아웃 여부와 무관하게 스캔 대상에서 제외한다', () => {
+    const { listTracked } = trackedScan()
+    withBinaryTrackedFixture((vault) => {
+      const sha = execFileSync('git', ['-C', vault, 'rev-parse', 'HEAD'], {
+        encoding: 'utf8',
+      }).trim()
+      for (const rel of ['sub', 'absent']) {
+        execFileSync('git', [
+          '-C',
+          vault,
+          'update-index',
+          '--add',
+          '--cacheinfo',
+          `160000,${sha},${rel}`,
+        ])
+      }
+      mkdirSync(path.join(vault, 'sub'))
+
       const { files, skipped } = listTracked(vault)
       expect(files).toEqual(['text.mjs'])
       expect(skipped).toEqual([{ path: 'blob.bin', why: 'binary' }])
