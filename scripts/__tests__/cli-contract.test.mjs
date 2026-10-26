@@ -223,24 +223,27 @@ describe('C4a — stdout 순수(정확히 1줄 JSON) (RED 단계 회귀 가드)'
   )
 })
 
-// ── C4b: 에러 채널 분리 — --vault <존재X> --env dev → exit≠0 · stdout 비어있음 · stderr 에 에러.
+// ── C4b: 에러 채널 분리 — --vault <존재X> --env dev → exit 1 · stdout 비어있음 · stderr 에 경로 오류.
 //    🟢 green(회귀). 무엇을 깨면 red: 에러를 stdout 으로 흘리거나 부분 JSON 방출.
+// feeds 는 `--count` 가 필수라 빠뜨리면 vault 와 무관한 인자 오류(exit 2)로 끝난다.
 const C4B_CASES = [
-  { name: 'summary', script: SUMMARY },
-  { name: 'feeds', script: FEEDS },
+  { args: [], name: 'summary', script: SUMMARY },
+  { args: ['--count', '5'], name: 'feeds', script: FEEDS },
   // wiki에는 `--vault` 오류 경로가 없다. 파일 부재의 exit 1·stderr·stdout 침묵은
   // `wiki.file-arg.test.mjs` C-5가 이어받는다.
 ]
 
 describe('C4b — 에러는 stderr, stdout 무오염 (🟢 회귀)', () => {
   it.each(C4B_CASES)(
-    '$name: --vault <존재X> --env dev → exit≠0 · stdout="" · stderr 에 에러',
-    ({ script }) => {
-      const result = runCli(script, ['--vault', ABSENT_VAULT, '--env', 'dev'])
+    '$name: --vault <존재X> --env dev → exit 1 · stdout="" · stderr 에 경로 오류',
+    ({ args, script }) => {
+      const result = runCli(script, ['--vault', ABSENT_VAULT, '--env', 'dev', ...args])
 
-      expect(result.status).not.toBe(0)
+      expect(result.status).toBe(1)
       expect(result.stdout).toBe('') // 부분 JSON 0
-      expect(result.stderr.length).toBeGreaterThan(0)
+      // vault 디렉터리가 없으면 git 을 그 cwd 에서 띄울 수 없어 errno `ENOENT` 로 실패한다. 스크립트마다
+      //   앞뒤 문구(`spawnSync git ENOENT` 단독 / 「git CLI 또는 저장소를 …」 접두)는 다르지만 errno 코드는 같다.
+      expect(result.stderr).toMatch(/\bENOENT\b/u)
     },
   )
 })

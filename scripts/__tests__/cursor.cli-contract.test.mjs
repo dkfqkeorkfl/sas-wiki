@@ -105,6 +105,71 @@ beforeAll(() => {
 // CR7~CR9 — 옵션 주입 차단 (tdd §3.9 CJ1·CJ4)
 // ────────────────────────────────────────────────────────────────────────────
 
+describe('--out 은 출력 위치만 바꾼다 — 커서·문서 필터를 stdout 과 똑같이 적용한다', () => {
+  // `--out` 파일과 stdout 응답은 같은 계산의 두 출력처다(모드 개념이 없다). 필터를 조용히 버리면 파일만
+  //   전체 목록이 되어 같은 인자의 두 출력이 어긋난다.
+  // `generatedAt` 만 비교에서 뺀다 — 층이 다른 값이다: 파일의 것은 vault 전체의 `max(doc.updated)`(summary
+  //   아티팩트와 같은 세대 표지)이고, stdout 의 것은 필터·억제를 거친 응답 항목 ts 의 max 다.
+  const withoutGeneratedAt = ({ generatedAt: _generatedAt, ...page }) => page
+
+  it('`--after` 를 준 `--out` 파일이 같은 인자의 stdout 응답과 같다', () => {
+    const full = readFeedPage(base.vault, { count: 200, timeoutMs: CLI_TIMEOUT_MS })
+    const after = full.items[0].id
+    const live = readFeedPage(base.vault, { after, count: 200, timeoutMs: CLI_TIMEOUT_MS })
+    // 앵커: 커서가 실제로 목록을 줄인다(필터를 버리는 구현이 같은 값으로 통과하는 것을 배제).
+    expect(live.items.length).toBeLessThan(full.items.length)
+
+    const out = 'cache/after.json'
+    const result = runFeedsCli(base.vault, { after, count: 200, out, timeoutMs: CLI_TIMEOUT_MS })
+    expect(result.status).toBe(0)
+    const written = JSON.parse(readFileSync(path.join(base.vault, out), 'utf8'))
+    expect(withoutGeneratedAt(written)).toEqual(withoutGeneratedAt(live))
+  })
+
+  it('`--doc` 을 준 `--out` 파일이 같은 인자의 stdout 응답과 같다', () => {
+    const full = readFeedPage(base.vault, { count: 200, timeoutMs: CLI_TIMEOUT_MS })
+    const doc = full.items.find((item) => item.docs.length > 0)?.docs[0].id
+    expect(doc).toBeDefined()
+    const live = readFeedPage(base.vault, {
+      count: 200,
+      extraArgs: ['--doc', doc],
+      timeoutMs: CLI_TIMEOUT_MS,
+    })
+    // 앵커: 이 문서를 가리키는 항목만 남는다.
+    expect(live.items.length).toBeGreaterThan(0)
+    expect(live.items.every((item) => item.docs.some((ref) => ref.id === doc))).toBe(true)
+
+    const out = 'cache/doc.json'
+    const result = runFeedsCli(base.vault, {
+      count: 200,
+      extraArgs: ['--doc', doc],
+      out,
+      timeoutMs: CLI_TIMEOUT_MS,
+    })
+    expect(result.status).toBe(0)
+    const written = JSON.parse(readFileSync(path.join(base.vault, out), 'utf8'))
+    expect(withoutGeneratedAt(written)).toEqual(withoutGeneratedAt(live))
+  })
+
+  // 이 시드 vault 는 모든 feed 가 같은 문서를 가리켜 실재 문서 필터로는 목록이 줄지 않는다. 어떤 항목도
+  //   가리키지 않는 문서 id 로 필터를 걸어 "필터가 파일까지 전달됐는가" 를 구별한다.
+  it('어떤 항목도 가리키지 않는 `--doc` 은 `--out` 파일도 빈 목록으로 만든다', () => {
+    const full = readFeedPage(base.vault, { count: 200, timeoutMs: CLI_TIMEOUT_MS })
+    const unknownDoc = '0192a000-0000-7000-8000-0000000000bb'
+    expect(full.items.length).toBeGreaterThan(0) // 앵커: 필터 없이는 항목이 있다
+
+    const out = 'cache/unknown-doc.json'
+    const result = runFeedsCli(base.vault, {
+      count: 200,
+      extraArgs: ['--doc', unknownDoc],
+      out,
+      timeoutMs: CLI_TIMEOUT_MS,
+    })
+    expect(result.status).toBe(0)
+    expect(JSON.parse(readFileSync(path.join(base.vault, out), 'utf8')).items).toEqual([])
+  })
+})
+
 describe('옵션 주입 차단 (CR7·CR8 · 🔴RED 사유가 커서 검증이 아니다)', () => {
   it(
     'CR7: `--after=--output=<tmp>/pwned` 가 exit≠0 이고 **그 경로에 파일이 없다** (CJ1)',

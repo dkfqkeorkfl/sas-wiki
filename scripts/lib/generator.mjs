@@ -88,12 +88,17 @@ export async function runSummaryGenerator({
  * summary 아티팩트와 같아야 한다(FA12: 두 산출물은 같은 커밋·같은 세대에서 나온다). 응답 층의
  * `generatedAt`(억제 후 item ts 의 max)과는 층이 다르다.
  *
- * @param {{ artifactPath: string, count?: number, env?: 'dev'|'prod', ignore?: string,
- *           runGit?: Function, vault: string }} input
+ * `after`·`doc` 은 조회 경로와 같은 의미다(커서 다음부터 · 그 문서를 가리키는 항목만). `--out` 은
+ * 출력 위치만 바꾸므로 같은 인자를 주면 stdout 응답과 같은 페이지가 파일로 나온다.
+ *
+ * @param {{ after?: string, artifactPath: string, count?: number, doc?: string,
+ *           env?: 'dev'|'prod', ignore?: string, runGit?: Function, vault: string }} input
  */
 export async function runFeedsGenerator({
+  after,
   artifactPath,
   count,
+  doc,
   env = 'prod',
   ignore,
   runGit,
@@ -120,7 +125,9 @@ export async function runFeedsGenerator({
   const walkGit = parsed.context.runGit
   const byFeedId = new Map(parsed.wire.items.map((item) => [item.id, item]))
   const { items, nextCursor } = walkCursorPage(vaultDir, {
+    after,
     count,
+    doc,
     ignoreEntries:
       ignore === undefined ? [] : loadIgnoreFeedsAt(resolveIgnorePath(vaultDir, ignore)),
     resolveItems: (shas) =>

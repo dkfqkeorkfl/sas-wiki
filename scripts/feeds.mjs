@@ -204,8 +204,10 @@ export async function main(argv = process.argv.slice(2)) {
     const artifactPath = resolveFromVault(vault, values.out)
     const { runFeedsGenerator } = await import('./lib/generator.mjs')
     await runFeedsGenerator({
+      after: values.after,
       artifactPath,
       count,
+      doc: values.doc,
       env: values.env,
       ignore: values.ignore,
       vault,
