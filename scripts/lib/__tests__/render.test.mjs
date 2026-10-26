@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// P1 3-A · scripts/wiki/lib/render.mjs (md→HTML 렌더러) — 계약 불변(포팅 회귀 고정)
+// scripts/lib/render.mjs (md→HTML 렌더러) — 계약 불변(포팅 회귀 고정)
 //
 // 삭제(기능 소멸 — P2): `escapeForEmbed` 3건.
 //   `prototype.html` 산출이 사라지면서(`build.mjs:248-266` writeBundle 제거) 임베드 이스케이프의

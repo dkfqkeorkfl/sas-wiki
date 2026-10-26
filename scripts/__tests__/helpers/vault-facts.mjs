@@ -2,7 +2,7 @@
 //
 // DAMP 경계: 이 파일은 **사실(fact)만 캔다. expect 를 절대 넣지 않는다.**
 // 단언을 헬퍼에 숨기면 어느 계약이 깨졌는지 스펙 본문만 보고 알 수 없다.
-// (vitest include 패턴 `scripts/wiki/**/*.{test,spec}.{mjs,ts}` 에 안 걸리므로 스위트로 수집되지 않는다 — 의도.)
+// (vitest include 패턴 `scripts/**/*.test.mjs` 에 안 걸리므로 스위트로 수집되지 않는다 — 의도.)
 import { execFileSync } from 'node:child_process'
 
 /** vault 문서의 리포 상대 경로 접두사. 이 모듈 안에서만 쓴다(`isVaultDoc` 이 유일한 소비자). */

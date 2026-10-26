@@ -123,7 +123,7 @@ const EN_ENUM_CONTRACTS = [
     id: 'EN6',
     locators: ['exit '],
     marker: 'exit-codes',
-    title: 'README 종료 코드 == 프로덕션 소스의 종료 코드 집합 {1,2,3}',
+    title: 'README 종료 코드 == 프로덕션 소스의 종료 코드 집합 {1,2}',
   },
 ]
 describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
@@ -235,12 +235,12 @@ describe('결속 — 산출물 경로·봉투 (PT · D-D 유형 1)', () => {
   })
 })
 describe('결속 — 열거형 (EN · D-D 유형 2 · 양방향 + 순서)', () => {
-  it('EN0: 열거 마커 5종이 전부 실재하고 각 구간이 비어 있지 않다', () => {
-    // 🔴 왜 지금 red 인가: 마커가 아직 없다. **arm 5개를 다 둔다** — 하나만 두면 나머지 4개가
-    //   빈 집합으로 통과한다(PT0 과 동형).
+  it('EN0: 열거 마커 3종이 전부 실재하고 각 구간이 비어 있지 않다', () => {
+    // feed-ref-reasons·importance·exit-codes 세 구간을 모두 확인한다. 하나만 보면 나머지 둘의
+    // 누락이 빈 집합으로 통과한다(PT0 과 동형).
     const { extractMarkerBlock } = markdownHelpers()
     const missing = EN_MARKERS.filter((name) => extractMarkerBlock(README, name) === null)
-    expect(missing, 'Task 3 이 넣어야 할 결속 마커').toEqual([])
+    expect(missing, 'README 에 있어야 할 결속 마커').toEqual([])
 
     for (const name of EN_MARKERS) {
       const block = extractMarkerBlock(README, name)

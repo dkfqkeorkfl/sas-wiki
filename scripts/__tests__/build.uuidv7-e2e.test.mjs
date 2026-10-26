@@ -1,8 +1,4 @@
 // 파싱·생성·피드의 실제 기능 결과를 확인한다.
-import { mkdtempSync, rmSync } from 'node:fs'
-
-import { tmpdir } from 'node:os'
-
 import path from 'node:path'
 
 import { fileURLToPath } from 'node:url'
@@ -28,10 +24,9 @@ const VAULT = path.resolve(HERE, '..', '..')
 // **이 vault 경로에 한해** GIT_CONFIG 로 주입해 실행 가능하게 만든다 — 단언은 그대로다(약화 아님).
 const GIT_CONFIG_KEYS = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0']
 
-const ctx = { out: '', prevGitConfig: {}, result: null }
+const ctx = { prevGitConfig: {}, result: null }
 
 beforeAll(() => {
-  ctx.out = mkdtempSync(path.join(tmpdir(), 'wiki-uuidv7-e2e-'))
   for (const key of GIT_CONFIG_KEYS) ctx.prevGitConfig[key] = process.env[key]
   process.env.GIT_CONFIG_COUNT = '1'
   process.env.GIT_CONFIG_KEY_0 = 'safe.directory'
@@ -41,7 +36,7 @@ beforeAll(() => {
   // ★ `env` 를 빼면 안 된다. 기본값이 `prod` 인데 이 vault 의 문서는 전부 `wiki/dev/` 아래라
   //   prod 에서는 문서 모집단이 통째로 비어(docs=0) 아래 단언들이 빈 배열끼리 비교하는 공허
   //   통과가 된다. 여기서 `dev` 를 명시하는 것이 이 파일의 검사 대상을 존재하게 만드는 조건이다.
-  ctx.result = parsePayloads({ env: 'dev', out: ctx.out, vault: VAULT })
+  ctx.result = parsePayloads({ env: 'dev', vault: VAULT })
   // 실제 67문서 vault 빌드는 순차 재현에서 78s였다. 다른 hook의 기본 60s 제한은 유지한다.
 }, 120_000)
 
@@ -50,7 +45,6 @@ afterAll(() => {
     if (ctx.prevGitConfig[key] === undefined) delete process.env[key]
     else process.env[key] = ctx.prevGitConfig[key]
   }
-  if (ctx.out) rmSync(ctx.out, { force: true, recursive: true })
 })
 
 describe('R8 실 vault 빌드 — 폭 3종 동시 검증', () => {

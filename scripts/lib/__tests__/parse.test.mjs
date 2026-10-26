@@ -1,8 +1,7 @@
 // @vitest-environment node
 //
-// P1 3-A · scripts/wiki/lib/parse.mjs (순수 파싱 함수)
+// scripts/lib/parse.mjs (순수 파싱 함수)
 // 대상: parseFrontmatterYaml · slugifyHeading
-// RED 사유: scripts/wiki/lib/parse.mjs 미구현(모듈 부재) → import 실패.
 // 무변경 포팅 회귀 고정: 알고리즘 개선이 아니라 docs/sas-wiki-package/scripts/build.mjs
 //   의 순수 함수를 export 가능한 형태로 옮긴 뒤에도 동일 동작을 보장하는 계약.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'

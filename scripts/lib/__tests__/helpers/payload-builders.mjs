@@ -2,7 +2,7 @@
 //
 // DAMP 경계: 이 파일은 **정상(green) 픽스처만** 만든다. `expect` 를 넣지 않는다.
 //   위반은 스펙 본문에서 **딱 한 곳만** 망가뜨린다 → 무엇이 틀렸는지가 테스트 본문에 보인다.
-//   (vitest include 패턴 `scripts/wiki/**/*.{test,spec}.{mjs,ts}` 에 안 걸린다 — 의도.)
+//   (vitest include 패턴 `scripts/**/*.test.mjs` 에 안 걸린다 — 의도.)
 //
 // 세계관(aWorld): active 2 · disable 1 · 피드 2(하나는 disable 문서를 가리킨다).
 //   이 조합은 **불변식 8종을 전부 통과**한다 — 정상적인 disable 운영이 빌드를 죽이면 계약이 틀린 것이다.

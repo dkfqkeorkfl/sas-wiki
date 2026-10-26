@@ -656,8 +656,8 @@ describe('불변식 번호 상호참조 (IV)', () => {
     //   것은 오타가 아니다"_ 라고 적어놓고 여기선 그 6번을 참조한다.
     // ★ 링크 자체(`#불변식-7종`)는 `docs-anchors.test.mjs` AC1 이 이미 문다. 여기서 무는 것은 링크
     //   **뒤의 번호**다 — 앵커가 멀쩡해도 가리키는 행이 없으면 독자는 빈손으로 표에 도착한다.
-    // ★ 기대 집합을 문서(`contract:invariants` 표)에서 유도하지만 **자기참조가 아니다** —
-    //   그 표는 `docs-contract.test.mjs` EN1 이 `invariants.mjs` 방출 번호에 결속해 둔 계약면이다.
+    // ★ 기대 집합은 문서의 `contract:invariants` 표에서 유도한다. 본문의 번호 참조와 표를 대조해
+    //   삭제된 행으로 향하는 참조를 찾는다.
     const { extractMarkerBlock } = markdownHelpers()
     const table = extractMarkerBlock(readme(), 'invariants')
     expect(table, '`contract:invariants` 마커가 사라졌다 — 번호 집합을 유도할 곳이 없다').not.toBeNull() // prettier-ignore

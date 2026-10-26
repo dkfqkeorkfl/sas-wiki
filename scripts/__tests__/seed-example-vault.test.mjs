@@ -11,9 +11,8 @@
 //   엔트리가드: import.meta.url === pathToFileURL(process.argv[1]).href  (build.mjs:268 선례)
 //
 // 왜 함수를 export 하고 CLI 를 얇게 두는가:
-//   ① coverage include 가 `scripts/wiki/**/*.mjs`(vitest.config.ts:20) 다. subprocess 로만 돌리면
-//      v8 이 자식 프로세스를 계측하지 못해 이 파일이 0% 로 잡히고 전역 floor 를 끌어내린다.
-//      → in-process import 로 호출해 계측되게 한다(CLI 경로는 subprocess 1건으로만 확인).
+//   ① in-process 호출로 반환값과 예외를 직접 관측한다. 이 시딩 헬퍼는 테스트 자산이므로
+//      vitest.config.js 의 프로덕션 coverage 대상에서는 제외된다(CLI 경로는 별도로 확인).
 //   ② 가드·결정성을 stderr 문자열 매칭이 아니라 **예외·반환값**으로 직접 단언할 수 있다.
 //
 // 이 스크립트가 만드는 히스토리는 **되돌릴 수 없다**(피드 id = 커밋 해시 12자, 피드 1건 = 커밋 1건,
@@ -28,7 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { extractTrailers } from '../lib/feed.mjs'
 import { isVaultDoc, readVaultFacts } from './helpers/vault-facts.mjs'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url)) // scripts/wiki/__tests__
+const HERE = path.dirname(fileURLToPath(import.meta.url)) // scripts/__tests__
 const SEED_SCRIPT = path.resolve(HERE, 'helpers', 'seed-example-vault.mjs') // GREEN 대상
 
 // RED 시점에 이 모듈은 존재하지 않는다. 정적 import 로 적으면 eslint 의 import-x/no-unresolved 가

@@ -25,9 +25,9 @@ import { git } from './helpers/vault-facts.mjs'
 // coverage 계측(vitest.config.ts:20)은 그대로 유지된다.
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-// scripts/wiki/__tests__
+// scripts/__tests__
 const SCRIPT_DIR = path.resolve(HERE, '..')
-// scripts/wiki
+// scripts
 const SCHEMA_DIR = path.join(SCRIPT_DIR, 'schema')
 
 // 결정성: SOURCE_DATE_EPOCH 를 고정해 generatedAt 을 못 박는다(재빌드 byte-identical 의 전제).

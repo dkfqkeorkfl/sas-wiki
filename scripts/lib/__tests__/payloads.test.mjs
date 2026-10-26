@@ -13,7 +13,7 @@
 //           active 만, `breadcrumb.join('/')` 키로, 값은 4키(html·headings·meta·sources).
 //
 // 결정성 seam: `generatedAt` 은 **주입**받는다 — payloads 는 시계를 직접 읽지 않는다
-//   (SOURCE_DATE_EPOCH 계산은 build.mjs 의 몫). 여기서 Date.now() 를 부르면 재빌드가 흔들린다.
+//   (SOURCE_DATE_EPOCH 계산은 parse-vault.mjs 의 deriveGeneratedAt 소관). 여기서 Date.now() 를 부르면 재빌드가 흔들린다.
 import { describe, expect, it } from 'vitest'
 
 import { buildBody, buildFeeds, buildSummary } from '../payloads.mjs'

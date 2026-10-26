@@ -54,10 +54,9 @@ function git(cwd, args, extraEnv = {}) {
 
 function makeVault() {
   const vault = mkdtempSync(path.join(tmpdir(), 'wiki-convention-'))
-  const out = mkdtempSync(path.join(tmpdir(), 'wiki-convention-out-'))
-  dirs.push(vault, out)
+  dirs.push(vault)
   git(vault, ['init', '-q'])
-  return { out, vault }
+  return { vault }
 }
 
 function nextDate() {
@@ -106,7 +105,7 @@ afterEach(() => {
 
 describe('parsePayloads — feed 참조의 explained prune', () => {
   it('삭제된 옛 문서 경로에 새 문서가 살아 있어도 옛 feed 는 unresolved 가 아니라 prune 된다', () => {
-    const { out, vault } = makeVault()
+    const { vault } = makeVault()
     writeDoc(vault, 'company/x', '옛문서')
     commit(vault, 'chore: 옛문서 생성')
     appendDoc(vault, 'company/x', '퇴역 전 마지막 소식을 남긴다.')
@@ -116,7 +115,7 @@ describe('parsePayloads — feed 참조의 explained prune', () => {
     writeDoc(vault, 'company/x', '새문서')
     commit(vault, 'chore: 새문서 생성')
 
-    const result = parsePayloads({ out, vault })
+    const result = parsePayloads({ vault })
 
     expect(result.feeds.items).toEqual(
       expect.arrayContaining([expect.objectContaining({ docs: [], title: '옛문서 마지막 소식' })]),

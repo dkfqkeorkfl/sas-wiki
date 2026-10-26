@@ -9,23 +9,7 @@ import { deriveGeneratedAt } from '../lib/parse-vault.mjs'
 
 import { parsePayloads } from '../test-utils/vaultPayloads.mjs'
 
-import {
-  cleanup,
-  commit,
-  git,
-  initVault,
-  makeOut as makeTempOut,
-} from './helpers/tmp-git-vault.mjs'
-
-const outputDirs = []
-
-function makeOut() {
-  const out = makeTempOut()
-  outputDirs.push(out)
-  return out
-}
-
-afterAll(() => cleanup(...outputDirs))
+import { cleanup, commit, git, initVault } from './helpers/tmp-git-vault.mjs'
 
 // ── 합성 시딩 원자 (helpers/tmp-git-vault.writeDoc 는 draft·비유효 id 를 못 넣으므로 로컬 확장) ──
 let idSeq = 0
@@ -108,8 +92,8 @@ describe('draft 필터 — prod 제외 / dev 포함 (OR 이중신호)', () => {
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
     // 현행은 env 무시 → 두 빌드 모두 4문서를 낸다(throw 없음). GREEN 후 prod=1 / dev=4.
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
-    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault: ctx.vault })
+    ctx.devResult = parsePayloads({ env: 'dev', vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -158,7 +142,7 @@ describe('빈 prod 빌드 — 전 문서 draft → 0문서 우아 처리', () =>
       { draft: true, rel: 'concept/draft-a' },
       { draft: true, rel: 'concept/draft-b' },
     ])
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -180,7 +164,7 @@ describe('빈 prod 빌드 — 전 문서 draft → 0문서 우아 처리', () =>
   })
 
   it('deriveGeneratedAt([]) 는 1970 epoch 다 (빈 산출물 경로 회귀 락 — P5 Task 1 · 1인자로 축소)', () => {
-    // SOURCE_DATE_EPOCH 미설정 + 빈 산출물 → epoch 폴백(build.mjs:140). GREEN 무관 순수 단위 락.
+    // SOURCE_DATE_EPOCH 미설정 + 빈 산출물 → parse-vault.mjs 의 deriveGeneratedAt 이 epoch 로 폴백한다.
     const prev = process.env.SOURCE_DATE_EPOCH
     delete process.env.SOURCE_DATE_EPOCH
     try {
@@ -204,7 +188,7 @@ describe('prod 누출 0 — draft 문서 id 부재(정본) + draft 필드 부재
     ]
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -248,8 +232,8 @@ describe('disable + draft 동시 — prod 완전 배제(제외 우선순위)', (
     ]
     ctx.vault = seedVault(docs)
     for (const doc of docs) ctx.ids[doc.key] = doc.id
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault: ctx.vault })
-    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault: ctx.vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault: ctx.vault })
+    ctx.devResult = parsePayloads({ env: 'dev', vault: ctx.vault })
   })
 
   afterAll(() => {
@@ -285,8 +269,8 @@ describe('draft feed 필터 — prod prune / dev 노출 (통합 feed 해석)', (
     appendDoc(vault, 'concept/secret', '비공개 소식이 추가됐다.')
     commit(vault, 'feed: secret 소식\n\n본문.\n\nKeywords: 소식\nImportance: normal')
     ctx.vault = vault
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault })
-    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault })
+    ctx.devResult = parsePayloads({ env: 'dev', vault })
   })
 
   afterAll(() => {
@@ -327,7 +311,7 @@ describe('이동한 draft feed — 과거경로도 prune (rename 좌표)', () =>
     git(vault, ['mv', 'wiki/concept/movable.md', 'wiki/tech/movable.md'])
     commit(vault, 'chore: movable 을 tech/ 로 이동')
     ctx.vault = vault
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault })
   })
 
   afterAll(() => {
@@ -357,8 +341,8 @@ describe('draft+public 혼합 feed — per-ref prune', () => {
     appendDoc(vault, 'concept/secret', '비공개 소식.')
     commit(vault, 'feed: pub·secret 공동 소식\n\n본문.\n\nKeywords: 소식\nImportance: highlight')
     ctx.vault = vault
-    ctx.prodResult = parsePayloads({ env: 'prod', out: makeOut(), vault })
-    ctx.devResult = parsePayloads({ env: 'dev', out: makeOut(), vault })
+    ctx.prodResult = parsePayloads({ env: 'prod', vault })
+    ctx.devResult = parsePayloads({ env: 'dev', vault })
   })
 
   afterAll(() => {
