@@ -46,12 +46,12 @@ services:
       - node_modules:/workspace/node_modules
     command: sleep infinity
     ports:
-      - "${CLAUDE_MEM_HOST_PORT:-37777}:37777"
+      - '${CLAUDE_MEM_HOST_PORT:-37777}:37777'
     environment:
       # Worker must listen beyond loopback for Docker port publish to reach it from the host.
-      CLAUDE_MEM_WORKER_HOST: "0.0.0.0"
+      CLAUDE_MEM_WORKER_HOST: '0.0.0.0'
       # Persist memory in the bind-mounted workspace (repo .claude-mem/), not container-only home.
-      CLAUDE_MEM_DATA_DIR: "/workspace/.claude-mem"
+      CLAUDE_MEM_DATA_DIR: '/workspace/.claude-mem'
       # ECC 규칙 언어(쉼표 = install.sh 인자 여러 개). common은 인스톨러가 항상 설치. 팀 스택에 맞게 고르세요.
       # 선택지 예: typescript, python, golang, web, swift, php — 그 외 ECC 지원(c, cpp, csharp, java, kotlin, perl, rust 등)은 upstream rules/README·install.sh 참고.
       ECC_INSTALL_LANGUAGES: typescript
@@ -61,14 +61,14 @@ services:
       # Claude MCP: 쉼표 allowlist(비우면 ecc-mcp.mjs는 ~/.claude.json mcpServers를 건드리지 않음). 카탈로그 키는 ~/.claude/mcp-configs/mcp-servers.json과 동일.
       # 별칭: exa → type http + https://mcp.exa.ai/mcp (카탈로그의 exa-web-search와 별개; 사용자 ~/.claude.json에 이미 exa가 있으면 주입 생략)
       # 카탈로그 키 예: browser-use, browserbase, clickhouse, cloudflare-docs, cloudflare-observability, cloudflare-workers-bindings, cloudflare-workers-builds, confluence, context7, devfleet, evalview, exa-web-search, fal-ai, filesystem, firecrawl, github, jira, laraplugins, magic, memory, omega-memory, playwright, railway, sequential-thinking, supabase, token-optimizer, vercel
-      ECC_DEVCONTAINER_MCP_SERVERS: "context7,exa,sequential-thinking"
+      ECC_DEVCONTAINER_MCP_SERVERS: 'context7,exa,sequential-thinking'
       # Staging path for host .ssh bind mount; post-attach.sh copies to $HOME/.ssh with strict perms.
-      HOST_SSH_MOUNT: "/mnt/host-ssh"
+      HOST_SSH_MOUNT: '/mnt/host-ssh'
       # ECC 훅 프로파일: minimal | standard | strict (기본값 standard).
       # strict는 pre:bash:commit-quality(시크릿 스캔, 커밋 메시지 포맷, lint) 게이트를 활성화.
       # 잔소리성 strict 전용 훅(tmux/git-push 리마인더)은 ECC_DISABLED_HOOKS로 끔.
       ECC_HOOK_PROFILE: strict
-      ECC_DISABLED_HOOKS: "pre:bash:tmux-reminder,stop:evaluate-session,stop:desktop-notify"
+      ECC_DISABLED_HOOKS: 'pre:bash:tmux-reminder,stop:evaluate-session,stop:desktop-notify'
 
 volumes:
   # container-only volume for node_modules (pnpm hardlink store 포함).

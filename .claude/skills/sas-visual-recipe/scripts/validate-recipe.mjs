@@ -16,11 +16,11 @@
  *   project-root defaults to process.cwd() — citation file paths resolve against it.
  * Exit 0 = pass, 1 = fail (reasons on stderr).
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/
 
 /**
  * Extracts `<file>#<type>{<value>}` citations (type = symbol|css|code) from
@@ -45,15 +45,15 @@ const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
  * Returns [{ file, type, value, ok, reason }].
  */
 function checkCitations(bodyText, projectRoot) {
-  const pattern = /`([^`\n#]+)#(symbol|css|code)\{([^`\n{}]+)\}`/g;
-  const results = [];
-  let m;
+  const pattern = /`([^`\n#]+)#(symbol|css|code)\{([^`\n{}]+)\}`/g
+  const results = []
+  let m
   while ((m = pattern.exec(bodyText)) !== null) {
-    const [, file, type, value] = m;
-    const absPath = path.resolve(projectRoot, file);
+    const [, file, type, value] = m
+    const absPath = path.resolve(projectRoot, file)
     if (!fs.existsSync(absPath)) {
-      results.push({ file, type, value, ok: false, reason: `파일 없음: ${file}` });
-      continue;
+      results.push({ file, type, value, ok: false, reason: `파일 없음: ${file}` })
+      continue
     }
     if ((type === 'symbol' || type === 'code') && !IDENTIFIER.test(value)) {
       results.push({
@@ -62,13 +62,13 @@ function checkCitations(bodyText, projectRoot) {
         value,
         ok: false,
         reason: `${type} 타입 값은 공백·괄호 없는 단순 식별자여야 함(표현식 전체 대신 핵심 식별자 하나만 인용): "${value}"`,
-      });
-      continue;
+      })
+      continue
     }
-    const source = fs.readFileSync(absPath, 'utf8');
-    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const source = fs.readFileSync(absPath, 'utf8')
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const found =
-      type === 'css' ? source.includes(value) : new RegExp(`\\b${escaped}\\b`).test(source);
+      type === 'css' ? source.includes(value) : new RegExp(`\\b${escaped}\\b`).test(source)
     if (!found) {
       results.push({
         file,
@@ -76,59 +76,59 @@ function checkCitations(bodyText, projectRoot) {
         value,
         ok: false,
         reason: `${type === 'css' ? '문자열' : '식별자'} "${value}" 이 ${file} 에 없음`,
-      });
-      continue;
+      })
+      continue
     }
-    results.push({ file, type, value, ok: true, reason: null });
+    results.push({ file, type, value, ok: true, reason: null })
   }
-  return results;
+  return results
 }
 
 function validateRecipe(filePath, projectRoot) {
-  const failures = [];
-  const content = fs.readFileSync(filePath, 'utf8');
+  const failures = []
+  const content = fs.readFileSync(filePath, 'utf8')
 
   // --- frontmatter ---
-  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!fmMatch) {
-    failures.push('frontmatter(--- ... ---) 블록이 없다.');
+    failures.push('frontmatter(--- ... ---) 블록이 없다.')
   } else {
-    const fm = fmMatch[1];
+    const fm = fmMatch[1]
     for (const key of ['name', 'slug', 'target', 'viewports']) {
       if (!new RegExp(`^${key}\\s*:`, 'm').test(fm)) {
-        failures.push(`frontmatter 필수 필드 누락: ${key}`);
+        failures.push(`frontmatter 필수 필드 누락: ${key}`)
       }
     }
-    const hasLocales = /^locales\s*:/m.test(fm);
-    const hasLocaleApply = /^localeApply\s*:/m.test(fm);
+    const hasLocales = /^locales\s*:/m.test(fm)
+    const hasLocaleApply = /^localeApply\s*:/m.test(fm)
     if (hasLocales && !hasLocaleApply) {
-      failures.push('locales 지정 시 localeApply 동반이 필수인데 없다.');
+      failures.push('locales 지정 시 localeApply 동반이 필수인데 없다.')
     }
   }
 
   // --- ## Recipe 서브섹션 ---
   if (!/^##\s+Recipe\s*$/m.test(content)) {
-    failures.push('## Recipe 헤딩이 없다.');
+    failures.push('## Recipe 헤딩이 없다.')
   } else {
     for (const sub of ['Target', 'Surfaces', 'States', 'Masking', 'Slug']) {
       if (!new RegExp(`^###\\s+${sub}\\s*$`, 'm').test(content)) {
-        failures.push(`## Recipe 하위에 ### ${sub} 서브섹션이 없다.`);
+        failures.push(`## Recipe 하위에 ### ${sub} 서브섹션이 없다.`)
       }
     }
   }
 
   // --- ## Rubric 6 시각 카테고리 ---
   if (!/^##\s+Rubric\s*$/m.test(content)) {
-    failures.push('## Rubric 헤딩이 없다.');
+    failures.push('## Rubric 헤딩이 없다.')
   } else {
     for (const cat of ['color', 'typography', 'spacing', 'hierarchy', 'state-feedback', 'layout']) {
       if (!new RegExp(`^###\\s+${cat}\\s*$`, 'm').test(content)) {
-        failures.push(`## Rubric 하위에 ### ${cat} 시각 카테고리가 없다.`);
+        failures.push(`## Rubric 하위에 ### ${cat} 시각 카테고리가 없다.`)
       }
     }
   }
 
-  const body = fmMatch ? content.slice(fmMatch[0].length) : content;
+  const body = fmMatch ? content.slice(fmMatch[0].length) : content
 
   // --- 줄번호 스타일 코드 인용 금지 ---
   // 인라인 코드는 `<file>.<ext>:<n>` 꼴만 잡는다. 주소는 줄번호 인용이 아니다:
@@ -137,55 +137,55 @@ function validateRecipe(filePath, projectRoot) {
     /`(?![^`\n]*:\/\/)[^`\n]*\.[A-Za-z][A-Za-z0-9]*:\d+`/, // 예: `Button.tsx:42`
     /\bline\s+\d+\b/i, // "line 42"
     /\bL\d+\b/, // "L42"
-  ];
+  ]
   for (const pattern of lineNumberPatterns) {
-    const m = body.match(pattern);
+    const m = body.match(pattern)
     if (m) {
-      failures.push(`줄번호 스타일 코드 인용 발견(금지): "${m[0]}"`);
-      break;
+      failures.push(`줄번호 스타일 코드 인용 발견(금지): "${m[0]}"`)
+      break
     }
   }
 
   // --- 코드 인용 즉시 검증 (일회성 — 지속 보호는 별도 가드 제안 몫) ---
-  const citations = checkCitations(body, projectRoot);
+  const citations = checkCitations(body, projectRoot)
   for (const c of citations) {
-    if (!c.ok) failures.push(`코드 인용 무효: ${c.reason}`);
+    if (!c.ok) failures.push(`코드 인용 무효: ${c.reason}`)
   }
 
-  return { failures, citationCount: citations.length };
+  return { failures, citationCount: citations.length }
 }
 
-export { checkCitations, validateRecipe };
+export { checkCitations, validateRecipe }
 
 // ESM has no require.main; compare the entry script with this module (symlinks resolved).
 function isMainModule() {
-  if (!process.argv[1]) return false;
+  if (!process.argv[1]) return false
   try {
-    return fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+    return fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
   } catch {
-    return false;
+    return false
   }
 }
 
 if (isMainModule()) {
-  const filePath = process.argv[2];
-  const projectRoot = process.argv[3] || process.cwd();
+  const filePath = process.argv[2]
+  const projectRoot = process.argv[3] || process.cwd()
   if (!filePath) {
-    console.error('Usage: node validate-recipe.mjs <path-to-recipe.md> [project-root]');
-    process.exit(1);
+    console.error('Usage: node validate-recipe.mjs <path-to-recipe.md> [project-root]')
+    process.exit(1)
   }
   if (!fs.existsSync(filePath)) {
-    console.error(`파일 없음: ${filePath}`);
-    process.exit(1);
+    console.error(`파일 없음: ${filePath}`)
+    process.exit(1)
   }
-  const { failures, citationCount } = validateRecipe(filePath, projectRoot);
+  const { failures, citationCount } = validateRecipe(filePath, projectRoot)
   if (failures.length > 0) {
-    console.error(`[FAIL] ${filePath}`);
-    for (const f of failures) console.error(`  - ${f}`);
-    process.exit(1);
+    console.error(`[FAIL] ${filePath}`)
+    for (const f of failures) console.error(`  - ${f}`)
+    process.exit(1)
   }
   console.log(
     `[PASS] ${filePath}${citationCount > 0 ? ` (코드 인용 ${citationCount}건 검증됨)` : ''}`,
-  );
-  process.exit(0);
+  )
+  process.exit(0)
 }
