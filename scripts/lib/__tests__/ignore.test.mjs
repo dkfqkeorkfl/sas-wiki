@@ -12,9 +12,12 @@
 //     (입력 items·entries 불변, 신규 배열 반환), 순서 보존(입력의 subsequence).
 //   reportIgnoreHygiene(entries, allFeedIds) — allFeedIds(Set)에 없는 entry 목록 **반환만**
 //     (entries 를 변형·삭제하지 않는다 — GC 아님).
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const { applyIgnoreFeeds, reportIgnoreHygiene } = await import(
+const { applyIgnoreFeeds, loadIgnoreFeedsAt, reportIgnoreHygiene } = await import(
   new URL('../ignore.mjs', import.meta.url).href
 )
 
@@ -46,6 +49,40 @@ function aTombstone(id) {
 }
 
 const ids = (items) => items.map((item) => item.id)
+
+describe('loadIgnoreFeedsAt — 부재와 읽기 실패를 가른다', () => {
+  it('없는 경로(ENOENT)는 억제 없음이다', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ignore-read-'))
+    try {
+      expect(loadIgnoreFeedsAt(path.join(dir, 'missing.json'))).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('디렉터리(EISDIR)는 경로를 담아 throw 한다', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ignore-read-'))
+    try {
+      expect(() => loadIgnoreFeedsAt(dir)).toThrow(dir)
+      expect(() => loadIgnoreFeedsAt(dir)).toThrow(/EISDIR/u)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('중간 경로가 파일(ENOTDIR)이면 부재로 삼키지 않는다', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'ignore-read-'))
+    try {
+      const file = path.join(dir, 'plain-file')
+      writeFileSync(file, '파일은 디렉터리가 아니다')
+      const ignorePath = path.join(file, 'ignore.json')
+      expect(() => loadIgnoreFeedsAt(ignorePath)).toThrow(ignorePath)
+      expect(() => loadIgnoreFeedsAt(ignorePath)).toThrow(/ENOTDIR/u)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('applyIgnoreFeeds — 억제 id 제거', () => {
   it('억제 목록의 id 를 가진 항목만 제거한다', () => {
