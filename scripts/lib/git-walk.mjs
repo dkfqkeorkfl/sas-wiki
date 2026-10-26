@@ -85,9 +85,9 @@ function buildResolveContext(vaultDir, resolvedRunGit, env, injectedHeadState) {
   const headIds = new Set(visibleHeadDocs.map((doc) => doc.id))
   const allHeadIds = new Set(headDocs.map((doc) => doc.id))
   const invalidIds = new Set(headState.invalidDocs.map((doc) => doc.frontmatter.id))
-  // pre-D1 폴백용 경로 역인덱스(경로→현재 doc-id · rename 추적) — build.mjs:buildContent 와 **동일 입력·
-  // 동일 함수**(buildPathIndex)로 1회만 구성한다. **지연**: 고속경로(post-D1 blob id)가 전부 풀면 절대
-  // 만들지 않아 비용 0. 실 vault(pre-D1: 피드가 id 부여 이전 커밋)에서만 트리거된다.
+  // id 부여 이전 피드의 경로 역인덱스(경로→현재 doc-id · rename 추적). 전량 수집(collectFeedItems)과
+  // 커서 조회(makeFeedItemResolver)가 이 컨텍스트를 공유하고, HEAD 전 문서로 buildPathIndex 를 1회
+  // 구성한다. **지연**: blob id 로 전부 풀리면 만들지 않아 비용 0이다.
   let pathIndex = null
   const resolvePathIndex = () => (pathIndex ??= buildPathIndex(headDocs, resolvedRunGit))
   let invalidPathIndex = null
@@ -210,10 +210,10 @@ function resolveFeedItems(vaultDir, runGit, commits, context) {
 }
 
 /**
- * feed 커밋이 건드린 문서 → 현재 doc-id (하이브리드 resolve · build.mjs 와 동치가 목표).
+ * feed 커밋이 건드린 문서 → 현재 doc-id (전량 수집과 커서 조회가 공유하는 해석).
  *   ① 고속경로(post-D1): `<sha>:<당시경로>` blob frontmatter id 를 읽어 summary(headIds)에 있으면 채택.
  *   ② 폴백(pre-D1: 그 시점 blob 에 id 부재 → readBlobId null): `buildPathIndex`(경로→현재 id · rename
- *      추적, build.mjs 가 쓰는 그 함수)로 resolve.
+ *      추적)로 resolve.
  *   어느 쪽도 headIds 에 없으면(문서 삭제됨) null → prune. 폴백은 ①이 풀리지 않을 때만 얹는다 —
  *   `resolvePathIndex`/`resolveInvalidPathIndex` 는 지연·메모(호출자 쪽 `??=`)이므로, ①이 매 status
  *   마다 전부 풀리는 vault(피드 id 부여 이후로만 이뤄진 히스토리)에서는 이 폴백이 **한 번도** 구성
@@ -269,6 +269,9 @@ function resolveDocRef(
   if (deleted.has(status.path) || (status.oldPath && deleted.has(status.oldPath))) {
     return { id: null, reason: 'deleted' }
   }
+  // ★ 여기서 `stats.unresolvedPaths` 에 기록하지 않는 것이 의도다. 그 목록은 "프루닝된 모든 경로"가 아니라
+  //   `checkFeedResolution` 이 빌드를 중단시키는 게이트라서, 위키 밖 `.md` 를 건드린 feed 처럼 정상적으로
+  //   여기까지 오는 참조를 기록하면 평범한 커밋이 빌드를 죽인다. 기록 대상은 stray 문서 분기 하나뿐이다.
   return { id: null, reason: 'unresolved' }
 }
 
@@ -282,7 +285,8 @@ function resolveDocRef(
  * 메시지다. 이 셋 밖은 흡수하지 않는다.
  */
 function isMissingBlobRef(error) {
-  const text = `${error?.message ?? ''}\n${typeof error?.stderr === 'string' ? error.stderr : ''}`
+  // execFileSync 의 message 에는 경로를 포함한 명령 인자도 들어간다. git 의 stderr 만 판정한다.
+  const text = typeof error?.stderr === 'string' ? error.stderr : ''
   return /does not exist in|exists on disk, but not in|invalid object name/iu.test(text)
 }
 

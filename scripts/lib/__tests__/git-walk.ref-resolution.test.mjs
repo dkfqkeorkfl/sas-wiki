@@ -15,6 +15,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { makeGitRunner } from '../git.mjs'
+import { collectFeedItems } from '../git-walk.mjs'
 import { walkFeeds } from '../../__tests__/helpers/walk-feeds.mjs'
 import { seedStrayVault } from '../../__tests__/helpers/polluted-vault.mjs'
 import { cleanup, commit, feedCommit, git, initVault, writeDoc } from '../../__tests__/helpers/tmp-git-vault.mjs' // prettier-ignore
@@ -29,6 +30,80 @@ const T1 = '2026-03-01T00:00:00Z'
 const T2 = '2026-03-02T00:00:00Z'
 
 const docsOf = (items, title) => items.find((item) => item.title === title)?.docs
+
+/** blob 조회 오류만 주입한다. HEAD 상태·커밋·삭제 이력은 각각 별도 입력이다. */
+function collectWithBlobFailure(filePath, failure, { deleted = false, stray = false } = {}) {
+  const sha = 'a'.repeat(40)
+  const runGit = (args) => {
+    if (args[0] === 'rev-list') {
+      return `${sha}\x002026-03-01T00:00:00Z\x00feed: 참조 소식\x00본문.\n\nImportance: normal\x00\n`
+    }
+    if (args.includes('show') && args.includes('--name-status')) {
+      return `${deleted ? 'D' : 'A'}\t${filePath}\n`
+    }
+    if (args.includes('show')) throw failure
+    if (args.includes('log') && args.includes('--diff-filter=D')) {
+      return deleted ? `D\t${filePath}\n` : ''
+    }
+    throw new Error(`예상하지 않은 git 조회: ${args.join(' ')}`)
+  }
+  return collectFeedItems('/unused', {
+    env: 'dev',
+    headState: {
+      headDocs: [],
+      invalidDocs: [],
+      invalidRefs: [],
+      strayDocPaths: new Set(stray ? [filePath] : []),
+    },
+    runGit,
+  })
+}
+
+describe('blob 부재 판정 — 명령 인자는 오류 본문이 아니다', () => {
+  it.each(['does not exist in', 'exists on disk, but not in', 'invalid object name'])(
+    '파일명에 %s 가 있어도 I/O 실패를 전파한다',
+    (phrase) => {
+      const filePath = `wiki/${phrase}.md`
+      const failure = new Error(`Command failed: git show ${'a'.repeat(40)}:${filePath}`)
+      failure.stderr = 'fatal: unable to read sha1 file: Input/output error\n'
+      expect(() => collectWithBlobFailure(filePath, failure)).toThrow(/Input\/output error/u)
+    },
+  )
+
+  it('stderr 없는 오류는 메시지가 부재처럼 보여도 전파한다', () => {
+    const failure = new Error('Command failed: git show HEAD:wiki/does not exist in.md')
+    expect(() => collectWithBlobFailure('wiki/does not exist in.md', failure)).toThrow(
+      failure.message,
+    )
+  })
+
+  it.each([
+    "fatal: path 'wiki/gone.md' does not exist in 'HEAD'",
+    "fatal: path 'wiki/gone.md' exists on disk, but not in 'HEAD'",
+    "fatal: invalid object name 'HEAD^'",
+  ])('실제 stderr 의 정상 부재는 null 로 해석한다: %s', (stderr) => {
+    const failure = new Error('Command failed: git show HEAD:wiki/gone.md')
+    failure.stderr = stderr
+    const { items, stats } = collectWithBlobFailure('wiki/gone.md', failure, { deleted: true })
+    expect(items).toHaveLength(1)
+    expect(items[0].docs).toEqual([])
+    expect(stats.unresolvedPaths).toEqual([])
+  })
+})
+
+describe('unresolved 진단 — stray 가 아닌 미해석 참조는 게이트에 기록하지 않는다', () => {
+  it('프루닝은 세되 `unresolvedPaths` 는 비워 둔다(기록하면 평범한 커밋이 빌드를 죽인다)', () => {
+    const filePath = 'wiki/unresolved.md'
+    const failure = new Error('Command failed: git show')
+    failure.stderr = "fatal: path 'wiki/unresolved.md' does not exist in 'HEAD'"
+    const { items, stats } = collectWithBlobFailure(filePath, failure, { stray: false })
+
+    expect(items).toEqual([])
+    expect(stats.prunedFeeds).toBe(1)
+    expect(stats.prunedDocRefs).toBe(1)
+    expect(stats.unresolvedPaths).toEqual([])
+  })
+})
 
 describe('walkFeeds — 삭제된 경로와 재사용된 경로를 가른다 (RX1 · pair)', () => {
   it('RX1: 계보가 푸는 옛 경로는 살아 있는 문서로 해석하고, 계보가 없는 삭제 경로만 끊는다', () => {

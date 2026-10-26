@@ -345,6 +345,47 @@ describe('getCommitDocStatuses — 커밋별 문서 상태', () => {
 })
 
 describe('checkHistoryIntegrity — shallow · partial clone 판정', () => {
+  it.each([
+    ['다른 remote 의 필터', 'remote.backup.partialclonefilter blob:none\n', '', 'blob:none'],
+    ['다른 remote 의 promisor', '', 'remote.backup.promisor true\n', 'remote.backup.promisor=true'],
+    [
+      '빈 필터와 다른 remote 의 promisor',
+      'remote.origin.partialclonefilter \n',
+      'remote.backup.promisor true\n',
+      'remote.backup.promisor=true',
+    ],
+  ])('%s 만 설정돼도 부분 클론을 검출한다', (_label, filters, promisors, expected) => {
+    const runGit = (args) => {
+      if (args.includes('--is-shallow-repository')) return 'false'
+      if (args.includes('--get-regexp')) {
+        return args.includes('--type=bool') ? promisors : filters
+      }
+      return ''
+    }
+    expect(checkHistoryIntegrity(runGit)).toEqual({ partialFilter: expected, shallow: false })
+  })
+
+  it('false 인 remote 를 건너뛰고 뒤의 promisor 를 검출한다', () => {
+    const runGit = (args) =>
+      args.includes('--get-regexp') && args.includes('--type=bool')
+        ? 'remote.origin.promisor false\nremote.backup.promisor true\n'
+        : ''
+    expect(checkHistoryIntegrity(runGit)).toEqual({
+      partialFilter: 'remote.backup.promisor=true',
+      shallow: false,
+    })
+  })
+
+  it('모든 remote 의 promisor 가 false 이고 필터가 비면 full clone 이다', () => {
+    const runGit = (args) => {
+      if (!args.includes('--get-regexp')) return ''
+      return args.includes('--type=bool')
+        ? 'remote.origin.promisor false\nremote.backup.promisor false\n'
+        : 'remote.backup.partialclonefilter \n'
+    }
+    expect(checkHistoryIntegrity(runGit)).toEqual({ partialFilter: '', shallow: false })
+  })
+
   it('shallow 리포를 shallow 로 판정한다', () => {
     // 얕은 히스토리는 생성 커밋을 잘라 **문서 id 를 조용히 틀리게** 만든다.
     expect(checkHistoryIntegrity(stubRunner({ shallow: 'true' }))).toEqual({

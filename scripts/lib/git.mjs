@@ -9,6 +9,10 @@ import { extractFrontmatterField, findFrontmatterFieldLine } from './parse.mjs'
 // 커밋 헤더줄(`<hash>\t<date>`)은 소문자 hex 로 시작하므로 이 패턴에 걸리지 않는다.
 const STATUS_LINE_RE = /^([A-Z])(\d*)\t(.+)$/
 
+// 상태줄의 경로는 `core.quotepath=false` 여도 `"`·`\\`·제어문자·탭·개행이 들어 있으면 git 이 C 식으로
+// 따옴표를 쳐 내보낸다(`"wiki/a\"b.md"`). 탭 분리는 인용 안의 탭이 `\t` 로 이스케이프되어 있어 안전하다.
+// 파싱한 경로는 모두 `unquoteGitPath` 를 거쳐 원 경로로 되돌린 뒤 문서 판정에 쓴다.
+
 // 한글 경로가 octal escape(`"wiki/company/\354\202\274…"`)로 나오면 역인덱스 키가 통째로
 // 어긋난다 — 모든 경로 조회 호출에 붙인다.
 const QUOTEPATH_OFF = ['-c', 'core.quotepath=false']
@@ -72,22 +76,36 @@ export function checkGitAvailable(runGit) {
  *
  * shallow 면 생성 커밋이 잘려 문서 id 가 바뀌고 `feed:` 커밋이 사라진다. 에러 없이.
  *
- * partial clone 필터는 **promisor remote 의 이름으로** 찾는다 — `remote.origin.partialclonefilter`
- * 하나만 보면 origin 이 아닌 다른 이름의 remote 를 promisor 로 쓰는 클론을 놓친다. git 의
- * partial-clone 문서(Documentation/technical/partial-clone.txt)는 이렇게 규정한다:
- * _"a partial clone [...] has 'extensions.partialClone' set to the name of its promisor remote"_
- * — 즉 `extensions.partialClone` 이 **어느 remote 가 promisor 인지**를 담는 저장소 단위 플래그다.
- * 미설정이면(보통의 origin 클론) 그 값이 비어 `origin` 으로 자연히 대체돼 예전과 같은 조회가 된다.
+ * `extensions.partialClone` 이 가리키는 remote 외에도 promisor remote 를 둘 수 있다. 모든 remote 의
+ * 필터·promisor 설정을 확인한다. 필터 없는 promisor 도 객체가 빠질 수 있으므로 설정 키를 사유로 낸다.
+ * boolean 은 git 에게 정규화시켜 yes·on·1 같은 표기도 같은 의미로 판정한다.
  */
 export function checkHistoryIntegrity(runGit) {
   const shallow = tryGit(runGit, ['rev-parse', '--is-shallow-repository']).trim() === 'true'
   const promisorRemote = tryGit(runGit, ['config', '--get', 'extensions.partialClone']).trim()
   const filterRemote = promisorRemote || 'origin'
-  const partialFilter = tryGit(runGit, [
+  const primaryFilter = tryGit(runGit, [
     'config',
     '--get',
     `remote.${filterRemote}.partialclonefilter`,
   ]).trim()
+  const remoteFilters = tryGit(runGit, [
+    'config',
+    '--get-regexp',
+    '^remote\\..*\\.partialclonefilter$',
+  ])
+  const promisors = tryGit(runGit, [
+    'config',
+    '--type=bool',
+    '--get-regexp',
+    '^remote\\..*\\.promisor$',
+  ])
+  const filter = remoteFilters
+    .split(/\r?\n/)
+    .map((line) => line.match(/^remote\..+\.partialclonefilter[ \t]+(.*)$/u)?.[1].trim())
+    .find(Boolean)
+  const promisor = promisors.split(/\r?\n/).find((line) => line.endsWith(' true'))
+  const partialFilter = primaryFilter || filter || (promisor ? `${promisor.slice(0, -5)}=true` : '')
   return { partialFilter, shallow }
 }
 
@@ -104,7 +122,7 @@ export function collectEverDeletedDocPaths(runGit, { isDocPath }) {
   for (const line of raw.split(/\r?\n/)) {
     const match = line.match(STATUS_LINE_RE)
     if (!match || match[1] !== 'D') continue
-    const filePath = match[3].split('\t').at(-1)
+    const filePath = unquoteGitPath(match[3].split('\t').at(-1))
     if (!isDocPath(filePath)) continue
     deleted.add(filePath)
   }
@@ -139,7 +157,7 @@ export function collectDeletedDocEvents(runGit, { isDocPath }) {
       continue
     }
     if (match[1] !== 'D' || sha === null) continue
-    const filePath = match[3].split('\t').at(-1)
+    const filePath = unquoteGitPath(match[3].split('\t').at(-1))
     if (!isDocPath(filePath)) continue
     events.push({ path: filePath, sha })
   }
@@ -247,7 +265,7 @@ export function getCommitDocStatuses(runGit, sha, isDocPath, { diffMerges } = {}
     const match = line.match(STATUS_LINE_RE)
     if (!match) continue
     const code = match[1]
-    const paths = match[3].split('\t')
+    const paths = match[3].split('\t').map(unquoteGitPath)
     const filePath = paths.at(-1)
     if (!isDocPath(filePath)) continue
     const entry = { path: filePath, status: code }
@@ -282,6 +300,9 @@ export function getFileHistory(runGit, relFilePath) {
   let raw
   try {
     raw = runGit([
+      // 글롭 문자(`[`·`*` 등)가 든 이름이 비슷한 다른 파일에 맞지 않도록 pathspec 을 글자 그대로 읽게 한다
+      //   (`git(1)` `--literal-pathspecs`, 모든 pathspec 에 `:(literal)` 을 붙인 것과 같다).
+      '--literal-pathspecs',
       ...QUOTEPATH_OFF,
       'log',
       '--follow',
@@ -304,7 +325,7 @@ export function getFileHistory(runGit, relFilePath) {
     const status = line.match(STATUS_LINE_RE)
     if (status && header) {
       const code = status[1]
-      const paths = status[3].split('\t')
+      const paths = status[3].split('\t').map(unquoteGitPath)
       const entry = { pathAtCommit: paths.at(-1), sha: header.sha, status: code, ts: header.ts }
       if ((code === 'R' || code === 'C') && paths.length > 1) entry.oldPath = paths[0]
       history.push(entry)
