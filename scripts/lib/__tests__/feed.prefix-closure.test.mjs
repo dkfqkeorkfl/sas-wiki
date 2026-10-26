@@ -7,8 +7,6 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import { checkCommitConventions } from '../../../harness/wiki-documents/document-invariants.mjs'
-
 import { parseCommitForFeed } from '../feed.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -81,23 +79,6 @@ function feedSubjectLiteral(source) {
 
 /** 부작용 관측용 sink — `parseCommitForFeed` 가 건드리는 두 배열만 담는다. */
 const statsSink = () => ({ unpublishedFeedCommits: [], warnings: [] })
-
-/** sha → `git show --name-status` stdout. 기존 `invariants.feed-only.test.mjs:36` 패턴 재사용. */
-function stubGitStatuses(byHash) {
-  return (args) => (args.includes('show') ? (byHash[args.at(-1)] ?? '') : '')
-}
-
-/** throw 메시지에서 **subject 만** 지운다 — 접두사가 아니라 *그 밖의 모든 것*이 같은지 보기 위해. */
-function violationShape(commits, runGit) {
-  try {
-    checkCommitConventions(commits, runGit, 'wiki/')
-    return { threw: false }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    const masked = commits.reduce((text, commit) => text.replaceAll(commit.subject, '<subject>'), message) // prettier-ignore
-    return { message: masked, threw: true }
-  }
-}
 
 describe('접두사 술어 폐쇄 — 프로덕션에서 subject 접두사를 심사하는 곳 (FS1 pin · CX-6D)', () => {
   it('FS1: subject 접두사 심사 지점이 `feed.mjs` 의 `feed:` 뿐이다', () => {
