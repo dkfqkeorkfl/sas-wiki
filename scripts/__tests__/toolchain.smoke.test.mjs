@@ -1,8 +1,9 @@
 // Toolchain precondition contract.
 //
 // This is not a throwaway smoke file: it replaces `--passWithNoTests` (a gate we deliberately
-// refused) and it guards the runner preconditions that every test migrated in P3 depends on.
-// See docs/prds/wiki-scripts-relocation/P2.sas-wiki-toolchain/tdd.md §5.
+// refused) and it guards the runner preconditions that every test in this repo depends on:
+// ESM wiring, a usable git binary, and git hermeticity (a developer's ~/.gitconfig must never
+// supply the commit identity — see `test.env` in vitest.config.js).
 //
 // No `// @vitest-environment node` pragma: Vitest already defaults to the node environment here.
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -11,7 +12,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
-const REPO_ROOT = path.resolve(import.meta.dirname, '..')
+const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..')
 
 const NAME = 'SAS Wiki Bot'
 const EMAIL = 'bot@sas.wiki'
@@ -37,7 +38,7 @@ const makeRepo = () => {
 }
 
 /**
- * MIRRORS the existing hermetic spawn pattern (scripts/wiki/__tests__/build.conventions.test.mjs).
+ * MIRRORS the existing hermetic spawn pattern (scripts/__tests__/build.conventions.test.mjs).
  * Spreading `...process.env` is the load-bearing part: it inherits whatever GIT_CONFIG_* the
  * Vitest config injects, so the hermeticity invariant propagates to every test for free.
  *
@@ -62,13 +63,13 @@ describe('toolchain: runner preconditions', () => {
     expect(path.isAbsolute(REPO_ROOT)).toBe(true)
   })
 
-  // S2 — git binary. Without it, the 14 self-seeding tests arriving in P3 all die.
+  // S2 — git binary. Without it, every test that seeds its own git repo dies.
   it('can execute git', () => {
     expect(execFileSync('git', ['--version'], { encoding: 'utf8' })).toMatch(/^git version /)
   })
 
   // S3 — the positive half of the hermeticity pair. Without this, "every commit is blocked"
-  // would also satisfy S4c, and P3's self-seeding tests would be silently broken.
+  // would also satisfy S4c, and self-seeding tests would be silently broken.
   it('commits in a temp repo when identity env is injected', () => {
     const repo = makeRepo()
 
