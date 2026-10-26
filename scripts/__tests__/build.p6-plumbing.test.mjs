@@ -92,30 +92,39 @@ describe('배관 — `.prettierignore` 의 거짓 근거 (PL14 🔴RED · CX-6P)
   })
 })
 
+// 실제 저장소 전체를 대상으로 git 을 여러 번 부르고 추적 파일을 전부 읽는 통합 케이스라 기본 시간
+//   제한(30s)에 여유가 없다. 단독 실행은 약 10초이고, 전체 스위트를 병렬로 돌려 부하가 높으면 30초를
+//   넘겨 간헐 실패했다. 판정 기준(전후 동일)은 그대로 두고 이 케이스의 제한만 넉넉히 둔다.
+const SCAN_TIMEOUT_MS = 120_000
+
 describe('배관 — 스캔은 워킹트리를 건드리지 않는다 (PL16 pin)', () => {
-  it('PL16: 추적 스캔 전후로 `git status --porcelain` 이 동일하고 산출물 경로가 무시된다', () => {
-    // ★ 규범 F 의 기계적 확인. 스캔이 캐시·로그를 남기면 그 자체가 "테스트가 제품 데이터를 조작했다" 다.
-    // ★ tdd 는 _"porcelain 이 **비어 있다**"_ 로 적었지만 여기서는 **전후 동일**로 잰다 — RED 단계에는
-    //   신규 가드 파일이 untracked 로 떠 있어 "비어 있음" 이 구조적으로 불가능하고, 무엇보다 이
-    //   케이스가 겨냥하는 것은 트리 청결이 아니라 **스캔의 부작용 없음**이다(§보고).
-    const before = porcelain()
+  it(
+    'PL16: 추적 스캔 전후로 `git status --porcelain` 이 동일하고 산출물 경로가 무시된다',
+    () => {
+      // ★ 규범 F 의 기계적 확인. 스캔이 캐시·로그를 남기면 그 자체가 "테스트가 제품 데이터를 조작했다" 다.
+      // ★ tdd 는 _"porcelain 이 **비어 있다**"_ 로 적었지만 여기서는 **전후 동일**로 잰다 — RED 단계에는
+      //   신규 가드 파일이 untracked 로 떠 있어 "비어 있음" 이 구조적으로 불가능하고, 무엇보다 이
+      //   케이스가 겨냥하는 것은 트리 청결이 아니라 **스캔의 부작용 없음**이다(§보고).
+      const before = porcelain()
 
-    const { listTracked, scanTracked } = trackedScan()
-    const { files } = listTracked(REPO_ROOT)
-    const scan = scanTracked({ files, pattern: /README/, repoRoot: REPO_ROOT })
+      const { listTracked, scanTracked } = trackedScan()
+      const { files } = listTracked(REPO_ROOT)
+      const scan = scanTracked({ files, pattern: /README/, repoRoot: REPO_ROOT })
 
-    // 앵커: 스캔이 실제로 파일을 읽었다(아무것도 안 하고 "부작용 없음" 이 참이 되는 것을 배제).
-    expect(scan.scannedFiles).toBeGreaterThan(0)
-    expect(scan.scannedLines).toBeGreaterThan(0)
+      // 앵커: 스캔이 실제로 파일을 읽었다(아무것도 안 하고 "부작용 없음" 이 참이 되는 것을 배제).
+      expect(scan.scannedFiles).toBeGreaterThan(0)
+      expect(scan.scannedLines).toBeGreaterThan(0)
 
-    expect(porcelain(), '스캔이 워킹트리를 바꿨다').toBe(before)
+      expect(porcelain(), '스캔이 워킹트리를 바꿨다').toBe(before)
 
-    // 산출물 경로가 추적·스캔 범위 밖임을 문서가 아니라 설정으로 확인한다(D-H 의 전제).
-    const ignored = read('.gitignore')
-      .split('\n')
-      .map((line) => line.trim())
-    for (const entry of ['node_modules', 'logs', 'cache']) expect(ignored).toContain(entry)
-  })
+      // 산출물 경로가 추적·스캔 범위 밖임을 문서가 아니라 설정으로 확인한다(D-H 의 전제).
+      const ignored = read('.gitignore')
+        .split('\n')
+        .map((line) => line.trim())
+      for (const entry of ['node_modules', 'logs', 'cache']) expect(ignored).toContain(entry)
+    },
+    SCAN_TIMEOUT_MS,
+  )
 })
 
 describe('배관 — `usage()` 는 현재형 지시다 (PL17 🔴RED)', () => {
