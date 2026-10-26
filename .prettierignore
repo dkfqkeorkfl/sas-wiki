@@ -15,3 +15,8 @@ docs/금융 리서치
 # anything — a "truncated" file that still parses makes the reader-distrust case vacuous.
 # Formatting it is impossible by construction, so prettier must not try.
 scripts/__tests__/fixtures/artifact/truncated.json
+
+# `sas-devc` is a git submodule — a separate repository with its own formatting policy. Its files
+# are not part of this repo's commits, and CI does not check submodules out, so formatting them
+# here only dirties the other repository's working tree.
+sas-devc
